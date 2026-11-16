@@ -4,7 +4,7 @@
  * source of truth.
  */
 
-export type ScanType = "url" | "message" | "file";
+export type ScanType = "url" | "message" | "file" | "qr" | "website" | "apk";
 export type ScanStatus = "queued" | "processing" | "completed" | "failed" | "inconclusive";
 export type RiskLevel = "known_malicious" | "suspicious" | "no_known_threat" | "inconclusive";
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
@@ -75,6 +75,16 @@ export interface Scan extends ScanSummary {
   error: string | null;
   started_at: string | null;
   saved_to_history: boolean;
+  ai_explanation: string | null;
+  ai_model: string | null;
+  ai_generated_at: string | null;
+}
+
+export interface Explanation {
+  explanation: string;
+  model: string;
+  generated_at: string;
+  label: string;
 }
 
 export interface ScanPage {

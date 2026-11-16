@@ -22,6 +22,9 @@ const SCANNERS = [
   { href: "/dashboard/scan?type=url", label: "Link scanner" },
   { href: "/dashboard/scan?type=message", label: "Message scanner" },
   { href: "/dashboard/scan?type=file", label: "File scanner" },
+  { href: "/dashboard/scan?type=qr", label: "QR scanner" },
+  { href: "/dashboard/scan?type=website", label: "Website analyzer" },
+  { href: "/dashboard/scan?type=apk", label: "APK analyzer" },
 ];
 
 function isCurrent(pathname: string, href: string) {

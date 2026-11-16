@@ -6,10 +6,10 @@ import { useRef, type KeyboardEvent } from "react";
 import type { ScanType } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
 
-import { FileScanForm, MessageScanForm, SCAN_TABS, UrlScanForm } from "./scan-forms";
+import { ApkScanForm, FileScanForm, MessageScanForm, QrScanForm, SCAN_TABS, UrlScanForm } from "./scan-forms";
 
 function isScanType(value: string | null): value is ScanType {
-  return value === "url" || value === "message" || value === "file";
+  return SCAN_TABS.some((tab) => tab.type === value);
 }
 
 /** Tabbed entry point to the three scanners. The active tab lives in the URL. */
@@ -38,7 +38,7 @@ export function ScanCenter({ reportBase }: { reportBase: string }) {
 
   return (
     <div className="overflow-hidden rounded-panel border border-line bg-surface shadow-raised">
-      <div role="tablist" aria-label="What do you want to check?" className="grid grid-cols-3 border-b border-line">
+      <div role="tablist" aria-label="What do you want to check?" className="grid grid-cols-3 border-b border-line sm:grid-cols-6">
         {SCAN_TABS.map((tab, index) => {
           const selected = tab.type === active;
           return (
@@ -56,7 +56,7 @@ export function ScanCenter({ reportBase }: { reportBase: string }) {
               onClick={() => select(tab.type)}
               onKeyDown={(event) => onKeyDown(event, index)}
               className={cn(
-                "relative flex items-center justify-center gap-2 px-3 py-4 text-sm font-medium transition-colors",
+                "relative flex items-center justify-center gap-2 px-2 py-3.5 text-sm font-medium whitespace-nowrap transition-colors",
                 selected ? "text-ink" : "text-ink-muted hover:text-ink",
               )}
             >
@@ -85,6 +85,11 @@ export function ScanCenter({ reportBase }: { reportBase: string }) {
         )}
         {active === "message" && <MessageScanForm reportBase={reportBase} />}
         {active === "file" && <FileScanForm reportBase={reportBase} />}
+        {active === "qr" && <QrScanForm reportBase={reportBase} />}
+        {active === "website" && (
+          <UrlScanForm reportBase={reportBase} mode="website" initialUrl={params.get("url")?.slice(0, 2048) ?? ""} />
+        )}
+        {active === "apk" && <ApkScanForm reportBase={reportBase} />}
       </div>
     </div>
   );

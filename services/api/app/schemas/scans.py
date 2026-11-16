@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.analyzers.message_scan import MAX_MESSAGE_LENGTH
 from app.analyzers.urls import MAX_URL_LENGTH, InvalidUrlError, parse_url
 
-ScanType = Literal["url", "message", "file"]
+ScanType = Literal["url", "message", "file", "qr", "website", "apk"]
 ScanStatus = Literal["queued", "processing", "completed", "failed", "inconclusive"]
 RiskLevel = Literal["known_malicious", "suspicious", "no_known_threat", "inconclusive"]
 
@@ -82,6 +82,19 @@ class ScanOut(ScanSummary):
     error: str | None
     started_at: datetime | None
     saved_to_history: bool
+    ai_explanation: str | None
+    ai_model: str | None
+    ai_generated_at: datetime | None
+
+
+class ExplanationOut(BaseModel):
+    explanation: str
+    model: str
+    generated_at: datetime
+    label: str = (
+        "Written by AI from the findings above. It may contain mistakes; the findings are "
+        "the evidence."
+    )
 
 
 class ScanPage(BaseModel):

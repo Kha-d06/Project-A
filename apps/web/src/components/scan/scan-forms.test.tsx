@@ -84,3 +84,26 @@ describe("FileScanForm", () => {
     expect(router.push).toHaveBeenCalled();
   });
 });
+
+describe("ScanCenter tabs", () => {
+  it("offers every scanner and opens the one named in the address", async () => {
+    const { ScanCenter } = await import("./scan-center");
+    const { navigation } = await import("@/test/setup");
+    navigation.search = new URLSearchParams("type=qr");
+    render(<ScanCenter reportBase="/scans" />);
+    const tabs = screen.getAllByRole("tab").map((tab) => tab.textContent);
+    expect(tabs).toEqual(["Link", "Message", "File", "QR code", "Website", "Android app"]);
+    expect(screen.getByRole("tab", { name: "QR code" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByLabelText("Photo or screenshot of the QR code")).toHaveAttribute("capture", "environment");
+  });
+
+  it("prefills but never auto-submits a link sent by the extension", async () => {
+    const fetchMock = mockFetch(jsonResponse(makeScan()));
+    const { ScanCenter } = await import("./scan-center");
+    const { navigation } = await import("@/test/setup");
+    navigation.search = new URLSearchParams("type=url&url=https%3A%2F%2Fexample.org%2Fx");
+    render(<ScanCenter reportBase="/scans" />);
+    expect(screen.getByLabelText("Link to check")).toHaveValue("https://example.org/x");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

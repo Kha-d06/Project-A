@@ -18,6 +18,13 @@ dependencies = [
     "argon2-cffi>=23.1",
     "httpx>=0.27",
     "tldextract>=5.1",
+    "zxing-cpp>=2.3",
+    "pillow>=11",
+    "yara-python>=4.5",
+    "oletools>=0.60",
+    "pefile>=2024.8",
+    "dnspython>=2.7",
+    "pyaxmlparser>=0.3.31",
 ]
 
 [project.optional-dependencies]
@@ -45,8 +52,10 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101", "S105", "S106", "S310"]
+"tests/*" = ["S101", "S105", "S106", "S310", "E501"]
 "alembic/versions/*" = ["E501"]
+# Model prompt text: hard-wrapping would change what the model receives.
+"app/ai/explain.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -55,10 +64,14 @@ plugins = ["pydantic.mypy"]
 exclude = ["alembic/"]
 
 [[tool.mypy.overrides]]
-module = ["celery.*", "tldextract.*"]
+module = ["celery.*", "tldextract.*", "yara", "oletools.*", "pefile", "pyaxmlparser.*", "zxingcpp"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-filterwarnings = ["error::DeprecationWarning:app.*"]
+filterwarnings = [
+    "error::DeprecationWarning:app.*",
+    # oletools still calls deprecated pyparsing APIs; not actionable here.
+    "ignore::DeprecationWarning:oletools.*",
+]

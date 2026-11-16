@@ -12,7 +12,14 @@ from dataclasses import dataclass
 
 from app.analyzers.types import Outcome
 
-_SUBJECT = {"url": "link", "message": "message", "file": "file"}
+_SUBJECT = {
+    "url": "link",
+    "message": "message",
+    "file": "file",
+    "qr": "QR code",
+    "website": "website",
+    "apk": "app",
+}
 
 
 @dataclass(frozen=True)
@@ -91,6 +98,64 @@ _RECOMMENDATIONS: dict[tuple[str, str], list[str]] = {
     ("file", "inconclusive"): [
         "No malware database was available to check this file against, so it remains unverified.",
         "Scan it with the antivirus software on your device before opening it.",
+    ],
+    ("qr", "known_malicious"): [
+        "Do not open the link in this QR code or follow its instructions.",
+        "If it was on a poster, parking meter or delivery note, tell the business or venue: "
+        "fraudsters often stick their own codes over genuine ones.",
+        "If you already entered details or paid, contact your bank and change the password "
+        "you used.",
+    ],
+    ("qr", "suspicious"): [
+        "Do not pay or sign in through this code. Go to the business's official website or app "
+        "instead.",
+        "Check whether the code is a sticker placed over another one.",
+    ],
+    ("qr", "no_known_threat"): [
+        "No known threat was found, which is not a guarantee. Check the address shown on your "
+        "phone before entering any details.",
+        "For payments, confirm the payee name and amount before approving.",
+    ],
+    ("qr", "inconclusive"): [
+        "The code could not be fully checked. Do not pay or sign in through it unless you can "
+        "confirm where it leads by other means.",
+    ],
+    ("website", "known_malicious"): [
+        "Do not visit this site, and do not run anything downloaded from it.",
+        "If you entered a password there, change it everywhere you use it and turn on two-step "
+        "verification.",
+    ],
+    ("website", "suspicious"): [
+        "Do not enter passwords, card numbers or personal details on this site.",
+        "Reach the organisation through an address you already know, or its official app.",
+    ],
+    ("website", "no_known_threat"): [
+        "No known threat was found, which is not a guarantee. Check the address bar before "
+        "signing in or paying.",
+    ],
+    ("website", "inconclusive"): [
+        "Key checks could not run, so treat the site as unverified and avoid entering personal "
+        "details.",
+    ],
+    ("apk", "known_malicious"): [
+        "Do not install this app. Delete the file.",
+        "If it is already installed, uninstall it, run Google Play Protect, and change the "
+        "passwords of accounts you used on the phone from another device.",
+    ],
+    ("apk", "suspicious"): [
+        "Do not install this app unless you can confirm it comes from the real developer.",
+        "Install apps from Google Play or the developer's official site, never from links in "
+        "messages.",
+        "Be very cautious about granting accessibility, SMS or device-administrator access.",
+    ],
+    ("apk", "no_known_threat"): [
+        "No known threat was found, which is not a guarantee. Prefer installing apps from "
+        "Google Play.",
+        "Review the permissions listed below and refuse any the app does not obviously need.",
+    ],
+    ("apk", "inconclusive"): [
+        "No malware database was available to check this app, so it remains unverified. Do not "
+        "install it unless you trust its source.",
     ],
 }
 

@@ -41,10 +41,9 @@ export default function AboutPage() {
       <section id="roadmap">
         <h2>What is next</h2>
         <ul>
-          <li>The SENTINEL Protect browser extension.</li>
-          <li>QR code decoding, deeper website analysis and static analysis of Android apps.</li>
-          <li>Plain-language AI explanations of findings, always alongside the original evidence.</li>
           <li>Community reports of scams, with moderation, and a full Arabic interface.</li>
+          <li>A threat-intelligence lookup page and an administration area.</li>
+          <li>Mobile-friendly sharing to SENTINEL from your phone.</li>
         </ul>
       </section>
       <section id="contact">

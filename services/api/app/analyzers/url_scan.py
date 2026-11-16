@@ -4,7 +4,7 @@ from urllib.parse import urlsplit
 
 from sqlalchemy.orm import Session
 
-from app.analyzers.safe_fetch import RedirectTrace, trace_redirects
+from app.analyzers.safe_fetch import Hop, RedirectTrace, trace_redirects
 from app.analyzers.types import Check, FindingData, Outcome
 from app.analyzers.url_heuristics import analyze_url_text
 from app.analyzers.urls import InvalidUrlError, ParsedUrl, parse_url
@@ -129,10 +129,12 @@ def _hop_summary(trace: RedirectTrace) -> list[dict[str, Any]]:
     ]
 
 
-def _redirect_check(db: Session, url: ParsedUrl, outcome: Outcome) -> ParsedUrl:
+def _redirect_check(
+    db: Session, url: ParsedUrl, outcome: Outcome, *, read_page: bool
+) -> tuple[ParsedUrl, RedirectTrace]:
     """Trace redirects and return the final destination (or the original if none)."""
     label, provider = "Destination and redirects", "SENTINEL safe fetcher"
-    trace = trace_redirects(url.normalized)
+    trace = trace_redirects(url.normalized, read_final_body=read_page)
     outcome.details["redirect_chain"] = _hop_summary(trace)
 
     if trace.stopped == "unsafe_destination":
@@ -224,7 +226,7 @@ def _redirect_check(db: Session, url: ParsedUrl, outcome: Outcome) -> ParsedUrl:
                 "tls", "Security certificate", provider, "completed", "The site does not use TLS."
             )
         )
-    return final
+    return final, trace
 
 
 def _domain_age_check(url: ParsedUrl, outcome: Outcome) -> None:
@@ -266,8 +268,11 @@ def _domain_age_check(url: ParsedUrl, outcome: Outcome) -> None:
     )
 
 
-def analyze_url(payload: dict[str, Any], db: Session) -> Outcome:
-    url = parse_url(payload["url"])
+def analyze_url_target(
+    url: ParsedUrl, db: Session, *, read_page: bool = False
+) -> tuple[Outcome, ParsedUrl, Hop | None]:
+    """Run every link check. Returns the outcome, the final destination, and, if
+    read_page is set and the destination served HTML, the final response."""
     outcome = Outcome(details={"submitted_url": url.normalized, "host": url.host})
 
     outcome.findings += analyze_url_text(url)
@@ -282,13 +287,20 @@ def analyze_url(payload: dict[str, Any], db: Session) -> Outcome:
     )
     _local_feed_check(db, url, outcome)
     _urlhaus_live_check(url, outcome)
-    final = _redirect_check(db, url, outcome)
+    final, trace = _redirect_check(db, url, outcome, read_page=read_page)
     _domain_age_check(final, outcome)
 
     outcome.details["final_url"] = final.normalized
     outcome.details["registrable_domain"] = final.registrable_domain
+    page = trace.hops[-1] if trace.reached_destination and trace.hops else None
+    return outcome, final, page
+
+
+def analyze_url(payload: dict[str, Any], db: Session) -> Outcome:
+    outcome, _, _ = analyze_url_target(parse_url(payload["url"]), db)
     outcome.limitations.append(
         "Page content was not downloaded or inspected. This scan looks at the address, its "
-        "reputation, where it redirects and how it is registered."
+        "reputation, where it redirects and how it is registered. Use the website analyzer "
+        "to inspect the page itself."
     )
     return outcome

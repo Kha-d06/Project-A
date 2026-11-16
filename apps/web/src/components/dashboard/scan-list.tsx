@@ -1,4 +1,4 @@
-import { FileText, Link2, MessageSquareText } from "lucide-react";
+import { FileText, Globe, Link2, MessageSquareText, QrCode, Smartphone } from "lucide-react";
 import Link from "next/link";
 
 import { RiskBadge } from "@/components/scan/risk-badge";
@@ -10,6 +10,9 @@ const TYPE_ICON: Record<ScanType, typeof Link2> = {
   url: Link2,
   message: MessageSquareText,
   file: FileText,
+  qr: QrCode,
+  website: Globe,
+  apk: Smartphone,
 };
 
 export function ScanList({ scans, empty }: { scans: ScanSummary[]; empty: string }) {

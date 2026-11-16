@@ -48,7 +48,7 @@ def clean_state() -> Iterator[None]:
 def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
     """Analyzers must never touch the network in tests unless a test opts in."""
 
-    def unreachable(url: str) -> RedirectTrace:
+    def unreachable(url: str, read_final_body: bool = False) -> RedirectTrace:
         return RedirectTrace(stopped="connection_error", stopped_detail="network disabled in tests")
 
     def no_rdap(domain: str) -> None:

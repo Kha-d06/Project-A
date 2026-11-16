@@ -1,5 +1,6 @@
 import type {
   Activity,
+  Explanation,
   ExtensionEvent,
   Installation,
   Overview,
@@ -121,6 +122,12 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   return (await response.json()) as T;
 }
 
+function uploadScan(path: string, file: File): Promise<Scan> {
+  const form = new FormData();
+  form.append("file", file);
+  return request<Scan>(path, { method: "POST", form });
+}
+
 export interface HistoryFilters {
   type?: ScanType | "";
   risk?: RiskLevel | "";
@@ -144,11 +151,12 @@ export const api = {
     url: (url: string) => request<Scan>("/scans/url", { method: "POST", json: { url } }),
     message: (content: string) =>
       request<Scan>("/scans/message", { method: "POST", json: { content } }),
-    file: (file: File) => {
-      const form = new FormData();
-      form.append("file", file);
-      return request<Scan>("/scans/file", { method: "POST", form });
-    },
+    file: (file: File) => uploadScan("/scans/file", file),
+    qr: (image: File) => uploadScan("/scans/qr", image),
+    apk: (file: File) => uploadScan("/scans/apk", file),
+    website: (url: string) => request<Scan>("/scans/website", { method: "POST", json: { url } }),
+    explain: (id: string) =>
+      request<Explanation>(`/scans/${encodeURIComponent(id)}/explanation`, { method: "POST" }),
     get: (id: string, signal?: AbortSignal) =>
       request<Scan>(`/scans/${encodeURIComponent(id)}`, { signal }),
     remove: (id: string) =>

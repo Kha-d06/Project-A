@@ -7,7 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, utcnow
 
-SCAN_TYPES = ("url", "message", "file")
+SCAN_TYPES = ("url", "message", "file", "qr", "website", "apk")
 SCAN_STATUSES = ("queued", "processing", "completed", "failed", "inconclusive")
 RISK_LEVELS = ("known_malicious", "suspicious", "no_known_threat", "inconclusive")
 SEVERITIES = ("critical", "high", "medium", "low", "info")
@@ -45,6 +45,11 @@ class ScanJob(Base):
     recommendations: Mapped[list[Any]] = mapped_column(default=list)
     limitations: Mapped[list[Any]] = mapped_column(default=list)
     error: Mapped[str | None] = mapped_column(Text)
+
+    # Optional AI-written explanation, generated on request and labelled as such.
+    ai_explanation: Mapped[str | None] = mapped_column(Text)
+    ai_model: Mapped[str | None] = mapped_column(String(80))
+    ai_generated_at: Mapped[datetime | None]
 
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     started_at: Mapped[datetime | None]

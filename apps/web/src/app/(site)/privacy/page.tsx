@@ -17,6 +17,7 @@ export default function PrivacyPage() {
         <ul>
           <li><strong>Link scans:</strong> the link, the redirect chain, and the report.</li>
           <li><strong>Message scans:</strong> the first 80 characters of the message as a label, the links, email addresses and phone numbers found in it, and the report. The full text is discarded when the analysis finishes.</li>
+          <li><strong>QR, website and app scans:</strong> what was decoded or found (for example the page title, form addresses, or an app’s package name and permissions) and the report. Uploaded images and apps are deleted as soon as the scan finishes.</li>
           <li><strong>File scans:</strong> the file name, size, type, SHA-256 fingerprint and the report. The file itself is deleted as soon as the scan finishes, whatever the outcome.</li>
           <li><strong>Accounts:</strong> your email address, an optional display name, a salted Argon2 hash of your password, and a log of sign-ins and security changes with the IP address they came from.</li>
         </ul>
@@ -38,7 +39,10 @@ export default function PrivacyPage() {
         <ul>
           <li><strong>Redirect tracing</strong> requests the link you submitted from our server, so the website you are checking will see a request from SENTINEL (not from you).</li>
           <li><strong>Domain age</strong> sends the domain name (not the full link) to rdap.org and the domain’s registry.</li>
+          <li><strong>Website analysis</strong> downloads the page (up to 2 MB of HTML) from our server and looks up the domain’s DNS records. Scripts on the page are never run.</li>
           <li>If the operator has configured a live URLhaus key, the link is also sent to abuse.ch. The <Link href="/#integrations">integrations list</Link> shows whether that is the case.</li>
+          <li><strong>AI explanations</strong> are only created when you ask for one. Then the verdict and the summaries of the findings are sent to the AI provider (OpenAI). Your message text, files and full addresses are not.</li>
+          <li>If the operator runs MobSF for deeper app analysis, uploaded apps are sent to that server, which belongs to the operator.</li>
         </ul>
         <p>Uploaded files are never sent to any third party.</p>
       </section>

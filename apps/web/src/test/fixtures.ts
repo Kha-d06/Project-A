@@ -31,6 +31,9 @@ export function makeScan(overrides: Partial<Scan> = {}): Scan {
     started_at: "2026-11-16T10:00:00Z",
     completed_at: "2026-11-16T10:00:02Z",
     saved_to_history: false,
+    ai_explanation: null,
+    ai_model: null,
+    ai_generated_at: null,
     ...overrides,
   };
 }

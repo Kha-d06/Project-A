@@ -15,10 +15,10 @@ Every result is one of four verdicts, used consistently in the API and the UI:
 
 Nothing is ever reported as "safe".
 
-> **Status: Phases 1 and 2.** The link, message and file scanners, accounts,
-> dashboard, history and the SENTINEL Protect browser extension work end to end.
-> QR and APK analysis, AI explanations, community reports and the Arabic interface
-> are later phases (see [Roadmap](#roadmap)). The code has tests but has not had an
+> **Status: Phases 1–3.** Link, message, file, QR, website and Android app scanning,
+> optional AI explanations, accounts, dashboard, history and the SENTINEL Protect
+> browser extension work end to end. Community reports, the admin area and the
+> Arabic interface are later phases (see [Roadmap](#roadmap)). The code has tests but has not had an
 > independent security review, so it is not yet production-ready.
 
 ## What works today
@@ -49,6 +49,38 @@ Files are never opened or executed, and they are deleted when the scan finishes.
 - a dashboard with an overview and a filterable history;
 - per-scan deletion and a JSON report download;
 - settings to switch history off, export all data, change the password (other sessions are signed out) and delete the account.
+
+**QR scanner.** Decodes a QR code from a photo (zxing-cpp) without opening it.
+- Links get the full link analysis, run from the server.
+- Payment codes (UPI, EMV merchant codes, cryptocurrency) show who would be paid; crypto requests are flagged.
+- Open Wi-Fi networks are noted.
+- Decompression bombs are refused.
+
+**Website analyzer.** Everything the link scanner does, plus DNS records (A, AAAA, MX, NS, TXT) and a static reading of up to 2 MB of the page's HTML through the same SSRF-protected fetcher. Scripts never run. It flags:
+- sign-in or payment pages that use another brand's name or images;
+- forms posting to other sites or over http;
+- free-hosting phishing patterns, obfuscated scripts, crypto-miners and hidden frames.
+
+It also reports which security headers are present.
+
+**Android app analyzer.** Static analysis of APKs up to 100 MB:
+- **Manifest:** package, SDK levels, permissions with plain-language meanings, and exported components;
+- **Permission patterns:** banking-trojan combinations (accessibility plus overlay, SMS plus internet, device admin, installing apps);
+- **Impersonation:** apps named like a well-known brand but not its official package;
+- **Code:** hosts embedded in the code, checked against threat intelligence, plus known SDKs and debug signing;
+- **Shared checks:** YARA, hash reputation and ClamAV, plus an optional self-hosted MobSF.
+
+The app is never installed or run.
+
+**More file analysis.**
+- YARA, with SENTINEL's own rules plus optional operator rules: encoded PowerShell, download-and-execute, HTML smuggling, malicious shortcuts, credential-dumping tools, ransom notes and packers.
+- olevba macro analysis (auto-run plus risky functions, Excel 4 macros, embedded indicators).
+- pefile capability analysis of Windows programs (injection, keylogging, mass encryption, packing, signature presence).
+
+**AI explanations (optional).** When `SENTINEL_OPENAI_API_KEY` and `SENTINEL_OPENAI_MODEL` are set, a user can ask for a plain-language explanation of a finished scan.
+- Only the verdict and finding summaries are sent, never message text, files, evidence values or full links.
+- The output is labelled as AI-written, has links stripped, and is cached on the scan.
+- Without configuration the option is not shown, and everything else works as before.
 
 **SENTINEL Protect browser extension** (`apps/extension`, Chrome and Edge, Manifest V3):
 - warns before known dangerous sites and convincing imitations load, with evidence and a way back;
@@ -139,6 +171,9 @@ All settings use the `SENTINEL_` prefix. See [`.env.example`](.env.example) and
 | `SENTINEL_SITE_ADDRESS` | prod | Public domain for Caddy's automatic TLS. |
 | `SENTINEL_URLHAUS_AUTH_KEY` | no | Live URLhaus lookups (free key from abuse.ch). Sends submitted links to abuse.ch. |
 | `SENTINEL_CLAMAV_HOST` | no | clamd host for antivirus signatures. |
+| `SENTINEL_MOBSF_URL`, `SENTINEL_MOBSF_API_KEY` | no | Self-hosted MobSF for deeper APK analysis. |
+| `SENTINEL_OPENAI_API_KEY`, `SENTINEL_OPENAI_MODEL` | no | Optional AI explanations (both required). |
+| `SENTINEL_YARA_RULES_DIR` | no | Extra YARA rule files, subject to their licences. |
 | `NEXT_PUBLIC_CONTACT_URL` | no | Operator contact shown on the About page. |
 
 ### External services
@@ -170,7 +205,7 @@ CI runs all of this plus migrations against PostgreSQL, `alembic check`,
 ## Roadmap
 
 1. **Phase 2 (done).** SENTINEL Protect browser extension.
-2. **Phase 3.** QR decoding, YARA rules, website analysis, APK static analysis (MobSF), optional AI explanations, download reputation checks.
+2. **Phase 3 (done).** QR, website and APK analysis, YARA, macro and executable analysis, AI explanations. Download reputation checks shipped with the extension.
 3. **Phase 4.** Threat-intelligence centre, community reports with moderation, admin area, Arabic interface with RTL layout.
 4. **Phase 5.** Android app, organisation tools, public API, more browsers and intelligence sources.
 

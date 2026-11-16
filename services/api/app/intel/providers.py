@@ -141,3 +141,44 @@ def clamav_scan(path: Path) -> ClamavResult:
     if text.endswith("FOUND"):
         return ClamavResult(infected=True, signature=text.removeprefix("stream:").strip()[:-6])
     raise ProviderUnavailableError(f"ClamAV could not scan the file ({text[:120]})")
+
+
+# --- MobSF --------------------------------------------------------------------------
+
+_MOBSF_TIMEOUT_SECONDS = 120
+
+
+def mobsf_scan(path: Path) -> dict[str, Any]:
+    """Upload an APK to a self-hosted MobSF instance and return its scorecard summary.
+
+    MobSF runs inside the operator's own infrastructure; the sample is not shared
+    with any third party.
+    """
+    settings = get_settings()
+    if not settings.mobsf_url or not settings.mobsf_api_key:
+        raise ProviderUnavailableError("No MobSF server is configured")
+    headers = {"Authorization": settings.mobsf_api_key}
+    base = settings.mobsf_url.rstrip("/")
+    try:
+        with httpx.Client(timeout=_MOBSF_TIMEOUT_SECONDS, headers=headers) as client:
+            with path.open("rb") as sample:
+                upload = client.post(
+                    f"{base}/api/v1/upload",
+                    files={"file": (f"{path.name}.apk", sample, "application/octet-stream")},
+                )
+            upload.raise_for_status()
+            scan_hash = upload.json()["hash"]
+            client.post(f"{base}/api/v1/scan", data={"hash": scan_hash}).raise_for_status()
+            scorecard = client.post(f"{base}/api/v1/scorecard", data={"hash": scan_hash})
+            scorecard.raise_for_status()
+            body: dict[str, Any] = scorecard.json()
+    except (httpx.HTTPError, KeyError, ValueError) as exc:
+        raise ProviderUnavailableError(
+            f"MobSF did not complete the analysis ({type(exc).__name__})"
+        ) from exc
+    return {
+        "security_score": body.get("security_score"),
+        "high": len(body.get("high", []) or []),
+        "warning": len(body.get("warning", []) or []),
+        "trackers": body.get("trackers"),
+    }

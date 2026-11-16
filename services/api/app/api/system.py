@@ -104,6 +104,48 @@ def provider_status(db: Db) -> list[ProviderStatus]:
             shares_data=_NOTHING_SHARED,
         )
     )
+    statuses.append(
+        ProviderStatus(
+            key="yara",
+            name="YARA signature rules",
+            purpose="Known malicious techniques in uploaded files and apps",
+            status="active",
+            detail="SENTINEL's built-in rules"
+            + (
+                f", plus custom rules from {settings.yara_rules_dir}"
+                if settings.yara_rules_dir
+                else ""
+            )
+            + ".",
+            shares_data=_NOTHING_SHARED,
+        )
+    )
+    statuses.append(
+        ProviderStatus(
+            key="mobsf",
+            name="MobSF",
+            purpose="Deeper static analysis of Android apps",
+            status="active" if settings.mobsf_url and settings.mobsf_api_key else "not_configured",
+            detail="Configured."
+            if settings.mobsf_url and settings.mobsf_api_key
+            else "No MobSF server is configured (SENTINEL_MOBSF_URL, SENTINEL_MOBSF_API_KEY).",
+            shares_data="Uploaded apps are sent to the operator's own MobSF server only.",
+        )
+    )
+    ai_ready = bool(settings.openai_api_key and settings.openai_model)
+    statuses.append(
+        ProviderStatus(
+            key="ai",
+            name="AI explanations (OpenAI)",
+            purpose="Optional plain-language summaries of scan results, on request",
+            status="active" if ai_ready else "not_configured",
+            detail=f"Using {settings.openai_model}."
+            if ai_ready
+            else "Not configured (SENTINEL_OPENAI_API_KEY, SENTINEL_OPENAI_MODEL).",
+            shares_data="When you ask for an explanation, the verdict and finding summaries are "
+            "sent to OpenAI. Message text, files and full addresses are not.",
+        )
+    )
     return statuses
 
 

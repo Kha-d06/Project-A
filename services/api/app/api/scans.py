@@ -5,14 +5,18 @@ from typing import Annotated
 
 from fastapi import APIRouter, File, Query, Request, UploadFile
 
+from app.ai.explain import ExplanationUnavailableError, explain
 from app.api.deps import Db, OptionalUser, RequiredUser
 from app.core import rate_limit
+from app.core.config import get_settings
 from app.core.errors import ApiError
 from app.core.rate_limit import RateLimit, client_address
 from app.models import ScanJob, User
+from app.models.base import utcnow
 from app.scans import service
 from app.scans.storage import delete_sample, store_sample
 from app.schemas.scans import (
+    ExplanationOut,
     MessageScanRequest,
     RiskLevel,
     ScanOut,
@@ -28,6 +32,8 @@ router = APIRouter(prefix="/scans", tags=["Scanning"])
 # Resource-protection limits, identical for every visitor and every account.
 SCAN_LIMIT = RateLimit("scan", max_requests=60, window_seconds=3600)
 FILE_SCAN_LIMIT = RateLimit("scan-file", max_requests=20, window_seconds=3600)
+WEBSITE_SCAN_LIMIT = RateLimit("scan-website", max_requests=30, window_seconds=3600)
+EXPLANATION_LIMIT = RateLimit("explanation", max_requests=20, window_seconds=3600)
 
 _MESSAGE_TARGET_LENGTH = 80
 _UNSAFE_FILENAME_CHARS = re.compile(r"[\x00-\x1f\x7f/\\]")
@@ -76,19 +82,17 @@ def scan_message(body: MessageScanRequest, request: Request, db: Db, user: Optio
     return _to_scan_out(job)
 
 
-@router.post("/file", response_model=ScanOut, status_code=202)
-def scan_file(
-    request: Request, db: Db, user: OptionalUser, file: Annotated[UploadFile, File()]
+def _upload_scan(
+    db: Db, user: User | None, upload: UploadFile, scan_type: str, max_bytes: int
 ) -> ScanOut:
-    rate_limit.enforce(FILE_SCAN_LIMIT, _limit_subject(request, user))
     # The client's name is kept for display and extension checks only. It is never
     # used as a path: samples are stored under a random name.
-    file_name = _UNSAFE_FILENAME_CHARS.sub("_", file.filename or "unnamed")[-255:]
-    storage_name, _size = store_sample(file.file)
+    file_name = _UNSAFE_FILENAME_CHARS.sub("_", upload.filename or "unnamed")[-255:]
+    storage_name, _size = store_sample(upload.file, max_bytes)
     try:
         job = service.create_scan(
             db,
-            scan_type="file",
+            scan_type=scan_type,
             target=file_name,
             payload={"storage_name": storage_name, "file_name": file_name},
             user=user,
@@ -96,6 +100,42 @@ def scan_file(
     except Exception:
         delete_sample(storage_name)
         raise
+    return _to_scan_out(job)
+
+
+@router.post("/file", response_model=ScanOut, status_code=202)
+def scan_file(
+    request: Request, db: Db, user: OptionalUser, file: Annotated[UploadFile, File()]
+) -> ScanOut:
+    rate_limit.enforce(FILE_SCAN_LIMIT, _limit_subject(request, user))
+    return _upload_scan(db, user, file, "file", get_settings().max_upload_bytes)
+
+
+@router.post("/qr", response_model=ScanOut, status_code=202)
+def scan_qr(
+    request: Request, db: Db, user: OptionalUser, file: Annotated[UploadFile, File()]
+) -> ScanOut:
+    """Decode a QR code from an image. The decoded link is checked, never opened."""
+    rate_limit.enforce(FILE_SCAN_LIMIT, _limit_subject(request, user))
+    return _upload_scan(db, user, file, "qr", get_settings().max_image_bytes)
+
+
+@router.post("/apk", response_model=ScanOut, status_code=202)
+def scan_apk(
+    request: Request, db: Db, user: OptionalUser, file: Annotated[UploadFile, File()]
+) -> ScanOut:
+    rate_limit.enforce(FILE_SCAN_LIMIT, _limit_subject(request, user))
+    return _upload_scan(db, user, file, "apk", get_settings().max_apk_bytes)
+
+
+@router.post("/website", response_model=ScanOut, status_code=202)
+def scan_website(body: UrlScanRequest, request: Request, db: Db, user: OptionalUser) -> ScanOut:
+    """Link checks plus DNS and a static reading of the page itself."""
+    rate_limit.enforce(SCAN_LIMIT, _limit_subject(request, user))
+    rate_limit.enforce(WEBSITE_SCAN_LIMIT, _limit_subject(request, user))
+    job = service.create_scan(
+        db, scan_type="website", target=body.url, payload={"url": body.url}, user=user
+    )
     return _to_scan_out(job)
 
 
@@ -134,6 +174,32 @@ def clear_history(db: Db, user: RequiredUser) -> None:
 @router.get("/{scan_id}", response_model=ScanOut)
 def get_scan(scan_id: uuid.UUID, db: Db, user: OptionalUser) -> ScanOut:
     return _to_scan_out(_get_visible_scan(db, scan_id, user))
+
+
+@router.post("/{scan_id}/explanation", response_model=ExplanationOut)
+def explain_scan(
+    scan_id: uuid.UUID, request: Request, db: Db, user: OptionalUser
+) -> ExplanationOut:
+    job = _get_visible_scan(db, scan_id, user)
+    if job.status not in ("completed", "inconclusive"):
+        raise ApiError(
+            409, "scan_not_finished", "An explanation is available once the scan finishes."
+        )
+    if not job.ai_explanation:
+        rate_limit.enforce(EXPLANATION_LIMIT, _limit_subject(request, user))
+        try:
+            result = explain(job)
+        except ExplanationUnavailableError as exc:
+            raise ApiError(503, "ai_unavailable", str(exc)) from exc
+        job.ai_explanation = result.text
+        job.ai_model = result.model
+        job.ai_generated_at = utcnow()
+        db.commit()
+    return ExplanationOut(
+        explanation=job.ai_explanation or "",
+        model=job.ai_model or "",
+        generated_at=job.ai_generated_at or utcnow(),
+    )
 
 
 @router.delete("/{scan_id}", status_code=204)

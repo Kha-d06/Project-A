@@ -1,6 +1,6 @@
 "use client";
 
-import { FileUp, Link2, MessageSquareText, X } from "lucide-react";
+import { FileUp, Globe, Link2, MessageSquareText, QrCode, Smartphone, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useId, useRef, useState, type FormEvent } from "react";
 
@@ -50,7 +50,15 @@ function SubmissionError({ error }: { error: ApiError | null }) {
   );
 }
 
-export function UrlScanForm({ reportBase, initialUrl = "" }: { reportBase: string; initialUrl?: string }) {
+export function UrlScanForm({
+  reportBase,
+  initialUrl = "",
+  mode = "link",
+}: {
+  reportBase: string;
+  initialUrl?: string;
+  mode?: "link" | "website";
+}) {
   const { pending, error, submit } = useScanSubmission(reportBase);
   // Prefilled (never auto-submitted) when the browser extension sends a link here.
   const [url, setUrl] = useState(initialUrl);
@@ -63,14 +71,18 @@ export function UrlScanForm({ reportBase, initialUrl = "" }: { reportBase: strin
       return;
     }
     setLocalError(undefined);
-    void submit(() => api.scans.url(url.trim()));
+    void submit(() => (mode === "website" ? api.scans.website(url.trim()) : api.scans.url(url.trim())));
   };
 
   return (
     <form onSubmit={onSubmit} noValidate className="space-y-4">
       <Field
-        label="Link to check"
-        hint="Paste the full address. SENTINEL checks it from its own server; your browser never opens it."
+        label={mode === "website" ? "Website address" : "Link to check"}
+        hint={
+          mode === "website"
+            ? "SENTINEL fetches the page from its own server and reads it as text, without running its scripts. DNS records are checked too."
+            : "Paste the full address. SENTINEL checks it from its own server; your browser never opens it."
+        }
         error={localError ?? error?.fieldErrors().url}
       >
         {(props) => (
@@ -89,7 +101,7 @@ export function UrlScanForm({ reportBase, initialUrl = "" }: { reportBase: strin
       </Field>
       <SubmissionError error={error} />
       <Button type="submit" size="lg" pending={pending} className="w-full sm:w-auto">
-        {pending ? "Starting scan" : "Check link"}
+        {pending ? "Starting scan" : mode === "website" ? "Analyse website" : "Check link"}
       </Button>
     </form>
   );
@@ -143,7 +155,19 @@ export function MessageScanForm({ reportBase }: { reportBase: string }) {
   );
 }
 
-export function FileScanForm({ reportBase }: { reportBase: string }) {
+interface UploadFormProps {
+  reportBase: string;
+  label: string;
+  hint: string;
+  submitLabel: string;
+  accept?: string;
+  maxBytes: number;
+  /** On phones, offer the rear camera directly (used for QR codes). */
+  capture?: boolean;
+  start: (file: File) => Promise<Scan>;
+}
+
+function UploadScanForm({ reportBase, label, hint, submitLabel, accept, maxBytes, capture, start }: UploadFormProps) {
   const { pending, error, submit } = useScanSubmission(reportBase);
   const [file, setFile] = useState<File | null>(null);
   const [localError, setLocalError] = useState<string>();
@@ -159,8 +183,8 @@ export function FileScanForm({ reportBase }: { reportBase: string }) {
       setLocalError("That file is empty, so there is nothing to scan.");
       return;
     }
-    if (candidate.size > MAX_FILE_BYTES) {
-      setLocalError(`Files larger than ${formatBytes(MAX_FILE_BYTES)} cannot be scanned.`);
+    if (candidate.size > maxBytes) {
+      setLocalError(`Files larger than ${formatBytes(maxBytes)} cannot be scanned.`);
       return;
     }
     setLocalError(undefined);
@@ -173,7 +197,7 @@ export function FileScanForm({ reportBase }: { reportBase: string }) {
       setLocalError("Choose a file to scan.");
       return;
     }
-    void submit(() => api.scans.file(file));
+    void submit(() => start(file));
   };
 
   const shownError = localError ?? (error?.code === "validation_error" ? error.message : undefined);
@@ -182,7 +206,7 @@ export function FileScanForm({ reportBase }: { reportBase: string }) {
     <form onSubmit={onSubmit} noValidate className="space-y-4">
       <div className="space-y-1.5">
         <label htmlFor={inputId} className="block text-sm font-medium text-ink">
-          File to scan
+          {label}
         </label>
         <div
           onDragOver={(event) => {
@@ -230,7 +254,7 @@ export function FileScanForm({ reportBase }: { reportBase: string }) {
                   onClick={() => inputRef.current?.click()}
                   className="font-medium text-accent underline-offset-4 hover:underline"
                 >
-                  choose one
+                  {capture ? "choose or take a photo" : "choose one"}
                 </button>
               </p>
             </div>
@@ -240,6 +264,8 @@ export function FileScanForm({ reportBase }: { reportBase: string }) {
             id={inputId}
             type="file"
             name="file"
+            accept={accept}
+            capture={capture ? "environment" : undefined}
             className="sr-only"
             aria-describedby={shownError ? errorId : hintId}
             aria-invalid={Boolean(shownError)}
@@ -252,17 +278,60 @@ export function FileScanForm({ reportBase }: { reportBase: string }) {
           </p>
         ) : (
           <p id={hintId} className="text-sm text-ink-muted">
-            Up to {formatBytes(MAX_FILE_BYTES)}. The file is inspected without being opened or run,
-            kept in isolated storage only while the scan runs, and then deleted. It is never sent
-            to a third-party service.
+            {hint}
           </p>
         )}
       </div>
       <SubmissionError error={error?.code === "validation_error" ? null : error} />
       <Button type="submit" size="lg" pending={pending} className="w-full sm:w-auto">
-        {pending ? "Uploading" : "Scan file"}
+        {pending ? "Uploading" : submitLabel}
       </Button>
     </form>
+  );
+}
+
+export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+export const MAX_APK_BYTES = 100 * 1024 * 1024;
+
+export function FileScanForm({ reportBase }: { reportBase: string }) {
+  return (
+    <UploadScanForm
+      reportBase={reportBase}
+      label="File to scan"
+      submitLabel="Scan file"
+      maxBytes={MAX_FILE_BYTES}
+      hint={`Up to ${formatBytes(MAX_FILE_BYTES)}. The file is inspected without being opened or run, kept in isolated storage only while the scan runs, and then deleted. It is never sent to a third-party service.`}
+      start={api.scans.file}
+    />
+  );
+}
+
+export function QrScanForm({ reportBase }: { reportBase: string }) {
+  return (
+    <UploadScanForm
+      reportBase={reportBase}
+      label="Photo or screenshot of the QR code"
+      submitLabel="Check QR code"
+      accept="image/png,image/jpeg,image/gif,image/webp,image/bmp"
+      capture
+      maxBytes={MAX_IMAGE_BYTES}
+      hint="SENTINEL reads the code and checks where it leads from its own server. The link is never opened on your device, and the image is deleted after the scan."
+      start={api.scans.qr}
+    />
+  );
+}
+
+export function ApkScanForm({ reportBase }: { reportBase: string }) {
+  return (
+    <UploadScanForm
+      reportBase={reportBase}
+      label="Android app file (.apk)"
+      submitLabel="Analyse app"
+      accept=".apk,application/vnd.android.package-archive"
+      maxBytes={MAX_APK_BYTES}
+      hint={`Up to ${formatBytes(MAX_APK_BYTES)}. The app is inspected without being installed or run: permissions, components, embedded addresses and known malware. It is deleted after the scan.`}
+      start={api.scans.apk}
+    />
   );
 }
 
@@ -283,6 +352,24 @@ export const SCAN_TABS: { type: ScanType; label: string; icon: typeof Link2; blu
     type: "file",
     label: "File",
     icon: FileUp,
-    blurb: "True file type, disguises, macros, scripts, archive tricks and known malware.",
+    blurb: "True file type, disguises, macros, signature rules, archive tricks and known malware.",
+  },
+  {
+    type: "qr",
+    label: "QR code",
+    icon: QrCode,
+    blurb: "Reads a QR code from a photo and checks where it leads or what payment it requests.",
+  },
+  {
+    type: "website",
+    label: "Website",
+    icon: Globe,
+    blurb: "Everything the link scan does, plus DNS and a reading of the page: forms, scripts and imitation of brands.",
+  },
+  {
+    type: "apk",
+    label: "Android app",
+    icon: Smartphone,
+    blurb: "Permissions, components, embedded addresses, known malware and imitation of popular apps.",
   },
 ];

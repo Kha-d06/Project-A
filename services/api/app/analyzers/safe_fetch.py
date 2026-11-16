@@ -7,7 +7,9 @@ Everything here assumes the URL is hostile. The rules:
   connection is made to that exact address (so a second, different DNS answer
   cannot redirect us to an internal service — DNS rebinding);
 * redirects are followed manually and each hop goes through the same validation;
-* response bodies are never read, only the status line and headers.
+* response bodies are not read, except for the final page when a caller asks for
+  it (website analysis), and then only up to MAX_BODY_BYTES of HTML. Nothing that
+  is read is ever executed.
 """
 
 import http.client
@@ -24,6 +26,8 @@ MAX_REDIRECTS = 6
 HOP_TIMEOUT_SECONDS = 6
 TOTAL_TIMEOUT_SECONDS = 20
 USER_AGENT = "Mozilla/5.0 (compatible; SENTINEL-Scanner/0.1; link safety check)"
+MAX_BODY_BYTES = 2 * 1024 * 1024
+_HTML_TYPES = ("text/html", "application/xhtml+xml")
 
 IpAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
 
@@ -120,6 +124,9 @@ class Hop:
     status: int | None = None
     location: str | None = None
     tls: dict[str, Any] | None = None
+    headers: dict[str, str] = field(default_factory=dict)
+    body: bytes | None = None
+    body_truncated: bool = False
     error: str | None = None
 
 
@@ -155,7 +162,26 @@ def _certificate_summary(certificate: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _request_hop(url: str) -> Hop:
+_BODY_CHUNK_BYTES = 64 * 1024
+BODY_READ_SECONDS = 10
+
+
+def _read_capped(response: http.client.HTTPResponse) -> tuple[bytes, bool]:
+    """Read at most MAX_BODY_BYTES, and stop after BODY_READ_SECONDS even if the
+    server trickles data slowly enough to stay under the per-read socket timeout."""
+    deadline = time.monotonic() + BODY_READ_SECONDS
+    chunks: list[bytes] = []
+    size = 0
+    while size <= MAX_BODY_BYTES and time.monotonic() < deadline:
+        chunk = response.read(_BODY_CHUNK_BYTES)
+        if not chunk:
+            return b"".join(chunks), False
+        chunks.append(chunk)
+        size += len(chunk)
+    return b"".join(chunks)[:MAX_BODY_BYTES], True
+
+
+def _request_hop(url: str, read_body: bool = False) -> Hop:
     parts = urlsplit(url)
     host = parts.hostname or ""
     hop = Hop(url=url, host=host)
@@ -172,11 +198,23 @@ def _request_hop(url: str) -> Hop:
     path = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
     try:
         connection.request(
-            "GET", path, headers={"User-Agent": USER_AGENT, "Accept": "*/*", "Connection": "close"}
+            "GET",
+            path,
+            headers={
+                "User-Agent": USER_AGENT,
+                "Accept": "*/*",
+                "Accept-Encoding": "identity",
+                "Connection": "close",
+            },
         )
         response = connection.getresponse()
         hop.status = response.status
         hop.location = response.getheader("Location")
+        hop.headers = {name.lower(): value[:500] for name, value in response.getheaders()[:60]}
+        content_type = hop.headers.get("content-type", "").lower()
+        is_redirect = hop.status in (301, 302, 303, 307, 308)
+        if read_body and not is_redirect and content_type.startswith(_HTML_TYPES):
+            hop.body, hop.body_truncated = _read_capped(response)
         if isinstance(connection.sock, ssl.SSLSocket):
             certificate = connection.sock.getpeercert()
             if certificate:
@@ -186,8 +224,8 @@ def _request_hop(url: str) -> Hop:
     return hop
 
 
-def trace_redirects(url: str) -> RedirectTrace:
-    """Follow a URL's redirect chain without downloading any page content."""
+def trace_redirects(url: str, read_final_body: bool = False) -> RedirectTrace:
+    """Follow a URL's redirect chain. Page content is read only if asked, and only HTML."""
     trace = RedirectTrace()
     seen: set[str] = set()
     deadline = time.monotonic() + TOTAL_TIMEOUT_SECONDS
@@ -208,7 +246,7 @@ def trace_redirects(url: str) -> RedirectTrace:
         seen.add(current)
 
         try:
-            hop = _request_hop(current)
+            hop = _request_hop(current, read_body=read_final_body)
         except UnsafeDestinationError as exc:
             trace.hops.append(Hop(url=current, host=urlsplit(current).hostname or ""))
             return stop("unsafe_destination", str(exc))

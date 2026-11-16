@@ -10,7 +10,10 @@ from sqlalchemy.orm import Session
 
 from app.analyzers import file_types
 from app.analyzers.file_types import FileType, extension_of
+from app.analyzers.office_macros import macro_findings
+from app.analyzers.pe_info import pe_findings
 from app.analyzers.types import Check, FindingData, Outcome, Severity
+from app.analyzers.yara_scan import yara_check
 from app.core.config import get_settings
 from app.intel import providers
 from app.intel.feeds import MALWAREBAZAAR
@@ -37,38 +40,6 @@ _ARCHIVE_EXTENSIONS = frozenset({"zip", "rar", "7z", "gz", "tar", "iso"})
 
 # The EICAR string is a harmless, industry-standard antivirus test pattern.
 _EICAR = rb"X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
-
-_SCRIPT_PATTERNS: tuple[tuple[Severity, str, re.Pattern[bytes]], ...] = (
-    (
-        "medium",
-        "Runs an encoded PowerShell command",
-        re.compile(rb"powershell[^\n]{0,80}-e(nc|ncodedcommand)?\s+[A-Za-z0-9+/=]{40,}", re.I),
-    ),
-    (
-        "medium",
-        "Downloads and immediately runs code from the internet",
-        re.compile(
-            rb"(iex|invoke-expression)[^\n]{0,60}(downloadstring|invoke-webrequest|iwr)"
-            rb"|(curl|wget)[^\n|]{0,200}\|\s*(ba)?sh\b"
-            rb"|(downloadstring|downloadfile)\s*\(",
-            re.I,
-        ),
-    ),
-    (
-        "low",
-        "Decodes and executes hidden code",
-        re.compile(
-            rb"eval\s*\(\s*(atob|unescape|base64[._]b64decode|String\.fromCharCode)"
-            rb"|exec\s*\(\s*(base64\.b64decode|zlib\.decompress|marshal\.loads)",
-            re.I,
-        ),
-    ),
-    (
-        "low",
-        "Uses Windows scripting objects to run commands",
-        re.compile(rb"WScript\.Shell|Shell\.Application|ActiveXObject\s*\(", re.I),
-    ),
-)
 
 
 def sha256_of(path: Path) -> str:
@@ -279,25 +250,6 @@ def _pdf_findings(content: bytes) -> list[FindingData]:
     return findings
 
 
-def _script_findings(content: bytes) -> list[FindingData]:
-    findings = []
-    for severity, title, pattern in _SCRIPT_PATTERNS:
-        match = pattern.search(content)
-        if match:
-            findings.append(
-                FindingData(
-                    severity,
-                    "suspicious_script",
-                    title,
-                    "This technique is common in malicious scripts and uncommon in ordinary "
-                    "ones, though administrators and installers do sometimes use it.",
-                    SOURCE,
-                    {"matched_text": match.group()[:120].decode(errors="replace")},
-                )
-            )
-    return findings
-
-
 def _content_findings(path: Path, filename: str, detected: FileType, outcome: Outcome) -> None:
     with path.open("rb") as handle:
         content = handle.read(_CONTENT_SCAN_BYTES)
@@ -325,24 +277,20 @@ def _content_findings(path: Path, filename: str, detected: FileType, outcome: Ou
             "PDF content stored in compressed streams was not unpacked, so active content "
             "hidden there would not be seen."
         )
-    elif detected in (file_types.DOCX, file_types.XLSX, file_types.PPTX):
-        outcome.findings += _office_findings(path)
-    elif detected is file_types.OLE:
-        if b"V\0B\0A\0" in content or b"_VBA_PROJECT" in content:
-            outcome.findings += [
-                FindingData(
-                    "medium",
-                    "macros",
-                    "Document appears to contain macros",
-                    "Macros are small programs embedded in a document and a common way to "
-                    "deliver malware. Do not enable them unless you trust the sender.",
-                    SOURCE,
-                )
-            ]
+    elif detected in (file_types.DOCX, file_types.XLSX, file_types.PPTX, file_types.OLE):
+        findings, details = macro_findings(path)
+        # olevba is authoritative when it can parse the file; the structural check
+        # still catches a macro part that olevba could not decode.
+        outcome.findings += findings or (
+            _office_findings(path) if detected is not file_types.OLE else []
+        )
+        outcome.details.update(details)
     elif detected in (file_types.ZIP, file_types.JAR, file_types.APK):
         outcome.findings += _archive_findings(path, outcome)
-    elif detected is file_types.TEXT and extension_of(filename) in file_types.SCRIPT_EXTENSIONS:
-        outcome.findings += _script_findings(content)
+    elif detected is file_types.PE:
+        findings, details = pe_findings(path)
+        outcome.findings += findings
+        outcome.details.update(details)
 
     if detected.executable:
         outcome.findings.append(
@@ -358,7 +306,7 @@ def _content_findings(path: Path, filename: str, detected: FileType, outcome: Ou
         )
 
 
-def _hash_reputation_check(db: Session, sha256: str, outcome: Outcome) -> None:
+def hash_reputation_check(db: Session, sha256: str, outcome: Outcome) -> None:
     label, provider = "Known malware hashes", "MalwareBazaar feed (local copy)"
     for match in find_indicators(db, "sha256", sha256):
         outcome.findings.append(
@@ -398,7 +346,7 @@ def _hash_reputation_check(db: Session, sha256: str, outcome: Outcome) -> None:
     )
 
 
-def _antivirus_check(path: Path, outcome: Outcome) -> None:
+def antivirus_check(path: Path, outcome: Outcome) -> None:
     label, provider = "Antivirus signatures", "ClamAV"
     try:
         result = providers.clamav_scan(path)
@@ -464,11 +412,13 @@ def analyze_file(payload: dict[str, Any], db: Session) -> Outcome:
             "Structure and embedded content",
             SOURCE,
             "completed",
-            "Looked for disguised file types, macros, scripts and risky archive contents.",
+            "Looked for disguised file types, macros, risky archive contents and, for Windows "
+            "programs, their capabilities.",
         )
     )
-    _hash_reputation_check(db, sha256, outcome)
-    _antivirus_check(path, outcome)
+    yara_check(path, outcome)
+    hash_reputation_check(db, sha256, outcome)
+    antivirus_check(path, outcome)
 
     outcome.limitations.append(
         "This is static analysis: the file was inspected, never opened or run. Behaviour that "

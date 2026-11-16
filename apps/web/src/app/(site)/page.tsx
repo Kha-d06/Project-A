@@ -1,6 +1,8 @@
 import {
   Eye,
   FileSearch,
+  Globe,
+  Smartphone,
   Gauge,
   Link2,
   Lock,
@@ -25,28 +27,36 @@ const TOOLS = [
     title: "Link scanner",
     href: "/scan?type=url",
     body: "Checks a link against malware feeds, follows its redirects from our server, reads the certificate and registration date, and looks for look-alike domains.",
-    available: true,
   },
   {
     icon: MessageSquareWarning,
     title: "Message scanner",
     href: "/scan?type=message",
     body: "Recognises the wording of delivery, prize, job, investment and account-suspension scams in English and Arabic, and pulls out the links and numbers inside.",
-    available: true,
   },
   {
     icon: FileSearch,
     title: "File scanner",
     href: "/scan?type=file",
     body: "Identifies what a file really is, spots disguised programs, macros, risky scripts and archive tricks, and checks its fingerprint against known malware.",
-    available: true,
   },
   {
     icon: QrCode,
-    title: "QR, website and Android app analysis",
-    href: "/about#roadmap",
-    body: "Decoding QR codes, deeper website inspection and static analysis of APKs are planned. They are not available yet.",
-    available: false,
+    title: "QR code scanner",
+    href: "/scan?type=qr",
+    body: "Reads a QR code from a photo and checks where it leads, without opening it. Payment codes show who you would be paying.",
+  },
+  {
+    icon: Globe,
+    title: "Website analyzer",
+    href: "/scan?type=website",
+    body: "Reads a page as text, never running its scripts, to spot fake sign-in forms, brand imitation, hidden frames and obfuscated code, and looks up its DNS.",
+  },
+  {
+    icon: Smartphone,
+    title: "Android app analyzer",
+    href: "/scan?type=apk",
+    body: "Inspects an APK without installing it: risky permission combinations, fake versions of popular apps, embedded addresses and known malware.",
   },
 ];
 
@@ -150,7 +160,7 @@ export default function HomePage() {
         title="Check it before you trust it"
         intro="Each scanner runs real checks and shows its working, so you can see why it reached its verdict."
       >
-        <ul className="grid gap-4 md:grid-cols-2">
+        <ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {TOOLS.map((tool) => (
             <li key={tool.title}>
               <a
@@ -161,11 +171,6 @@ export default function HomePage() {
                 <div className="space-y-2">
                   <h3 className="font-display font-semibold text-ink">
                     {tool.title}
-                    {!tool.available && (
-                      <span className="ms-2 rounded-full border border-line px-2 py-0.5 align-middle text-xs font-normal text-ink-muted">
-                        Planned
-                      </span>
-                    )}
                   </h3>
                   <p className="text-sm leading-relaxed text-ink-muted">{tool.body}</p>
                 </div>

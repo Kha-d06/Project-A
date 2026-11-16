@@ -51,6 +51,21 @@ class Settings(BaseSettings):
     clamav_host: str | None = None
     clamav_port: int = 3310
 
+    # Extra YARA rule files (*.yar) to load next to the built-in ones.
+    yara_rules_dir: Path | None = None
+    max_apk_bytes: int = 100 * 1024 * 1024
+    max_image_bytes: int = 10 * 1024 * 1024
+
+    # MobSF (Mobile Security Framework) for deeper APK static analysis. Optional.
+    mobsf_url: str | None = None
+    mobsf_api_key: str | None = None
+
+    # AI explanations. Both are required; without them the feature is reported as
+    # unavailable. Only sanitised findings are ever sent, never files or message text.
+    openai_api_key: str | None = None
+    openai_model: str | None = None
+    openai_base_url: str = "https://api.openai.com/v1"
+
     @model_validator(mode="after")
     def _refuse_default_secret_in_production(self) -> "Settings":
         if self.environment == "production" and self.secret_key == DEVELOPMENT_SECRET:

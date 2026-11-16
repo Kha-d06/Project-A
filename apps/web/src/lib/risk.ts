@@ -65,7 +65,14 @@ export const TONE_CLASSES: Record<Tone, { text: string; soft: string; border: st
   neutral: { text: "text-ink-muted", soft: "bg-surface-sunken", border: "border-line-strong" },
 };
 
-export const SCAN_TYPE_LABEL = { url: "Link", message: "Message", file: "File" } as const;
+export const SCAN_TYPE_LABEL = {
+  url: "Link",
+  message: "Message",
+  file: "File",
+  qr: "QR code",
+  website: "Website",
+  apk: "Android app",
+} as const;
 
 export function isActive(status: ScanStatus): boolean {
   return status === "queued" || status === "processing";

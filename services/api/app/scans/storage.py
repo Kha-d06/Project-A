@@ -25,9 +25,10 @@ def _sample_path(storage_name: str) -> Path:
     return path
 
 
-def store_sample(stream: BinaryIO) -> tuple[str, int]:
+def store_sample(stream: BinaryIO, max_bytes: int | None = None) -> tuple[str, int]:
     """Copy an upload into quarantine, enforcing the size limit while streaming."""
     settings = get_settings()
+    limit = max_bytes or settings.max_upload_bytes
     settings.upload_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     storage_name = secrets.token_hex(16)
     path = _sample_path(storage_name)
@@ -37,8 +38,8 @@ def store_sample(stream: BinaryIO) -> tuple[str, int]:
             path.chmod(0o600)
             while chunk := stream.read(_COPY_CHUNK_BYTES):
                 size += len(chunk)
-                if size > settings.max_upload_bytes:
-                    megabytes = settings.max_upload_bytes // (1024 * 1024)
+                if size > limit:
+                    megabytes = limit // (1024 * 1024)
                     raise ApiError(
                         413,
                         "file_too_large",

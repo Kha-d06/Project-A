@@ -11,6 +11,7 @@
 	reverse_proxy web:3000
 
 	request_body {
-		max_size 30MB
+		# APK uploads can be up to 100 MB; the API enforces per-type limits.
+		max_size 110MB
 	}
 }

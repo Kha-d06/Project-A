@@ -16,6 +16,7 @@ import { useScan } from "@/lib/hooks/use-scan";
 import { SCAN_TYPE_LABEL, isActive } from "@/lib/risk";
 import { useSession } from "@/lib/session";
 
+import { AiExplanation } from "./ai-explanation";
 import { ChecksList } from "./checks";
 import { FindingsList } from "./findings";
 import { ScanDetails } from "./scan-details";
@@ -137,6 +138,8 @@ function ReportBody({ scan, backHref, newScanHref }: { scan: Scan; backHref: str
               )}
             </div>
           </div>
+
+          <AiExplanation scan={scan} />
 
           <Panel>
             <PanelHeader

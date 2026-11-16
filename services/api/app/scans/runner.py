@@ -6,11 +6,14 @@ from typing import Any
 from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.orm import Session
 
+from app.analyzers.apk_scan import analyze_apk
 from app.analyzers.file_scan import analyze_file
 from app.analyzers.message_scan import analyze_message
+from app.analyzers.qr_scan import analyze_qr
 from app.analyzers.types import Outcome
 from app.analyzers.url_scan import analyze_url
 from app.analyzers.verdict import assess
+from app.analyzers.website_scan import analyze_website
 from app.models import Finding, ScanJob
 from app.models.base import utcnow
 from app.scans.storage import delete_sample
@@ -21,6 +24,9 @@ ANALYZERS: dict[str, Callable[[dict[str, Any], Session], Outcome]] = {
     "url": analyze_url,
     "message": analyze_message,
     "file": analyze_file,
+    "qr": analyze_qr,
+    "website": analyze_website,
+    "apk": analyze_apk,
 }
 
 _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}

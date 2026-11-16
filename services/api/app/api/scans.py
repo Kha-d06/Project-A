@@ -1,0 +1,144 @@
+import re
+import uuid
+from datetime import datetime
+from typing import Annotated
+
+from fastapi import APIRouter, File, Query, Request, UploadFile
+
+from app.api.deps import Db, OptionalUser, RequiredUser
+from app.core import rate_limit
+from app.core.errors import ApiError
+from app.core.rate_limit import RateLimit, client_address
+from app.models import ScanJob, User
+from app.scans import service
+from app.scans.storage import delete_sample, store_sample
+from app.schemas.scans import (
+    MessageScanRequest,
+    RiskLevel,
+    ScanOut,
+    ScanPage,
+    ScanStatus,
+    ScanSummary,
+    ScanType,
+    UrlScanRequest,
+)
+
+router = APIRouter(prefix="/scans", tags=["Scanning"])
+
+# Resource-protection limits, identical for every visitor and every account.
+SCAN_LIMIT = RateLimit("scan", max_requests=60, window_seconds=3600)
+FILE_SCAN_LIMIT = RateLimit("scan-file", max_requests=20, window_seconds=3600)
+
+_MESSAGE_TARGET_LENGTH = 80
+_UNSAFE_FILENAME_CHARS = re.compile(r"[\x00-\x1f\x7f/\\]")
+
+
+def _limit_subject(request: Request, user: User | None) -> str:
+    return f"user:{user.id}" if user else f"ip:{client_address(request)}"
+
+
+def _to_scan_out(job: ScanJob) -> ScanOut:
+    return ScanOut.model_validate(
+        {
+            **{field: getattr(job, field) for field in ScanOut.model_fields if hasattr(job, field)},
+            "saved_to_history": job.user_id is not None,
+        }
+    )
+
+
+def _get_visible_scan(db: Db, scan_id: uuid.UUID, user: User | None) -> ScanJob:
+    job = db.get(ScanJob, scan_id)
+    # Scans attached to an account are private to it. Scans made without an account
+    # can be opened by whoever holds the random scan ID.
+    if job is None or (job.user_id is not None and (user is None or job.user_id != user.id)):
+        raise ApiError(404, "scan_not_found", "This scan does not exist or has been deleted.")
+    return job
+
+
+@router.post("/url", response_model=ScanOut, status_code=202)
+def scan_url(body: UrlScanRequest, request: Request, db: Db, user: OptionalUser) -> ScanOut:
+    rate_limit.enforce(SCAN_LIMIT, _limit_subject(request, user))
+    job = service.create_scan(
+        db, scan_type="url", target=body.url, payload={"url": body.url}, user=user
+    )
+    return _to_scan_out(job)
+
+
+@router.post("/message", response_model=ScanOut, status_code=202)
+def scan_message(body: MessageScanRequest, request: Request, db: Db, user: OptionalUser) -> ScanOut:
+    rate_limit.enforce(SCAN_LIMIT, _limit_subject(request, user))
+    excerpt = " ".join(body.content.split())
+    if len(excerpt) > _MESSAGE_TARGET_LENGTH:
+        excerpt = excerpt[:_MESSAGE_TARGET_LENGTH].rstrip() + "…"
+    job = service.create_scan(
+        db, scan_type="message", target=excerpt, payload={"content": body.content}, user=user
+    )
+    return _to_scan_out(job)
+
+
+@router.post("/file", response_model=ScanOut, status_code=202)
+def scan_file(
+    request: Request, db: Db, user: OptionalUser, file: Annotated[UploadFile, File()]
+) -> ScanOut:
+    rate_limit.enforce(FILE_SCAN_LIMIT, _limit_subject(request, user))
+    # The client's name is kept for display and extension checks only. It is never
+    # used as a path: samples are stored under a random name.
+    file_name = _UNSAFE_FILENAME_CHARS.sub("_", file.filename or "unnamed")[-255:]
+    storage_name, _size = store_sample(file.file)
+    try:
+        job = service.create_scan(
+            db,
+            scan_type="file",
+            target=file_name,
+            payload={"storage_name": storage_name, "file_name": file_name},
+            user=user,
+        )
+    except Exception:
+        delete_sample(storage_name)
+        raise
+    return _to_scan_out(job)
+
+
+@router.get("/history", response_model=ScanPage)
+def scan_history(
+    db: Db,
+    user: RequiredUser,
+    scan_type: Annotated[ScanType | None, Query(alias="type")] = None,
+    risk: RiskLevel | None = None,
+    status: ScanStatus | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> ScanPage:
+    query = service.history_query(
+        user.id, scan_type=scan_type, risk=risk, status=status, since=since, until=until
+    )
+    jobs = db.scalars(
+        query.order_by(ScanJob.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
+    ).all()
+    return ScanPage(
+        items=[ScanSummary.model_validate(job) for job in jobs],
+        total=service.count(db, query),
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.delete("/history", status_code=204)
+def clear_history(db: Db, user: RequiredUser) -> None:
+    for job in db.scalars(service.history_query(user.id)).all():
+        service.delete_scan(db, job)
+
+
+@router.get("/{scan_id}", response_model=ScanOut)
+def get_scan(scan_id: uuid.UUID, db: Db, user: OptionalUser) -> ScanOut:
+    return _to_scan_out(_get_visible_scan(db, scan_id, user))
+
+
+@router.delete("/{scan_id}", status_code=204)
+def delete_scan(scan_id: uuid.UUID, db: Db, user: RequiredUser) -> None:
+    job = _get_visible_scan(db, scan_id, user)
+    if job.user_id != user.id:
+        raise ApiError(404, "scan_not_found", "This scan does not exist or has been deleted.")
+    service.delete_scan(db, job)

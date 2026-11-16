@@ -136,6 +136,16 @@ There is no native Android app. Building one needs the Android SDK, which was no
 
 See [apps/extension/README.md](apps/extension/README.md).
 
+**SENTINEL Desktop** (`apps/desktop`, Electron, Windows, macOS and Linux): on-demand file and folder scanning, a Downloads watcher, encrypted quarantine with restore, and English and Arabic. Engines:
+- known-malware fingerprints from the server's hash list;
+- heuristics for disguised programs, droppers, risky PDFs, macros and archives;
+- ClamAV when installed;
+- optional fingerprint lookups and full server scans.
+
+It complements, and does not replace, the operating system's own protection. See [apps/desktop/README.md](apps/desktop/README.md).
+
+**Integrations:** Telegram and WhatsApp bots, scan-by-email, signed webhooks and a bulk API. See [docs/integrations.md](docs/integrations.md).
+
 **Honesty about providers.** `/api/v1/system/providers` reports which checks this deployment can run. The landing page shows that list live, and every report lists each check as completed, unavailable, failed or skipped.
 
 ## Repository layout
@@ -143,6 +153,7 @@ See [apps/extension/README.md](apps/extension/README.md).
 ```text
 apps/web/                 Next.js website and dashboard (App Router, TypeScript, Tailwind)
 apps/extension/           SENTINEL Protect browser extension (Manifest V3, TypeScript, esbuild)
+apps/desktop/             SENTINEL Desktop scanner (Electron, TypeScript)
 services/api/             FastAPI service, Celery worker and scheduler (one Python package)
   app/analyzers/          URL, message and file analysis, verdict rules, SSRF-safe fetcher
   app/intel/              Threat-feed import, indicator lookup, provider adapters

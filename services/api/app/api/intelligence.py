@@ -15,13 +15,15 @@ from app.core.errors import ApiError
 from app.core.rate_limit import RateLimit, client_address
 from app.intel.feeds import COMMUNITY, MALWAREBAZAAR, THREATFOX, URLHAUS
 from app.intel.lookup import IndicatorMatch, find_by_host, find_indicators
-from app.models import ThreatSource
+from app.models import ThreatIndicator, ThreatSource
 from app.models.base import utcnow
-from app.schemas.intel import IndicatorOut, LookupResult, SourceFreshness
+from app.schemas.intel import HashList, IndicatorOut, LookupResult, SourceFreshness
 
 router = APIRouter(prefix="/intelligence", tags=["Threat intelligence"])
 
 LOOKUP_LIMIT = RateLimit("intel-lookup", max_requests=120, window_seconds=3600)
+HASH_LIST_LIMIT = RateLimit("intel-hash-list", max_requests=12, window_seconds=3600)
+HASH_LIST_MAX = 200_000
 _SHA256 = re.compile(r"^[a-f0-9]{64}$")
 _OTHER_HASHES = {32: "MD5", 40: "SHA-1"}
 NOT_A_GUARANTEE = (
@@ -135,6 +137,46 @@ def lookup_hash(file_hash: str, request: Request, db: Db) -> LookupResult:
         raise ApiError(422, "invalid_hash", message)
     matches = find_indicators(db, "sha256", value)
     return _result(value, "hash", matches, _sources(db, (MALWAREBAZAAR, THREATFOX)))
+
+
+@router.get("/hash-list", response_model=HashList)
+def hash_list(request: Request, db: Db) -> HashList:
+    """Recent known-malware SHA-256 fingerprints, for offline scanners such as
+    SENTINEL Desktop. The whole list is downloaded, so nothing about the files on
+    anyone's computer is sent."""
+    rate_limit.enforce(HASH_LIST_LIMIT, client_address(request))
+    sources = [
+        source
+        for source in db.scalars(
+            select(ThreatSource).where(ThreatSource.key.in_((MALWAREBAZAAR, THREATFOX)))
+        )
+        if source.last_success_at
+    ]
+    values = (
+        list(
+            db.scalars(
+                select(ThreatIndicator.value)
+                .where(
+                    ThreatIndicator.kind == "sha256",
+                    ThreatIndicator.source_id.in_([source.id for source in sources]),
+                )
+                .order_by(ThreatIndicator.last_seen_at.desc())
+                .limit(HASH_LIST_MAX)
+            )
+        )
+        if sources
+        else []
+    )
+    hashes = sorted({value for value in values if _SHA256.match(value)})
+    newest = max(
+        (source.last_success_at for source in sources if source.last_success_at), default=None
+    )
+    return HashList(
+        version=f"{len(hashes)}-{newest.isoformat() if newest else 'none'}",
+        generated_at=utcnow(),
+        sources=[source.name for source in sources],
+        sha256=hashes,
+    )
 
 
 @router.get("/sources", response_model=list[SourceFreshness])

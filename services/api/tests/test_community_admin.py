@@ -309,3 +309,11 @@ def test_set_role_cli_validates_input(db: Session) -> None:
     assert set_role(db, "nobody@example.com", "admin") == 1
     account(db, "someone@example.com")
     assert set_role(db, "someone@example.com", "superuser") == 1
+
+
+def test_hash_list_for_offline_scanners(client: TestClient, db: Session) -> None:
+    sample = "a" * 64
+    seed_feed(db, MALWAREBAZAAR, [FeedIndicator("sha256", sample, "trojan")])
+    body = client.get("/api/v1/intelligence/hash-list").json()
+    assert body["sha256"] == [sample]
+    assert body["sources"] and body["version"].startswith("1-")

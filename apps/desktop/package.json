@@ -1,0 +1,21 @@
+{
+  "name": "@sentinel/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SENTINEL Desktop: on-demand and Downloads-folder malware scanning with quarantine",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "npm run build && electron .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "npm run build && node test/e2e.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "electron": "^44.10.1",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.3",
+    "vitest": "^5.1.0"
+  }
+}

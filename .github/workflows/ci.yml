@@ -81,3 +81,27 @@ jobs:
           npx playwright install --with-deps chromium
           SENTINEL_TEST_BUILD=1 SENTINEL_SERVER=http://localhost:8787 npm run build
           node test/e2e-assistant.mjs
+
+  desktop:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: End-to-end test in Electron
+        run: |
+          npm install --no-save playwright@1.63.0
+          sudo apt-get update && sudo apt-get install -y xvfb
+          xvfb-run -a node test/e2e.mjs
+      - name: Dependency vulnerability scan
+        run: npm audit --audit-level=high

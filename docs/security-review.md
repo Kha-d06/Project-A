@@ -16,6 +16,7 @@ Scope: the API (`services/api`), web app (`apps/web`), browser extension
 | 2 | Password reset | For an existing account the server sent the email before answering, so response time could reveal whether an address had an account. | The email is now sent after the response, so every request takes the same time. |
 | 3 | Privacy | Audit events stored IP addresses indefinitely. | Purged after 180 days by the retention job. |
 | 4 | Accounts | No way to recover a forgotten password and no second factor, so a reused password meant a lost account. | Email verification, single-use one-hour reset links that end every session, and authenticator-app two-step sign-in with ten single-use backup codes. The TOTP secret is encrypted at rest with a key derived from the application secret. |
+| 6 | Scan workers (found in round 2) | Fix 1 limited the worker's *database session*, but the worker container still had the full database URL and the application secret in its environment, and ran feed syncs and cleanup itself. A parser exploit could have read them from the process environment. | Two workers now. The scan worker consumes only the `scans` queue, and its environment holds only the restricted database URL, its own secret (`WORKER_SECRET_KEY`) and no SMTP, bot or metrics credentials. A separate `tasks` worker, which never opens uploaded samples, handles feeds, retention, webhooks and bot and email replies. |
 | 5 | API keys | Before this round, an API key could have reached any endpoint that accepted a signed-in user. | Keys are limited to scanning, history and lookups. Account changes, key management, extension linking and all staff functions require a website session plus its CSRF token. |
 
 ## Areas reviewed with no change needed
@@ -31,6 +32,16 @@ Scope: the API (`services/api`), web app (`apps/web`), browser extension
 - **Extension.** It accepts messages only from its own pages (`sender.id` check) and declares no `externally_connectable`. Access to all pages is optional and requested at runtime. Credentials stay in extension-private storage, and access tokens are short-lived and revocable.
 - **AI.** Only sanitised finding summaries are sent. The prompt is written with prompt injection in mind, links are stripped from the output, and the output is labelled and never changes the verdict.
 - **Dependencies.** `pip-audit` and `npm audit` report no known vulnerabilities, and both run in CI.
+
+## New surfaces in round 2, reviewed
+
+- **Isolated page rendering.** Every browser request goes through the SSRF-checked fetcher; only GET and HEAD are allowed. Chromium's own sandbox is off inside the container (see security.md), so the container is the boundary.
+- **Webhooks.** HTTPS domain names only. Delivery uses the same address checks as the fetcher, does not follow redirects, signs each body with HMAC-SHA256 plus a timestamp, and switches off after ten failures. Secrets are encrypted at rest and shown once.
+- **Share links.** 256-bit tokens stored as digests, expiring (30 days by default) and revocable. Without the sharer's explicit choice, the address, evidence and details are left out.
+- **Groups.** Invites only work for the invited address (and only once it is verified when email is on). A member's warning counts are visible to owners and admins only when that member opts in, and only as numbers.
+- **Bots and scan-by-email.** Telegram is checked with its secret header, WhatsApp with the app-secret HMAC, and inbound email with a bearer token. Replies go only to the `From` address, never `Reply-To`, and mail marked `dmarc=fail` or `Auto-Submitted` is dropped, so SENTINEL cannot be used to mail bystanders. Chat IDs and addresses are deleted once the reply is sent.
+- **Breach check.** Only the signed-in user's own address can be checked, so it cannot be used to look up other people. Password checks run in the browser against the Pwned Passwords range API (k-anonymity); passwords never reach SENTINEL.
+- **Extension assistant.** Reads cookie names, never values, and sends only a summary to the server. It is drawn in a closed shadow root using text nodes only.
 
 ## Open items
 

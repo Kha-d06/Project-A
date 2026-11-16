@@ -36,6 +36,7 @@ class ReportOut(BaseModel):
     moderator_note: str | None
     created_at: datetime
     reviewed_at: datetime | None
+    verification_expires_at: datetime | None = None
 
 
 class ReportCreated(BaseModel):
@@ -55,6 +56,8 @@ class PublicReport(BaseModel):
 class ModerationItem(ReportOut):
     similar_reports: int
     anonymous: bool
+    # {"level": "trusted" | "new" | "unreliable" | "anonymous", "verified": n, "rejected": n}
+    reporter_reputation: dict[str, int | str]
 
 
 class ReviewRequest(BaseModel):

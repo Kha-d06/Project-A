@@ -55,4 +55,7 @@ class CommunityReport(Base):
         ForeignKey("users.id", ondelete="SET NULL")
     )
     reviewed_at: Mapped[datetime | None]
+    # A verification is not forever: scam sites move and numbers get reassigned.
+    # When this passes, the indicator is withdrawn until a moderator verifies again.
+    verification_expires_at: Mapped[datetime | None]
     created_at: Mapped[datetime] = mapped_column(default=utcnow)

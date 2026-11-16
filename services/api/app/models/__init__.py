@@ -6,6 +6,7 @@ from app.models.community import CommunityReport
 from app.models.extension import ExtensionEvent, ExtensionInstallation, ExtensionLinkCode
 from app.models.intel import ThreatIndicator, ThreatSource
 from app.models.scan import Finding, ScanJob
+from app.models.sharing import Group, GroupInvite, GroupMember, ScanShare, Webhook
 from app.models.user import User, UserSession, UserSettings
 
 __all__ = [
@@ -20,6 +21,11 @@ __all__ = [
     "ExtensionInstallation",
     "ExtensionLinkCode",
     "Finding",
+    "Group",
+    "GroupInvite",
+    "GroupMember",
+    "ScanShare",
+    "Webhook",
     "ScanJob",
     "ThreatIndicator",
     "ThreatSource",

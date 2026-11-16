@@ -85,6 +85,26 @@ class Settings(BaseSettings):
     virustotal_api_key: str | None = None
     crtsh_base_url: str = "https://crt.sh"
 
+    # Have I Been Pwned (breached-account search). Pwned Passwords needs no key and
+    # is queried from the browser with k-anonymity, never through this server.
+    hibp_api_key: str | None = None
+
+    # Messaging bots. Each is off until its credentials are set.
+    telegram_bot_token: str | None = None
+    # Random value Telegram echoes in X-Telegram-Bot-Api-Secret-Token on every update.
+    telegram_webhook_secret: str | None = None
+    whatsapp_access_token: str | None = None
+    whatsapp_phone_number_id: str | None = None
+    # Echoed back during Meta's webhook verification handshake.
+    whatsapp_verify_token: str | None = None
+    # Used to check the X-Hub-Signature-256 header on every delivery.
+    whatsapp_app_secret: str | None = None
+
+    # Scan-by-email: the mail provider's inbound webhook (Mailgun, Postmark, SES via
+    # SNS, Cloudflare Email Workers…) posts the raw message with this bearer token.
+    inbound_email_token: str | None = None
+    inbound_email_address: str | None = None
+
     # MobSF (Mobile Security Framework) for deeper APK static analysis. Optional.
     mobsf_url: str | None = None
     mobsf_api_key: str | None = None

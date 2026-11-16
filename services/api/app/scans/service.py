@@ -47,6 +47,9 @@ def create_scan(
 
     if get_settings().run_scans_inline:
         run_scan(db, job.id)
+        from app.notify.dispatch import after_scan
+
+        after_scan(db, job.id)
     else:
         from app.workers.tasks import run_scan_task  # imported late: needs a broker connection
 
@@ -115,6 +118,9 @@ def purge_expired_data(db: Session) -> None:
         job.error = "The scan did not finish. Please submit it again."
         job.completed_at = now
 
+    from app.community.service import expire_verifications
+
+    expire_verifications(db)
     db.execute(delete(UserSession).where(UserSession.expires_at < now))
     db.execute(delete(AccountToken).where(AccountToken.expires_at < now))
     db.execute(delete(AuditEvent).where(AuditEvent.created_at < now - AUDIT_RETENTION))

@@ -14,6 +14,10 @@ celery_app.conf.update(
     task_soft_time_limit=150,
     broker_connection_retry_on_startup=True,
     timezone="UTC",
+    # Scans run in the isolated scan worker; everything that needs full database
+    # access (feeds, retention, notifications) runs in the task worker.
+    task_default_queue="tasks",
+    task_routes={"sentinel.run_scan": {"queue": "scans"}},
 )
 
 if settings.feed_sync_enabled:

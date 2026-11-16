@@ -220,6 +220,10 @@ All settings use the `SENTINEL_` prefix. See [`.env.example`](.env.example) and
 | `SENTINEL_OPENAI_API_KEY`, `SENTINEL_OPENAI_MODEL` | no | Optional AI explanations and the opt-in AI message opinion (both required). |
 | `SENTINEL_WEB_RISK_API_KEY` | no | Google Web Risk link reputation. Sends submitted links to Google. |
 | `SENTINEL_VIRUSTOTAL_API_KEY` | no | VirusTotal fingerprint lookups, only when the user ticks the consent box. |
+| `SENTINEL_HIBP_API_KEY` | no | Have I Been Pwned check of the user's own address. |
+| `SENTINEL_TELEGRAM_*`, `SENTINEL_WHATSAPP_*` | no | Messaging bots; see [docs/integrations.md](docs/integrations.md). |
+| `SENTINEL_INBOUND_EMAIL_TOKEN`, `SENTINEL_INBOUND_EMAIL_ADDRESS` | no | Scan by forwarding an email. |
+| `WORKER_SECRET_KEY` | yes | Separate secret for the isolated scan worker. |
 | `SENTINEL_BROWSER_RENDERING` | no | `true` to render pages in the isolated headless browser (image built with `WITH_BROWSER=true`). |
 | `SENTINEL_YARA_RULES_DIR` | no | Extra YARA rule files, subject to their licences. |
 | `SENTINEL_METRICS_TOKEN` | no | Enables the Prometheus metrics endpoint. |

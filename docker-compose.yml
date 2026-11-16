@@ -23,6 +23,15 @@ x-api-environment: &api-environment
   SENTINEL_WEB_RISK_API_KEY: ${SENTINEL_WEB_RISK_API_KEY:-}
   SENTINEL_VIRUSTOTAL_API_KEY: ${SENTINEL_VIRUSTOTAL_API_KEY:-}
   SENTINEL_BROWSER_RENDERING: ${SENTINEL_BROWSER_RENDERING:-false}
+  SENTINEL_HIBP_API_KEY: ${SENTINEL_HIBP_API_KEY:-}
+  SENTINEL_TELEGRAM_BOT_TOKEN: ${SENTINEL_TELEGRAM_BOT_TOKEN:-}
+  SENTINEL_TELEGRAM_WEBHOOK_SECRET: ${SENTINEL_TELEGRAM_WEBHOOK_SECRET:-}
+  SENTINEL_WHATSAPP_ACCESS_TOKEN: ${SENTINEL_WHATSAPP_ACCESS_TOKEN:-}
+  SENTINEL_WHATSAPP_PHONE_NUMBER_ID: ${SENTINEL_WHATSAPP_PHONE_NUMBER_ID:-}
+  SENTINEL_WHATSAPP_VERIFY_TOKEN: ${SENTINEL_WHATSAPP_VERIFY_TOKEN:-}
+  SENTINEL_WHATSAPP_APP_SECRET: ${SENTINEL_WHATSAPP_APP_SECRET:-}
+  SENTINEL_INBOUND_EMAIL_TOKEN: ${SENTINEL_INBOUND_EMAIL_TOKEN:-}
+  SENTINEL_INBOUND_EMAIL_ADDRESS: ${SENTINEL_INBOUND_EMAIL_ADDRESS:-}
   SENTINEL_YARA_RULES_DIR: ${SENTINEL_YARA_RULES_DIR:-}
   SENTINEL_METRICS_TOKEN: ${SENTINEL_METRICS_TOKEN:-}
   SENTINEL_EMAIL_BACKEND: ${SENTINEL_EMAIL_BACKEND:-disabled}
@@ -107,10 +116,22 @@ services:
       context: ./services/api
       args:
         WITH_BROWSER: ${SENTINEL_WITH_BROWSER:-false}
-    command: ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=INFO", "--concurrency=4", "--max-tasks-per-child=200"]
+    command: ["celery", "-A", "app.workers.celery_app", "worker", "-Q", "scans", "--loglevel=INFO", "--concurrency=4", "--max-tasks-per-child=200"]
     environment:
       <<: *api-environment
+      # This container parses untrusted files and pages, so it gets only the
+      # restricted database role and its own secret: a parser exploit finds no
+      # full database credentials and no application secret in its environment.
+      SENTINEL_DATABASE_URL: postgresql+psycopg://sentinel_worker:${WORKER_DB_PASSWORD}@postgres:5432/sentinel
       SENTINEL_WORKER_DATABASE_URL: postgresql+psycopg://sentinel_worker:${WORKER_DB_PASSWORD}@postgres:5432/sentinel
+      SENTINEL_SECRET_KEY: ${WORKER_SECRET_KEY:?Set WORKER_SECRET_KEY in .env}
+      SENTINEL_SMTP_PASSWORD: ""
+      SENTINEL_TELEGRAM_BOT_TOKEN: ""
+      SENTINEL_WHATSAPP_ACCESS_TOKEN: ""
+      SENTINEL_WHATSAPP_APP_SECRET: ""
+      SENTINEL_INBOUND_EMAIL_TOKEN: ""
+      SENTINEL_HIBP_API_KEY: ""
+      SENTINEL_METRICS_TOKEN: ""
       # The headless browser (when enabled) keeps its profile under $HOME.
       HOME: /tmp
     volumes:
@@ -124,6 +145,23 @@ services:
     cpus: 2
     depends_on:
       worker-role: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  # Feed refresh, retention, webhooks and replies to bots and emails. Has full
+  # database access but never touches uploaded samples.
+  tasks:
+    build: ./services/api
+    command: ["celery", "-A", "app.workers.celery_app", "worker", "-Q", "tasks", "--loglevel=INFO", "--concurrency=2", "--max-tasks-per-child=500"]
+    environment: *api-environment
+    volumes:
+      - uploads:/var/lib/sentinel/uploads
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 512m
+    depends_on:
+      migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
 
   # Hourly feed refresh and retention sweep.

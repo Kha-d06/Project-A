@@ -7,13 +7,18 @@ from app.api import (
     admin,
     api_keys,
     auth,
+    breach,
+    channels,
     extension,
+    groups,
     intelligence,
     metrics,
     reports,
     scans,
+    sharing,
     system,
     user,
+    webhooks,
 )
 from app.core.config import get_settings
 from app.core.errors import register_error_handlers
@@ -76,6 +81,11 @@ def create_app() -> FastAPI:
         api_keys.router,
         metrics.router,
         system.router,
+        sharing.router,
+        groups.router,
+        webhooks.router,
+        channels.router,
+        breach.router,
     ):
         app.include_router(router, prefix=API_PREFIX)
     return app

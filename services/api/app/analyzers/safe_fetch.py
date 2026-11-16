@@ -276,3 +276,38 @@ def trace_redirects(url: str, read_final_body: bool = False) -> RedirectTrace:
         current = urljoin(current, hop.location or "")
 
     return stop("too_many_redirects", f"More than {MAX_REDIRECTS} redirects")
+
+
+def post_json(url: str, body: bytes, headers: dict[str, str]) -> int:
+    """POST to a user-supplied address (webhooks) under the same rules as fetching:
+    public addresses only, allowed ports, a pinned connection and a short timeout.
+    Redirects are not followed. Returns the HTTP status."""
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https"):
+        raise UnsafeDestinationError("Only web addresses can receive webhooks")
+    host = parts.hostname or ""
+    port = parts.port or (443 if parts.scheme == "https" else 80)
+    address = resolve_public_addresses(host, port)[0]
+    connection: http.client.HTTPConnection = (
+        _PinnedHTTPSConnection(host, port, address)
+        if parts.scheme == "https"
+        else _PinnedHTTPConnection(host, port, address)
+    )
+    path = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
+    try:
+        connection.request(
+            "POST",
+            path,
+            body=body,
+            headers={
+                "User-Agent": USER_AGENT,
+                "Content-Type": "application/json",
+                "Connection": "close",
+                **headers,
+            },
+        )
+        response = connection.getresponse()
+        response.read(4096)
+        return response.status
+    finally:
+        connection.close()

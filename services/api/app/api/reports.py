@@ -1,12 +1,19 @@
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query, Request
 from sqlalchemy import func, select
 
 from app.api.auth import record_event
 from app.api.deps import Db, ModeratorUser, OptionalUser, RequiredUser
-from app.community.service import mask_phone, normalize_subject, review, similar_count, subject_key
+from app.community.service import (
+    mask_phone,
+    normalize_subject,
+    reporter_reputation,
+    review,
+    similar_count,
+    subject_key,
+)
 from app.core import rate_limit
 from app.core.errors import ApiError
 from app.core.rate_limit import RateLimit, client_address
@@ -124,6 +131,7 @@ def moderation_queue(
     moderator: ModeratorUser,
     status: ReportStatus = "pending",
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    sort: Literal["oldest", "reputation"] = "oldest",
 ) -> list[ModerationItem]:
     reports = db.scalars(
         select(CommunityReport)
@@ -131,16 +139,23 @@ def moderation_queue(
         .order_by(CommunityReport.created_at)
         .limit(limit)
     ).all()
-    return [
+    items = [
         ModerationItem.model_validate(
             {
                 **ReportOut.model_validate(report).model_dump(),
                 "similar_reports": similar_count(db, report.subject_key, excluding=report.id),
                 "anonymous": report.reporter_id is None,
+                "reporter_reputation": reporter_reputation(db, report.reporter_id),
             }
         )
         for report in reports
     ]
+    if sort == "reputation":
+        rank = {"trusted": 0, "new": 1, "anonymous": 2, "unreliable": 3}
+        items.sort(
+            key=lambda item: (rank[str(item.reporter_reputation["level"])], -item.similar_reports)
+        )
+    return items
 
 
 @router.post("/admin/reports/{report_id}/review", response_model=ReportOut)

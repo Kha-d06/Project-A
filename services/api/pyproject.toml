@@ -56,7 +56,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101", "S105", "S106", "S310", "E501"]
+"tests/*" = ["S101", "S105", "S106", "S107", "S310", "E501"]
 "alembic/versions/*" = ["E501"]
 # Model prompt text: hard-wrapping would change what the model receives.
 "app/ai/explain.py" = ["E501"]

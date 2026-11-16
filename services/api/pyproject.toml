@@ -61,6 +61,7 @@ ignore = [
 # Model prompt text: hard-wrapping would change what the model receives.
 "app/ai/explain.py" = ["E501"]
 "app/ai/classify.py" = ["E501"]
+"app/ai/assistant.py" = ["E501"]
 # Bilingual rule text: wrapping Arabic sentences mid-phrase hurts readability for reviewers.
 "app/analyzers/message_patterns.py" = ["E501"]
 

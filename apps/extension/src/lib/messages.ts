@@ -10,6 +10,8 @@ export type Request =
   | { type: "proceed"; url: string; tabId?: number }
   | { type: "go-back"; url: string; verdict: Verdict }
   | { type: "hover"; href: string }
+  | { type: "assistant-summary"; url: string; resourceHosts: string[] }
+  | { type: "assistant-ask"; url: string; question: string; hasPasswordField: boolean }
   | { type: "enroll"; linkCode?: string }
   | { type: "link"; code: string }
   | { type: "unlink" }
@@ -24,6 +26,8 @@ export interface Status {
   page: { url: string; result: CheckResult | null } | null;
   alerts: Alert[];
   account: AccountLink | null;
+  /** Domains blocked before they load, from the downloaded blocklist. */
+  preloadedCount: number;
 }
 
 export type Response<T = unknown> = { ok: true; data: T } | { ok: false; error: string };

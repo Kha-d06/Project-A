@@ -55,6 +55,8 @@ export default function PrivacyPage() {
         <ul>
           <li>For each page you open, SENTINEL Protect sends its address (or, in privacy mode, only the domain) to the SENTINEL server. The server answers from its local threat database and stores nothing about the request.</li>
           <li>It never sends page content, form contents, passwords or messages. Private-network and local addresses are not sent at all.</li>
+          <li>It downloads SENTINEL’s whole list of known dangerous domains every few hours, so blocking them before they load reveals nothing about your browsing.</li>
+          <li>If you turn on the on-screen assistant, it reads the names of cookies (never their values) and the domains of trackers a page loads, and shows them to you. When you ask it a question, the question, the site’s domain, its verdict, the warning titles and those cookie and tracker names are sent to the SENTINEL server, and on to the AI provider if the operator has configured one.</li>
           <li>Recent alerts, your lists and settings are stored only in your browser.</li>
           <li>If you link it to an account and turn on warning history, the domain, the verdict and what you chose are saved to your account. You can delete that history at any time.</li>
         </ul>

@@ -10,6 +10,10 @@ const browser = process.env.TARGET_BROWSER === "firefox" ? "firefox" : "chrome";
 const out = join(root, "dist", browser);
 const { version } = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
 const serverOrigin = new URL(process.env.SENTINEL_SERVER ?? "http://localhost:8080").origin;
+// Test builds (never published) grant the optional permissions up front, because
+// automated browsers cannot click a permission prompt, and leave the assistant's
+// shadow root open so tests can look inside it.
+const testBuild = process.env.SENTINEL_TEST_BUILD === "1";
 
 await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
@@ -23,6 +27,7 @@ const shared = {
     __SENTINEL_SERVER__: JSON.stringify(serverOrigin),
     __EXTENSION_VERSION__: JSON.stringify(version),
     __TARGET_BROWSER__: JSON.stringify(browser),
+    __TEST_BUILD__: JSON.stringify(testBuild),
   },
   logLevel: "warning",
 };
@@ -39,8 +44,18 @@ await build({
   outdir: out,
 });
 // Content scripts are classic scripts, not modules.
-await build({ ...shared, format: "iife", entryPoints: { hover: join(root, "src/hover.ts") }, outdir: out });
+await build({
+  ...shared,
+  format: "iife",
+  entryPoints: { hover: join(root, "src/hover.ts"), assistant: join(root, "src/assistant.ts") },
+  outdir: out,
+});
 
 await cp(join(root, "static"), out, { recursive: true });
-await writeFile(join(out, "manifest.json"), JSON.stringify(createManifest({ version, serverOrigin, browser }), null, 2));
+const manifest = createManifest({ version, serverOrigin, browser });
+if (testBuild) {
+  manifest.permissions.push(...manifest.optional_permissions);
+  manifest.host_permissions.push(...manifest.optional_host_permissions);
+}
+await writeFile(join(out, "manifest.json"), JSON.stringify(manifest, null, 2));
 console.log(`Built SENTINEL Protect ${version} (${browser}) for ${serverOrigin} -> ${out}`);

@@ -1,12 +1,15 @@
 import type { AccountLink } from "../lib/api";
 import { byId, el } from "../lib/dom";
+import { initLanguage, localizeDocument, t, type LanguageSetting } from "../lib/i18n";
 import { ask, type Status } from "../lib/messages";
 import { normalizeHostEntry, type Settings } from "../lib/settings";
 
-const SWITCHES = ["paused", "warnOnSuspicious", "downloadChecks", "keepLocalAlerts", "hoverChecks"] as const;
-const HOVER_PERMISSIONS: chrome.permissions.Permissions = {
-  permissions: ["scripting"],
-  origins: ["http://*/*", "https://*/*"],
+const SWITCHES = ["paused", "warnOnSuspicious", "preloadBlocking", "downloadChecks", "keepLocalAlerts", "hoverChecks", "assistant"] as const;
+// Optional permissions, requested from the click that turns a feature on.
+const PAGE_ORIGINS = ["http://*/*", "https://*/*"];
+const FEATURE_PERMISSIONS: Partial<Record<(typeof SWITCHES)[number], chrome.permissions.Permissions>> = {
+  hoverChecks: { permissions: ["scripting"], origins: PAGE_ORIGINS },
+  assistant: { permissions: ["scripting", "cookies"], origins: PAGE_ORIGINS },
 };
 
 function flash(message: string) {
@@ -17,7 +20,7 @@ function flash(message: string) {
   }, 3000);
 }
 
-async function save(changes: Partial<Settings>, message = "Saved.") {
+async function save(changes: Partial<Settings>, message = t().options.saved) {
   try {
     await ask<Settings>({ type: "settings", changes });
     flash(message);
@@ -54,8 +57,8 @@ function renderAccount(status: Status) {
 
   if (status.state === "not_enrolled") {
     box.append(
-      el("p", { class: "muted" }, "This extension is not connected to the server yet, so sites are not being checked."),
-      el("div", {}, el("button", { type: "button", onclick: () => run(() => ask({ type: "enroll" })) }, "Connect now")),
+      el("p", { class: "muted" }, t().options.notEnrolled),
+      el("div", {}, el("button", { type: "button", onclick: () => run(() => ask({ type: "enroll" })) }, t().options.connectNow)),
       error,
     );
     return;
@@ -63,23 +66,21 @@ function renderAccount(status: Status) {
   const account: AccountLink | null = status.account;
   if (account?.linked) {
     box.append(
-      el("p", {}, "Linked to ", el("strong", {}, account.account_email ?? "your account"), "."),
+      el("p", {}, t().options.linkedTo, el("strong", {}, account.account_email ?? t().options.yourAccount), "."),
       el(
         "p",
         { class: "muted" },
-        account.sync_events
-          ? "Warnings are recorded in your SENTINEL history (only the domain and the verdict). You can turn this off in your dashboard settings."
-          : "Nothing is recorded in your account. You can choose to keep a history of warnings in your dashboard settings.",
+        account.sync_events ? t().options.syncOn : t().options.syncOff,
       ),
-      el("div", {}, el("button", { type: "button", class: "secondary", onclick: () => run(() => ask({ type: "unlink" })) }, "Unlink from account")),
+      el("div", {}, el("button", { type: "button", class: "secondary", onclick: () => run(() => ask({ type: "unlink" })) }, t().options.unlink)),
       error,
     );
     return;
   }
-  const input = el("input", { type: "text", id: "link-code", placeholder: "ABCD-1234", autocomplete: "off", spellcheck: "false", "aria-label": "Link code" });
+  const input = el("input", { type: "text", id: "link-code", placeholder: "ABCD-1234", autocomplete: "off", spellcheck: "false", "aria-label": t().options.linkCode });
   box.append(
-    el("p", { class: "muted" }, "Protection works without an account. Linking lets you see this browser in your dashboard and, if you choose, keep a history of warnings."),
-    el("p", { class: "muted" }, "In your SENTINEL dashboard, open Browser protection and create a link code, then enter it here."),
+    el("p", { class: "muted" }, t().options.linkIntro),
+    el("p", { class: "muted" }, t().options.linkHow),
     el(
       "div",
       { class: "row" },
@@ -90,11 +91,11 @@ function renderAccount(status: Status) {
           type: "button",
           onclick: () =>
             run(async () => {
-              if (!input.value.trim()) throw new Error("Enter the code shown in your dashboard.");
+              if (!input.value.trim()) throw new Error(t().options.enterCode);
               await ask({ type: "link", code: input.value });
             }),
         },
-        "Link",
+        t().options.link,
       ),
     ),
     error,
@@ -102,6 +103,8 @@ function renderAccount(status: Status) {
 }
 
 async function main() {
+  await initLanguage();
+  localizeDocument();
   // Refresh the account state before rendering, so the form is not replaced while
   // someone is typing a link code into it.
   await ask<AccountLink>({ type: "refresh-account" }).catch(() => undefined);
@@ -112,19 +115,35 @@ async function main() {
     const input = byId<HTMLInputElement>(key);
     input.checked = settings[key];
     input.addEventListener("change", async () => {
-      if (key === "hoverChecks" && input.checked) {
+      const needed = FEATURE_PERMISSIONS[key];
+      if (needed && input.checked) {
         // Must be requested from the click handler, as a direct user gesture.
-        const granted = await chrome.permissions.request(HOVER_PERMISSIONS);
+        const granted = await chrome.permissions.request(needed);
         if (!granted) {
           input.checked = false;
-          flash("Hover checks need permission to run on web pages; nothing was changed.");
+          flash(t().options.permissionDenied);
           return;
         }
       }
-      if (key === "hoverChecks" && !input.checked) await chrome.permissions.remove(HOVER_PERMISSIONS);
+      if (needed && !input.checked) {
+        // Keep permissions another enabled feature still needs.
+        const stillUsed = (Object.keys(FEATURE_PERMISSIONS) as (keyof typeof FEATURE_PERMISSIONS)[]).filter(
+          (other) => other !== key && byId<HTMLInputElement>(other).checked,
+        );
+        const keep = new Set(stillUsed.flatMap((other) => FEATURE_PERMISSIONS[other]?.permissions ?? []));
+        const permissions = (needed.permissions ?? []).filter((name) => !keep.has(name));
+        await chrome.permissions.remove({ permissions, origins: stillUsed.length ? [] : needed.origins });
+      }
       await save({ [key]: input.checked });
     });
   }
+
+  const languageSelect = byId<HTMLSelectElement>("language");
+  languageSelect.value = settings.language;
+  languageSelect.addEventListener("change", async () => {
+    await save({ language: languageSelect.value as LanguageSetting });
+    location.reload();
+  });
 
   for (const radio of document.querySelectorAll<HTMLInputElement>("input[name=privacyMode]")) {
     radio.checked = radio.value === settings.privacyMode;
@@ -143,7 +162,7 @@ async function main() {
     const rejected = [...allowed.rejected, ...blocked.rejected];
     await save(
       { allowlist: allowed.hosts, blocklist: blocked.hosts },
-      rejected.length ? `Saved. Ignored entries that are not domain names: ${rejected.join(", ")}` : "Lists saved.",
+      rejected.length ? t().options.ignored(rejected.join(", ")) : t().options.listsSaved,
     );
   });
 
@@ -154,36 +173,36 @@ async function main() {
     try {
       const parsed = new URL(server.value.trim());
       if (parsed.protocol !== "https:" && parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
-        flash("Use an https:// address, except for a server on this computer.");
+        flash(t().options.useHttps);
         return;
       }
       origin = parsed.origin;
     } catch {
-      flash("Enter a full address, such as https://sentinel.example.org");
+      flash(t().options.fullAddress);
       return;
     }
     const granted = await chrome.permissions.request({ origins: [`${origin}/*`] });
     if (!granted) {
-      flash("The extension needs permission to contact that server; nothing was changed.");
+      flash(t().options.serverPermission);
       return;
     }
-    await save({ serverUrl: origin }, "Server changed. Connecting…");
+    await save({ serverUrl: origin }, t().options.serverChanged);
     try {
       await ask({ type: "enroll" });
-      flash("Connected to the new server.");
+      flash(t().options.connected);
     } catch (error) {
-      flash(`Saved, but the server could not be reached: ${error instanceof Error ? error.message : String(error)}`);
+      flash(t().options.serverUnreachable(error instanceof Error ? error.message : String(error)));
     }
     renderAccount(await ask<Status>({ type: "status" }));
   });
 
   byId("clear-alerts").addEventListener("click", async () => {
     await ask({ type: "clear-alerts" });
-    flash("Alert list cleared.");
+    flash(t().options.alertsCleared);
   });
   byId("clear-cache").addEventListener("click", async () => {
     await ask({ type: "clear-cache" });
-    flash("Cached results cleared.");
+    flash(t().options.cacheCleared);
   });
 
   renderAccount(status);

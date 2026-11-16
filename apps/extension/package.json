@@ -8,7 +8,8 @@
     "build": "node scripts/build.mjs",
     "build:firefox": "TARGET_BROWSER=firefox node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "SENTINEL_TEST_BUILD=1 SENTINEL_SERVER=http://localhost:8787 node scripts/build.mjs && node test/e2e-assistant.mjs"
   },
   "devDependencies": {
     "@types/chrome": "0.3.7",

@@ -8,10 +8,11 @@
 export function createManifest({ version, serverOrigin, browser = "chrome" }) {
   const manifest = {
     manifest_version: 3,
-    name: "SENTINEL Protect",
+    name: "__MSG_extName__",
     short_name: "SENTINEL",
     version,
-    description: "Warns you before known dangerous sites load and checks links and downloads. Free.",
+    description: "__MSG_extDescription__",
+    default_locale: "en",
     icons: { 16: "icons/icon-16.png", 32: "icons/icon-32.png", 48: "icons/icon-48.png", 128: "icons/icon-128.png" },
     action: {
       default_title: "SENTINEL Protect",
@@ -19,9 +20,12 @@ export function createManifest({ version, serverOrigin, browser = "chrome" }) {
       default_icon: { 16: "icons/icon-16.png", 32: "icons/icon-32.png" },
     },
     options_ui: { page: "options.html", open_in_tab: true },
-    permissions: ["storage", "webNavigation", "downloads", "notifications", "contextMenus", "activeTab"],
-    // Requested only when the user turns on hover checks or picks another server.
-    optional_permissions: ["scripting"],
+    // declarativeNetRequest: block known dangerous domains inside the browser before
+    // they load (block rules need no host access). alarms: refresh that list.
+    permissions: ["storage", "webNavigation", "downloads", "notifications", "contextMenus", "activeTab", "declarativeNetRequest", "alarms"],
+    // Requested only when the user turns on hover checks or the on-screen assistant
+    // (scripting, cookie names) or picks another server.
+    optional_permissions: ["scripting", "cookies"],
     host_permissions: [`${serverOrigin}/*`],
     optional_host_permissions: ["http://*/*", "https://*/*"],
     content_security_policy: {

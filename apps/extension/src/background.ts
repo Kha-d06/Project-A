@@ -1,10 +1,22 @@
 import * as api from "./lib/api";
 import { clearAlerts, listAlerts, recordAlert } from "./lib/alerts";
+import { builtInAnswer, describeCookie, toAssistantContext, type CookieInfo, type PageSummary } from "./lib/assistant-core";
+import {
+  REFRESH_MINUTES,
+  allowDomainForSession,
+  applyRules,
+  onServerBlocklist,
+  refreshBlocklist,
+  storedBlocklist,
+} from "./lib/blocklist";
 import { clearCache } from "./lib/cache";
+import { initLanguage, language, t } from "./lib/i18n";
 import type { Request, Response, Status } from "./lib/messages";
 import { allowForSession, assessDownload, assessUrl, isAllowedForSession } from "./lib/protection";
 import { loadSettings, saveSettings, type Settings } from "./lib/settings";
 import type { CheckResult, ProtectionState, Verdict } from "./lib/types";
+import { detectTrackers, siteOf } from "./lib/trackers";
+import { checkableUrl } from "./lib/urls";
 import { BADGE_COLORS, VERDICTS, shouldInterrupt } from "./lib/verdicts";
 
 declare const __TARGET_BROWSER__: string;
@@ -14,12 +26,17 @@ const NEW_TAB_URL = IS_FIREFOX ? "about:blank" : "chrome://newtab/";
 
 const ACCOUNT_KEY = "account";
 const HOVER_SCRIPT_ID = "sentinel-hover";
+const ASSISTANT_SCRIPT_ID = "sentinel-assistant";
+const BLOCKLIST_ALARM = "sentinel-blocklist";
+const MAX_COOKIE_SITES = 20;
 const MENU_LINK = "sentinel-scan-link";
 const MENU_PAGE = "sentinel-scan-page";
 const WARNING_VERDICTS = new Set(["dangerous", "suspicious", "caution", "blocked_by_you"]);
 
 /** Last result per tab, for the popup. Lost if the worker restarts; the popup then re-checks. */
 const tabResults = new Map<number, { url: string; result: CheckResult | null }>();
+/** The assistant's last page summary per tab, so questions can be answered from it. */
+const tabSummaries = new Map<number, { url: string; summary: PageSummary }>();
 
 // --- Helpers --------------------------------------------------------------------------
 
@@ -86,7 +103,7 @@ async function notify(id: string, title: string, message: string, buttons?: { ti
   };
   // Firefox does not support notification buttons; the message then says where to act.
   if (buttons && !IS_FIREFOX) options.buttons = buttons;
-  else if (buttons) options.message = `${message} Open the downloads panel to cancel or resume it.`;
+  else if (buttons) options.message = `${message} ${t().notifications.downloadsPanel}`;
   await chrome.notifications.create(id, options);
 }
 
@@ -143,8 +160,33 @@ chrome.webNavigation.onBeforeNavigate.addListener(({ tabId, frameId, url }) => {
 chrome.webNavigation.onCommitted.addListener(({ tabId, frameId, url }) => {
   if (frameId === 0) void handleNavigation(tabId, url, true);
 });
+// A navigation stopped by a declarativeNetRequest block rule fails inside the
+// browser before any request leaves it. Show SENTINEL's warning page instead of
+// the browser's generic error.
+chrome.webNavigation.onErrorOccurred.addListener(({ tabId, frameId, url, error }) => {
+  if (frameId !== 0 || !url.startsWith("http")) return;
+  void (async () => {
+    const settings = await loadSettings();
+    const host = checkableUrl(url)?.hostname;
+    if (!host) return;
+    const blockedByRule = /BLOCKED_BY_CLIENT|NS_ERROR_ABORT/i.test(error);
+    const listed = settings.blocklist.some((d) => host === d || host.endsWith(`.${d}`)) || (await onServerBlocklist(host));
+    if (!blockedByRule || !listed) return;
+    // The navigation check may already have shown the warning page.
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (tab?.url?.startsWith(chrome.runtime.getURL("warning.html")) || tab?.pendingUrl?.startsWith(chrome.runtime.getURL("warning.html"))) return;
+    await chrome.tabs.update(tabId, { url: warningPageUrl(url) });
+    const result = await verdictFor(url, settings);
+    if (result) {
+      await recordAlert({ host, verdict: result.verdict, kind: "page", at: new Date().toISOString() }, settings.keepLocalAlerts);
+      await syncEvent(settings, "warning_shown", url, result.verdict);
+    }
+  })();
+});
+
 chrome.tabs.onRemoved.addListener((tabId) => {
   tabResults.delete(tabId);
+  tabSummaries.delete(tabId);
   void chrome.storage.session.remove(SAFE_PREFIX + tabId);
 });
 
@@ -170,9 +212,11 @@ chrome.downloads.onCreated.addListener((item) => {
     // Pausing is best effort: small files may already be complete.
     await chrome.downloads.pause(item.id).catch(() => undefined);
     const reason = result.reasons[0]?.title ?? VERDICTS[result.verdict].detail;
-    await notify(`download:${item.id}`, `${VERDICTS[result.verdict].label} download paused`, `${fileNameOf(item)} from ${result.host}: ${reason}`, [
-      { title: "Cancel download" },
-      { title: "Keep it anyway" },
+    await initLanguage();
+    const n = t().notifications;
+    await notify(`download:${item.id}`, n.downloadPaused(VERDICTS[result.verdict].label), `${fileNameOf(item)} · ${result.host}: ${reason}`, [
+      { title: n.cancel },
+      { title: n.keep },
     ]);
     await recordAlert({ host: result.host, verdict: result.verdict, kind: "download", at: new Date().toISOString() }, settings.keepLocalAlerts);
     await syncEvent(settings, "download_warning", source, result.verdict);
@@ -190,8 +234,8 @@ chrome.notifications.onButtonClicked.addListener((notificationId, buttonIndex) =
 
 function createMenus() {
   chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({ id: MENU_LINK, title: "Scan link with SENTINEL", contexts: ["link"] });
-    chrome.contextMenus.create({ id: MENU_PAGE, title: "Check this page with SENTINEL", contexts: ["page"] });
+    chrome.contextMenus.create({ id: MENU_LINK, title: t().notifications.scanLink, contexts: ["link"] });
+    chrome.contextMenus.create({ id: MENU_PAGE, title: t().notifications.checkPage, contexts: ["page"] });
   });
 }
 
@@ -202,7 +246,7 @@ chrome.contextMenus.onClicked.addListener((info) => {
     const settings = await loadSettings();
     const result = await assessUrl(target, { ...settings, paused: false });
     if (!result) {
-      await notify(`link:${Date.now()}`, "Not checked", "Only web addresses (http and https) on the public internet can be checked.");
+      await notify(`link:${Date.now()}`, t().notifications.notChecked, t().notifications.notCheckedBody);
       return;
     }
     const presentation = VERDICTS[result.verdict];
@@ -217,17 +261,72 @@ chrome.contextMenus.onClicked.addListener((info) => {
 
 // --- Hover checks (optional content script) -------------------------------------------
 
-async function syncHoverScript(settings: Settings) {
-  if (!chrome.scripting) return; // optional permission not granted
-  const registered = await chrome.scripting.getRegisteredContentScripts({ ids: [HOVER_SCRIPT_ID] });
-  const wanted = settings.hoverChecks && !settings.paused;
+async function syncScript(id: string, file: string, wanted: boolean) {
+  const registered = await chrome.scripting.getRegisteredContentScripts({ ids: [id] });
   if (wanted && registered.length === 0) {
     await chrome.scripting.registerContentScripts([
-      { id: HOVER_SCRIPT_ID, js: ["hover.js"], matches: ["http://*/*", "https://*/*"], runAt: "document_idle" },
+      { id, js: [file], matches: ["http://*/*", "https://*/*"], runAt: "document_idle" },
     ]);
   } else if (!wanted && registered.length > 0) {
-    await chrome.scripting.unregisterContentScripts({ ids: [HOVER_SCRIPT_ID] });
+    await chrome.scripting.unregisterContentScripts({ ids: [id] });
   }
+}
+
+async function syncContentScripts(settings: Settings) {
+  if (!chrome.scripting) return; // optional permission not granted
+  await syncScript(HOVER_SCRIPT_ID, "hover.js", settings.hoverChecks && !settings.paused);
+  await syncScript(ASSISTANT_SCRIPT_ID, "assistant.js", settings.assistant && !settings.paused);
+}
+
+// --- Verdicts that also know about the in-browser blocklist ---------------------------
+
+/** Like assessUrl, but a domain on the downloaded blocklist is reported as dangerous
+ * even when the server cannot be reached (it was blocked before loading). */
+async function verdictFor(url: string, settings: Settings): Promise<CheckResult | null> {
+  const result = await assessUrl(url, { ...settings, paused: false });
+  if (!result || result.verdict === "dangerous" || result.verdict === "blocked_by_you") return result;
+  if (!(await onServerBlocklist(result.host))) return result;
+  await initLanguage();
+  const w = t().warning;
+  return {
+    ...result,
+    verdict: "dangerous",
+    reasons: [{ severity: "high", title: w.preloadReason, explanation: w.preloadExplanation, source: w.preloadSource }, ...result.reasons],
+  };
+}
+
+// --- On-screen assistant --------------------------------------------------------------
+
+async function cookiesFor(pageUrl: string, pageHost: string, otherHosts: string[]): Promise<CookieInfo[] | null> {
+  if (!chrome.cookies?.getAll) return null; // optional permission not granted
+  const sites = [...new Set(otherHosts.map(siteOf))].filter((site) => site !== siteOf(pageHost)).slice(0, MAX_COOKIE_SITES);
+  const batches = await Promise.all([
+    chrome.cookies.getAll({ url: pageUrl }).catch(() => []),
+    ...sites.map((domain) => chrome.cookies.getAll({ domain }).catch(() => [])),
+  ]);
+  const seen = new Set<string>();
+  const cookies: CookieInfo[] = [];
+  for (const cookie of batches.flat()) {
+    const key = `${cookie.domain}|${cookie.name}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    cookies.push(describeCookie(cookie, pageHost)); // names and lifetimes only, never values
+  }
+  return cookies.sort((a, b) => Number(a.thirdParty) - Number(b.thirdParty) || a.name.localeCompare(b.name));
+}
+
+async function pageSummary(url: string, resourceHosts: string[], settings: Settings): Promise<PageSummary | null> {
+  const parsed = checkableUrl(url);
+  if (!parsed) return null;
+  const hosts = resourceHosts.filter((host) => typeof host === "string" && host.length < 256).slice(0, 200);
+  const [result, cookies] = await Promise.all([verdictFor(url, settings), cookiesFor(parsed.toString(), parsed.hostname, hosts)]);
+  return {
+    host: parsed.hostname,
+    result,
+    cookies: cookies ?? [],
+    cookiesAvailable: cookies !== null,
+    trackers: detectTrackers(hosts),
+  };
 }
 
 // --- Messages from extension pages -----------------------------------------------------
@@ -248,13 +347,37 @@ async function handle(request: Request, sender: chrome.runtime.MessageSender): P
         page,
         alerts: await listAlerts(),
         account: await cachedAccount(),
+        preloadedCount: settings.preloadBlocking && !settings.paused ? ((await storedBlocklist())?.hosts.length ?? 0) : 0,
       };
       return status;
     }
     case "check":
       return assessUrl(request.url, { ...settings, paused: false });
     case "verdict-for":
-      return assessUrl(request.url, { ...settings, paused: false });
+      return verdictFor(request.url, settings);
+    case "assistant-summary": {
+      const tabId = sender.tab?.id;
+      if (tabId === undefined || !settings.assistant) return null;
+      const summary = await pageSummary(request.url, Array.isArray(request.resourceHosts) ? request.resourceHosts : [], settings);
+      if (summary) tabSummaries.set(tabId, { url: request.url, summary });
+      return summary;
+    }
+    case "assistant-ask": {
+      const tabId = sender.tab?.id;
+      if (tabId === undefined || !settings.assistant) return null;
+      const question = String(request.question).slice(0, 500);
+      const cached = tabSummaries.get(tabId);
+      const summary = cached?.url === request.url ? cached.summary : await pageSummary(request.url, [], settings);
+      if (!summary) return null;
+      await initLanguage();
+      try {
+        const reply = await api.askAssistant(settings.serverUrl, question, language(), toAssistantContext(summary, !!request.hasPasswordField));
+        return { answer: reply.answer, source: "ai" };
+      } catch {
+        // No AI provider on this server, or it failed: answer from what SENTINEL knows.
+        return { answer: builtInAnswer(question, summary, language()), source: "builtin" };
+      }
+    }
     case "hover": {
       // Hover lookups must never be slower than the hover itself; cached or quick only.
       const result = await assessUrl(request.href, settings);
@@ -264,6 +387,7 @@ async function handle(request: Request, sender: chrome.runtime.MessageSender): P
       const host = new URL(request.url).hostname;
       const result = await assessUrl(request.url, { ...settings, paused: false });
       await allowForSession(host);
+      await allowDomainForSession(host);
       if (result) await syncEvent(settings, "proceeded", request.url, result.verdict);
       const tabId = request.tabId ?? sender.tab?.id;
       if (tabId !== undefined) await chrome.tabs.update(tabId, { url: request.url });
@@ -300,7 +424,13 @@ async function handle(request: Request, sender: chrome.runtime.MessageSender): P
       }
       if (request.changes.privacyMode || request.changes.allowlist || request.changes.blocklist) await clearCache();
       await refreshGlobalBadge(next);
-      await syncHoverScript(next);
+      await syncContentScripts(next);
+      await applyRules(next);
+      if (request.changes.preloadBlocking) await refreshBlocklist(next, true);
+      if (request.changes.language) {
+        await initLanguage();
+        createMenus();
+      }
       return next;
     }
     case "clear-alerts":
@@ -325,20 +455,31 @@ chrome.runtime.onMessage.addListener((request: Request, sender, sendResponse) =>
 
 chrome.permissions.onRemoved.addListener(() => {
   void loadSettings().then(async (settings) => {
-    if (settings.hoverChecks) await saveSettings({ hoverChecks: false });
+    const changes: Partial<Settings> = {};
+    if (settings.hoverChecks && !chrome.scripting) changes.hoverChecks = false;
+    if (settings.assistant && (!chrome.scripting || !chrome.cookies)) changes.assistant = false;
+    if (Object.keys(changes).length) await syncContentScripts(await saveSettings(changes));
   });
+});
+
+chrome.alarms?.onAlarm.addListener((alarm) => {
+  if (alarm.name === BLOCKLIST_ALARM) void loadSettings().then((settings) => refreshBlocklist(settings, true));
 });
 
 // --- Startup --------------------------------------------------------------------------
 
 async function start(reason?: string) {
+  await initLanguage();
   createMenus();
   const settings = await loadSettings();
   await refreshGlobalBadge(settings);
-  await syncHoverScript(settings).catch(() => undefined);
+  await syncContentScripts(settings).catch(() => undefined);
   // Anonymous enrollment shares nothing about the user. If the server is not
   // reachable yet, navigation retries it and the popup offers to connect.
   await ensureEnrolled(settings);
+  await applyRules(settings).catch(() => undefined);
+  await refreshBlocklist(settings).catch(() => undefined);
+  await chrome.alarms?.create(BLOCKLIST_ALARM, { periodInMinutes: REFRESH_MINUTES });
   if (reason === "install") await chrome.tabs.create({ url: chrome.runtime.getURL("welcome.html") });
 }
 

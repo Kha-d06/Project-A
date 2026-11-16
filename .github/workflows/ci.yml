@@ -75,3 +75,9 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run build:firefox
+      - name: Browser test of pre-load blocking and the on-screen assistant
+        run: |
+          npm install --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
+          SENTINEL_TEST_BUILD=1 SENTINEL_SERVER=http://localhost:8787 npm run build
+          node test/e2e-assistant.mjs

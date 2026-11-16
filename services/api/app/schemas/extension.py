@@ -120,3 +120,46 @@ class ExtensionEventOut(BaseModel):
     host: str
     verdict: str
     created_at: datetime
+
+
+class Blocklist(BaseModel):
+    """Domains the extension blocks before the page loads (declarativeNetRequest)."""
+
+    version: str
+    generated_at: datetime
+    hosts: list[str]
+    sources: list[str]
+
+
+class AssistantCookie(BaseModel):
+    name: str = Field(max_length=120)
+    domain: str = Field(max_length=255)
+    third_party: bool = False
+    session: bool = True
+    days: int | None = Field(default=None, ge=0, le=100_000)
+
+
+class AssistantContext(BaseModel):
+    host: str = Field(max_length=255)
+    verdict: str = Field(max_length=40)
+    warning_signs: list[str] = Field(default_factory=list, max_length=10)
+    cookies: list[AssistantCookie] = Field(default_factory=list, max_length=60)
+    trackers: list[str] = Field(default_factory=list, max_length=40)
+    has_password_field: bool = False
+
+    @field_validator("warning_signs", "trackers")
+    @classmethod
+    def _short_items(cls, value: list[str]) -> list[str]:
+        return [item[:200] for item in value]
+
+
+class AssistantQuestion(BaseModel):
+    question: str = Field(min_length=2, max_length=500)
+    language: Literal["en", "ar"] = "en"
+    context: AssistantContext
+
+
+class AssistantReply(BaseModel):
+    answer: str
+    ai_generated: bool = True
+    model: str

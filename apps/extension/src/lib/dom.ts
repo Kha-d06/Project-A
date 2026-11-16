@@ -2,6 +2,8 @@
  * Tiny element builder. Text always goes through textContent, so hostnames and
  * server-provided reasons can never inject markup into extension pages.
  */
+import { language, t } from "./i18n";
+
 type Child = Node | string | null | undefined | false;
 
 export function el<K extends keyof HTMLElementTagNameMap>(
@@ -29,10 +31,10 @@ export function byId<T extends HTMLElement = HTMLElement>(id: string): T {
 
 export function relativeTime(iso: string, now = Date.now()): string {
   const seconds = Math.round((now - new Date(iso).getTime()) / 1000);
-  if (seconds < 45) return "just now";
+  if (seconds < 45) return t().time.justNow;
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 60) return t().time.minutes(minutes);
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} h ago`;
-  return new Date(iso).toLocaleDateString();
+  if (hours < 24) return t().time.hours(hours);
+  return new Date(iso).toLocaleDateString(language());
 }

@@ -1,3 +1,5 @@
+import type { LanguageSetting } from "./i18n";
+
 export type PrivacyMode = "full" | "host";
 
 export interface Settings {
@@ -9,6 +11,11 @@ export interface Settings {
   downloadChecks: boolean;
   /** Needs the optional host permission; off until the user turns it on. */
   hoverChecks: boolean;
+  /** Block domains on the downloaded blocklist before they load (declarativeNetRequest). */
+  preloadBlocking: boolean;
+  /** On-screen assistant: needs optional page and cookie permissions; off by default. */
+  assistant: boolean;
+  language: LanguageSetting;
   keepLocalAlerts: boolean;
   allowlist: string[];
   blocklist: string[];
@@ -23,6 +30,9 @@ export const DEFAULT_SETTINGS: Settings = {
   warnOnSuspicious: true,
   downloadChecks: true,
   hoverChecks: false,
+  preloadBlocking: true,
+  assistant: false,
+  language: "auto",
   keepLocalAlerts: true,
   allowlist: [],
   blocklist: [],

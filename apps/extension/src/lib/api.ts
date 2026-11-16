@@ -228,3 +228,40 @@ export async function unlink(serverUrl: string): Promise<AccountLink> {
   if (!response.ok) throw await readError(response);
   return (await response.json()) as AccountLink;
 }
+
+export interface BlocklistResponse {
+  version: string;
+  generated_at: string;
+  hosts: string[];
+  sources: string[];
+}
+
+export async function fetchBlocklist(serverUrl: string): Promise<BlocklistResponse> {
+  const response = await authorized(serverUrl, "/extension/blocklist");
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as BlocklistResponse;
+}
+
+export interface AssistantContext {
+  host: string;
+  verdict: string;
+  warning_signs: string[];
+  cookies: { name: string; domain: string; third_party: boolean; session: boolean; days: number | null }[];
+  trackers: string[];
+  has_password_field: boolean;
+}
+
+/** Only the summary above is sent: never page text, form values or cookie values. */
+export async function askAssistant(
+  serverUrl: string,
+  question: string,
+  language: "en" | "ar",
+  context: AssistantContext,
+): Promise<{ answer: string; model: string }> {
+  const response = await authorized(serverUrl, "/extension/assistant", {
+    method: "POST",
+    body: JSON.stringify({ question, language, context }),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as { answer: string; model: string };
+}

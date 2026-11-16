@@ -6,6 +6,8 @@ from fastapi import APIRouter, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai.assistant import AssistantUnavailableError
+from app.ai.assistant import answer as assistant_answer
 from app.analyzers.quick_check import QuickResult, quick_check_download, quick_check_url
 from app.analyzers.urls import parse_url
 from app.api.deps import Db, SessionUser
@@ -18,10 +20,21 @@ from app.core import rate_limit
 from app.core.errors import ApiError
 from app.core.rate_limit import RateLimit, client_address
 from app.core.security import new_token, token_digest
-from app.models import ExtensionEvent, ExtensionInstallation, ExtensionLinkCode, User
+from app.intel.feeds import COMMUNITY, THREATFOX
+from app.intel.lookup import fresh_sources
+from app.models import (
+    ExtensionEvent,
+    ExtensionInstallation,
+    ExtensionLinkCode,
+    ThreatIndicator,
+    User,
+)
 from app.models.base import utcnow
 from app.schemas.extension import (
     AccessToken,
+    AssistantQuestion,
+    AssistantReply,
+    Blocklist,
     CheckDownloadRequest,
     CheckUrlRequest,
     Credentials,
@@ -45,6 +58,15 @@ LINK_ATTEMPT_LIMIT = RateLimit("ext-link", max_requests=10, window_seconds=900)
 # Generous: one check per page load, with the extension's own cache in front.
 CHECK_LIMIT = RateLimit("ext-check", max_requests=1200, window_seconds=3600)
 EVENT_LIMIT = RateLimit("ext-event", max_requests=300, window_seconds=3600)
+BLOCKLIST_LIMIT = RateLimit("ext-blocklist", max_requests=30, window_seconds=3600)
+ASSISTANT_LIMIT = RateLimit("ext-assistant", max_requests=60, window_seconds=3600)
+
+# Chrome allows 5,000 dynamic rules that redirect; blocking rules have more room, but
+# a compact list keeps rule updates fast. Leave headroom for the user's own block list.
+BLOCKLIST_MAX_HOSTS = 4500
+# Only domain indicators are blocked outright. A listed URL on a shared host
+# (a file-sharing service, a hacked blog) must not block the whole host.
+_BLOCKLIST_SOURCES = (THREATFOX, COMMUNITY)
 
 LINK_CODE_LIFETIME = timedelta(minutes=10)
 # No 0/O or 1/I, so a code read off a screen is typed correctly.
@@ -179,6 +201,52 @@ def check_download(
 ) -> QuickVerdict:
     rate_limit.enforce(CHECK_LIMIT, f"install:{installation.id}")
     return _to_verdict(quick_check_download(db, body.url, body.filename))
+
+
+@router.get("/blocklist", response_model=Blocklist)
+def blocklist(installation: CurrentInstallation, db: Db) -> Blocklist:
+    """Most recently seen malicious domains, for blocking before a page loads.
+    The extension downloads the whole list, so nothing about browsing is sent."""
+    rate_limit.enforce(BLOCKLIST_LIMIT, f"install:{installation.id}")
+    sources = fresh_sources(db, _BLOCKLIST_SOURCES)
+    source_ids = [source.id for source in sources]
+    hosts: list[str] = []
+    if source_ids:
+        rows = db.scalars(
+            select(ThreatIndicator.value)
+            .where(ThreatIndicator.kind == "host", ThreatIndicator.source_id.in_(source_ids))
+            .order_by(ThreatIndicator.last_seen_at.desc())
+            .limit(BLOCKLIST_MAX_HOSTS * 2)
+        )
+        for value in rows:
+            host = value.strip().lower().rstrip(".")
+            if host and "." in host and host not in hosts and not host.replace(".", "").isdigit():
+                hosts.append(host)
+            if len(hosts) >= BLOCKLIST_MAX_HOSTS:
+                break
+    newest = max((s.last_success_at for s in sources if s.last_success_at), default=None)
+    return Blocklist(
+        version=f"{len(hosts)}-{newest.isoformat() if newest else 'none'}",
+        generated_at=utcnow(),
+        hosts=sorted(hosts),
+        sources=[source.name for source in sources],
+    )
+
+
+@router.post("/assistant", response_model=AssistantReply)
+def assistant(body: AssistantQuestion, installation: CurrentInstallation) -> AssistantReply:
+    """The on-screen assistant's questions. Only a summary of the site is sent here,
+    never page text, form values or cookie values."""
+    rate_limit.enforce(ASSISTANT_LIMIT, f"install:{installation.id}")
+    try:
+        result = assistant_answer(
+            body.question,
+            body.context.model_dump(),
+            "Arabic" if body.language == "ar" else "English",
+        )
+    except AssistantUnavailableError as exc:
+        raise ApiError(503, "assistant_unavailable", str(exc)) from exc
+    return AssistantReply(answer=result.text, model=result.model)
 
 
 @router.post("/report-event", response_model=EventStored)

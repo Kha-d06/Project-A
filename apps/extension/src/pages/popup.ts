@@ -1,10 +1,14 @@
 import type { AccountLink } from "../lib/api";
 import { byId, el, relativeTime } from "../lib/dom";
+import { initLanguage, localizeDocument, t } from "../lib/i18n";
 import { ask, type Status } from "../lib/messages";
 import type { CheckResult } from "../lib/types";
 import { VERDICTS } from "../lib/verdicts";
 
-const STATE_TEXT = { active: "Protection on", paused: "Protection paused", not_enrolled: "Not connected" } as const;
+function stateText(state: Status["state"]): string {
+  const p = t().popup;
+  return { active: p.protectionOn, paused: p.protectionPaused, not_enrolled: p.notConnected }[state];
+}
 
 let activeTab: chrome.tabs.Tab | undefined;
 
@@ -22,7 +26,7 @@ function verdictBlock(result: CheckResult) {
       el("p", {}, reason ? reason.title : presentation.detail),
       result.limitations[0] ? el("p", { class: "faint" }, result.limitations[0]) : null,
       result.verdict !== "skipped" && result.verdict !== "allowed_by_you" && result.verdict !== "blocked_by_you"
-        ? el("p", { class: "faint" }, `Checked ${relativeTime(result.checkedAt)}`)
+        ? el("p", { class: "faint" }, t().popup.checked(relativeTime(result.checkedAt)))
         : null,
     ),
   );
@@ -30,7 +34,7 @@ function verdictBlock(result: CheckResult) {
 
 function fullScanLink(url: string, serverUrl: string) {
   const target = `${serverUrl.replace(/\/$/, "")}/scan?type=url&url=${encodeURIComponent(url)}`;
-  return el("a", { class: "button secondary", href: target, target: "_blank", rel: "noopener" }, "Run a full scan");
+  return el("a", { class: "button secondary", href: target, target: "_blank", rel: "noopener" }, t().popup.fullScan);
 }
 
 function renderPage(status: Status) {
@@ -38,7 +42,7 @@ function renderPage(status: Status) {
   section.replaceChildren();
   const url = status.page?.url;
   if (!url) {
-    section.append(el("p", { class: "muted" }, "Open a website to see its status here."));
+    section.append(el("p", { class: "muted" }, t().popup.openSite));
     return;
   }
   let host = url;
@@ -51,9 +55,9 @@ function renderPage(status: Status) {
 
   const result = status.page?.result;
   if (status.state === "paused") {
-    section.append(el("p", { class: "muted" }, "Protection is paused, so this page was not checked."));
+    section.append(el("p", { class: "muted" }, t().popup.pausedNotChecked));
   } else if (!result) {
-    section.append(el("p", { class: "muted" }, "SENTINEL only checks web pages (http and https)."));
+    section.append(el("p", { class: "muted" }, t().popup.onlyWeb));
   } else {
     section.append(verdictBlock(result));
   }
@@ -84,11 +88,11 @@ function renderSetup(status: Status) {
         }
       },
     },
-    "Connect",
+    t().popup.connect,
   );
   setup.append(
-    el("strong", {}, "Not connected to a SENTINEL server"),
-    el("p", { class: "muted" }, `Sites are not being checked. The server at ${status.settings.serverUrl} could not be reached when the extension started.`),
+    el("strong", {}, t().popup.notConnectedTitle),
+    el("p", { class: "muted" }, t().popup.notConnectedBody(status.settings.serverUrl)),
     el("div", { class: "actions" }, retry),
     error,
   );
@@ -99,7 +103,7 @@ function renderAlerts(status: Status) {
   list.replaceChildren();
   byId("clear-alerts").hidden = status.alerts.length === 0;
   if (status.alerts.length === 0) {
-    list.append(el("li", { class: "muted" }, "No alerts. Warnings you see will be listed here."));
+    list.append(el("li", { class: "muted" }, t().popup.noAlerts));
     return;
   }
   for (const alert of status.alerts.slice(0, 5)) {
@@ -119,7 +123,10 @@ function render(status: Status) {
   const toggle = byId<HTMLInputElement>("protection");
   toggle.checked = !status.settings.paused;
   toggle.disabled = status.state === "not_enrolled";
-  byId("state-label").textContent = STATE_TEXT[status.state];
+  byId("state-label").textContent = stateText(status.state);
+  const blocked = byId("preloaded");
+  blocked.hidden = !status.preloadedCount;
+  blocked.textContent = status.preloadedCount ? t().popup.preloaded(status.preloadedCount) : "";
   byId<HTMLAnchorElement>("dashboard").href = `${status.settings.serverUrl.replace(/\/$/, "")}/dashboard`;
   renderPage(status);
   renderSetup(status);
@@ -131,9 +138,11 @@ async function refresh() {
 }
 
 async function main() {
+  await initLanguage();
+  localizeDocument();
   [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
   // Show "checking" immediately; the first status may wait for a network check.
-  byId("page").replaceChildren(el("div", { class: "checking", "aria-hidden": "true" }), el("p", { class: "muted" }, "Checking this page…"));
+  byId("page").replaceChildren(el("div", { class: "checking", "aria-hidden": "true" }), el("p", { class: "muted" }, t().popup.checking));
   byId("protection").addEventListener("change", async (event) => {
     const paused = !(event.target as HTMLInputElement).checked;
     await ask({ type: "settings", changes: { paused } });

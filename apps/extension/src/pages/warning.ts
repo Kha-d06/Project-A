@@ -1,4 +1,5 @@
 import { byId, el } from "../lib/dom";
+import { initLanguage, localizeDocument, t } from "../lib/i18n";
 import { ask } from "../lib/messages";
 import type { CheckResult } from "../lib/types";
 import { VERDICTS } from "../lib/verdicts";
@@ -19,17 +20,15 @@ function icon() {
   return svg;
 }
 
-const HEADLINES: Partial<Record<CheckResult["verdict"], string>> = {
-  dangerous: "This site is known to be dangerous",
-  suspicious: "This site looks like an imitation",
-  blocked_by_you: "You blocked this site",
-};
+function headline(verdict: CheckResult["verdict"]): string | undefined {
+  const w = t().warning;
+  return { dangerous: w.headlineDangerous, suspicious: w.headlineSuspicious, blocked_by_you: w.headlineBlocked }[verdict as string];
+}
 
-const ADVICE: Partial<Record<CheckResult["verdict"], string>> = {
-  dangerous: "Do not enter passwords, payment details or personal information, and do not download anything from it.",
-  suspicious: "If you were expecting a well-known service, type its address yourself or use its official app instead.",
-  blocked_by_you: "You can remove it from your block list in the extension settings.",
-};
+function advice(verdict: CheckResult["verdict"]): string {
+  const w = t().warning;
+  return { dangerous: w.adviceDangerous, suspicious: w.adviceSuspicious, blocked_by_you: w.adviceBlocked }[verdict as string] ?? "";
+}
 
 function goBack(target: string, verdict: CheckResult["verdict"]) {
   // The background knows the last page this tab opened without a warning.
@@ -38,7 +37,8 @@ function goBack(target: string, verdict: CheckResult["verdict"]) {
 
 function render(target: string, result: CheckResult) {
   const presentation = VERDICTS[result.verdict];
-  document.title = `Warning: ${result.host}`;
+  const w = t().warning;
+  document.title = `${w.stopped}: ${result.host}`;
   const proceedAllowed = result.verdict !== "blocked_by_you";
 
   const sections: (HTMLElement | null)[] = [
@@ -49,21 +49,21 @@ function render(target: string, result: CheckResult) {
       el(
         "div",
         { class: "stack" },
-        el("h1", {}, HEADLINES[result.verdict] ?? presentation.label),
+        el("h1", {}, headline(result.verdict) ?? presentation.label),
         el("p", { class: "host mono" }, result.host),
-        el("p", { class: "muted" }, `Risk level: ${presentation.label}. ${ADVICE[result.verdict] ?? ""}`),
+        el("p", { class: "muted" }, `${w.riskLevel(presentation.label)} ${advice(result.verdict)}`),
       ),
     ),
     result.reasons.length
       ? el(
           "section",
           { class: "stack" },
-          el("h2", { class: "faint" }, "WHY SENTINEL STOPPED THIS PAGE"),
+          el("h2", { class: "faint" }, w.why),
           el(
             "ul",
             { class: "reasons" },
             ...result.reasons.map((reason) =>
-              el("li", {}, el("strong", {}, reason.title), el("p", { class: "muted" }, reason.explanation), el("p", { class: "faint" }, `Source: ${reason.source}`)),
+              el("li", {}, el("strong", {}, reason.title), el("p", { class: "muted" }, reason.explanation), el("p", { class: "faint" }, w.source(reason.source))),
             ),
           ),
         )
@@ -71,20 +71,18 @@ function render(target: string, result: CheckResult) {
     el(
       "div",
       { class: "primary-actions" },
-      el("button", { type: "button", id: "back", onclick: () => goBack(target, result.verdict) }, "Go back to safety"),
+      el("button", { type: "button", id: "back", onclick: () => goBack(target, result.verdict) }, w.goBack),
     ),
     proceedAllowed
       ? el(
           "details",
           {},
-          el("summary", {}, "I understand the risk"),
+          el("summary", {}, w.understand),
           el(
             "div",
             { class: "stack" },
-            el("p", { class: "muted" }, result.verdict === "dangerous"
-              ? "Threat intelligence lists this address as malicious. Continuing could expose your device or accounts. SENTINEL will not warn about this site again until you restart the browser."
-              : "These are warning signs, not proof. If you are sure this is the site you meant to visit, you can continue. SENTINEL will not warn about it again until you restart the browser."),
-            el("button", { type: "button", class: "danger", onclick: () => void ask({ type: "proceed", url: target }) }, `Continue to ${result.host}`),
+            el("p", { class: "muted" }, result.verdict === "dangerous" ? w.proceedDangerous : w.proceedSuspicious),
+            el("button", { type: "button", class: "danger", onclick: () => void ask({ type: "proceed", url: target }) }, w.continueTo(result.host)),
           ),
         )
       : null,
@@ -95,20 +93,23 @@ function render(target: string, result: CheckResult) {
 }
 
 async function main() {
+  await initLanguage();
+  localizeDocument();
+  const w = t().warning;
   const target = new URLSearchParams(location.search).get("u");
   if (!target) {
-    byId("content").replaceChildren(el("p", { class: "muted" }, "No address was given."));
+    byId("content").replaceChildren(el("p", { class: "muted" }, w.noAddress));
     return;
   }
   try {
     const result = await ask<CheckResult | null>({ type: "verdict-for", url: target });
-    if (!result) throw new Error("This address could not be checked.");
+    if (!result) throw new Error(w.notChecked);
     render(target, result);
   } catch (error) {
     byId("content").replaceChildren(
-      el("h1", {}, "SENTINEL stopped this page"),
+      el("h1", {}, w.stopped),
       el("p", { class: "muted" }, error instanceof Error ? error.message : String(error)),
-      el("div", { class: "primary-actions" }, el("button", { type: "button", onclick: () => history.back() }, "Go back")),
+      el("div", { class: "primary-actions" }, el("button", { type: "button", onclick: () => history.back() }, w.back)),
     );
   }
 }

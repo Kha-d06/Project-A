@@ -8,6 +8,13 @@ The SENTINEL browser extension (Chrome and Microsoft Edge, Manifest V3).
 - **Warning page.** Shows the domain, the risk level, the evidence and the source. "Go back to safety" returns to the last page the tab opened without a warning. A proceed option sits behind "I understand the risk" and lasts for the browser session; it is not offered for sites on your own block list.
 - **Downloads.** Pauses a download from a known dangerous source, or one with a disguised name, and lets you cancel or keep it.
 - **Context menu.** "Scan link with SENTINEL" and "Check this page with SENTINEL".
+- **Pre-load blocking.** Downloads SENTINEL's list of known malicious domains (`GET /extension/blocklist`, up to 4,500 domains from ThreatFox and moderator-verified reports; whole-host listings only, never shared hosting) every six hours and installs it as `declarativeNetRequest` block rules, together with your own block list. Listed domains are stopped inside the browser before any request is made, and the warning page is shown instead. "Continue anyway" adds a session-only allow rule for that domain. Your allow list always wins.
+- **On-screen assistant (optional, off by default).** A small SENTINEL button in the corner of pages:
+  - a warning bubble on dangerous or suspicious sites, and a second warning when you click into a password field there;
+  - the site's cookies (names, owning domain, first or third party, lifetime; never values) and known advertising and analytics trackers it loaded;
+  - questions answered by the server's AI provider (`POST /extension/assistant`, sending only the domain, verdict, warning titles, cookie names and tracker names) or, if none is configured, built-in answers grounded in the same facts.
+  Turning it on requests `scripting`, `cookies` and access to web pages.
+- **English and Arabic.** Follows the browser's language, or the choice in settings; Arabic is laid out right to left.
 - **Hover checks (optional, off by default).** Shows a warning next to dangerous links. Turning it on requests the `scripting` permission and access to web pages.
 - **Popup.** Shows protection state, the current site's verdict and when it was checked, recent alerts, pause and resume, a full-scan shortcut, and links to settings and the dashboard.
 - **Settings.** Privacy mode (send only domains), allow and block lists, a local alert history, cache clearing, account linking and the server address.
@@ -34,6 +41,7 @@ Then open `chrome://extensions` (or `edge://extensions`), turn on Developer mode
 
 ```bash
 npm run typecheck && npm test          # unit tests with an in-memory chrome.* fake
+npm run test:e2e                       # Chromium + a mock API: pre-load blocking, assistant, Arabic
 # End to end in Chromium, against a running stack with test fixtures loaded:
 SENTINEL_SERVER=http://localhost:3000 npm run build
 SENTINEL_SERVER=http://localhost:3000 node test/e2e.mjs
@@ -48,9 +56,13 @@ The end-to-end test covers:
 - popup alerts, and pause and resume;
 - linking with a code, event sync, and revocation from the dashboard.
 
+`test:e2e` builds a test variant (`SENTINEL_TEST_BUILD=1`) that grants the optional permissions up front, because automated browsers cannot click permission prompts, and leaves the assistant's shadow root open for inspection. Never publish that build.
+
 ## Limits
 
-- **Pages can start loading.** Manifest V3 extensions cannot hold a navigation while waiting for a network answer, so a dangerous page may begin loading briefly before the warning replaces it.
+- **Pages can start loading.** Domains on the downloaded blocklist are stopped before loading. For everything else, Manifest V3 extensions cannot hold a navigation while waiting for a network answer, so a dangerous page may begin loading briefly before the warning replaces it.
+- **Trackers.** The assistant recognises about 45 well-known tracker domains; it is not a full tracker blocklist.
 - **Downloads.** Extensions cannot read downloaded file contents, only the source address and file name. Small files may finish before they can be paused.
 - **Context menu and downloads are not covered end to end.** Both rely on browser UI that the automated test cannot reach; their logic is unit-tested.
 - **Firefox.** It needs a separate manifest and has not been tested.
+- **Store publishing** needs the operator's own Chrome Web Store, Edge Add-ons and Firefox Add-ons developer accounts.

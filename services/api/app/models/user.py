@@ -33,6 +33,8 @@ class UserSettings(Base):
     )
     # When off, scans submitted while signed in are not attached to the account.
     save_scan_history: Mapped[bool] = mapped_column(default=True)
+    # Off by default: linked extensions only record warnings to the account if asked to.
+    sync_extension_events: Mapped[bool] = mapped_column(default=False, server_default="false")
 
     user: Mapped[User] = relationship(back_populates="settings")
 

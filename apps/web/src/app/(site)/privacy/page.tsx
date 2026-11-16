@@ -43,6 +43,15 @@ export default function PrivacyPage() {
         <p>Uploaded files are never sent to any third party.</p>
       </section>
       <section>
+        <h2>The browser extension</h2>
+        <ul>
+          <li>For each page you open, SENTINEL Protect sends its address (or, in privacy mode, only the domain) to the SENTINEL server. The server answers from its local threat database and stores nothing about the request.</li>
+          <li>It never sends page content, form contents, passwords or messages. Private-network and local addresses are not sent at all.</li>
+          <li>Recent alerts, your lists and settings are stored only in your browser.</li>
+          <li>If you link it to an account and turn on warning history, the domain, the verdict and what you chose are saved to your account. You can delete that history at any time.</li>
+        </ul>
+      </section>
+      <section>
         <h2>Your controls</h2>
         <p>
           In your account settings you can stop saving scans to your history, export everything

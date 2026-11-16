@@ -1,0 +1,10 @@
+body { width: 340px; }
+.popup { padding: 14px 16px 12px; }
+.section-title { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-faint); }
+.alerts { list-style: none; margin: 0; padding: 0; }
+.alerts li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.alerts li:first-child { border-top: 0; }
+.alerts .host { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; border: 1px solid; white-space: nowrap; }
+footer { padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }

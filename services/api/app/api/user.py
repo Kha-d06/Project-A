@@ -10,7 +10,7 @@ from app.core import rate_limit
 from app.core.errors import ApiError
 from app.core.rate_limit import RateLimit
 from app.core.security import hash_password, verify_password
-from app.models import AuditEvent, ScanJob, UserSession
+from app.models import AuditEvent, ExtensionEvent, ExtensionInstallation, ScanJob, UserSession
 from app.models.base import utcnow
 from app.scans import service
 from app.schemas.auth import (
@@ -49,8 +49,9 @@ def update_settings(body: SettingsUpdate, user: RequiredUser, db: Db) -> Profile
     changes = body.model_dump(exclude_unset=True)
     if "display_name" in changes:
         user.display_name = (changes["display_name"] or "").strip() or None
-    if changes.get("save_scan_history") is not None:
-        user.settings.save_scan_history = changes["save_scan_history"]
+    for setting in ("save_scan_history", "sync_extension_events"):
+        if changes.get(setting) is not None:
+            setattr(user.settings, setting, changes[setting])
     db.commit()
     return _profile(user)
 
@@ -149,6 +150,26 @@ def export_data(user: RequiredUser, db: Db) -> dict[str, Any]:
                 }
             ).model_dump(mode="json")
             for job in scans
+        ],
+        "extension_installations": [
+            {
+                "browser": installation.browser,
+                "version": installation.version,
+                "linked_at_or_created": installation.created_at.isoformat(),
+                "last_seen": installation.last_seen_at.isoformat(),
+                "revoked": installation.revoked_at.isoformat() if installation.revoked_at else None,
+            }
+            for installation in db.scalars(
+                select(ExtensionInstallation).where(ExtensionInstallation.user_id == user.id)
+            )
+        ],
+        "extension_events": [
+            {"kind": e.kind, "host": e.host, "verdict": e.verdict, "at": e.created_at.isoformat()}
+            for e in db.scalars(
+                select(ExtensionEvent)
+                .where(ExtensionEvent.user_id == user.id)
+                .order_by(ExtensionEvent.created_at)
+            )
         ],
         "account_activity": [
             {

@@ -15,10 +15,10 @@ Every result is one of four verdicts, used consistently in the API and the UI:
 
 Nothing is ever reported as "safe".
 
-> **Status: Phase 1 (foundation and MVP).** The link, message and file scanners,
-> accounts, dashboard and history work end to end. The browser extension, QR and
-> APK analysis, AI explanations, community reports and the Arabic interface are
-> later phases (see [Roadmap](#roadmap)). The code has tests but has not had an
+> **Status: Phases 1 and 2.** The link, message and file scanners, accounts,
+> dashboard, history and the SENTINEL Protect browser extension work end to end.
+> QR and APK analysis, AI explanations, community reports and the Arabic interface
+> are later phases (see [Roadmap](#roadmap)). The code has tests but has not had an
 > independent security review, so it is not yet production-ready.
 
 ## What works today
@@ -50,12 +50,22 @@ Files are never opened or executed, and they are deleted when the scan finishes.
 - per-scan deletion and a JSON report download;
 - settings to switch history off, export all data, change the password (other sessions are signed out) and delete the account.
 
+**SENTINEL Protect browser extension** (`apps/extension`, Chrome and Edge, Manifest V3):
+- warns before known dangerous sites and convincing imitations load, with evidence and a way back;
+- pauses risky downloads, adds a right-click "Scan link with SENTINEL", and offers optional hover checks;
+- has pause and resume, allow and block lists, and a privacy mode that sends only domains;
+- works without an account, enrolling anonymously with short-lived tokens, and can be linked to one with a one-time code;
+- reports a check it cannot complete as "Check unavailable", never as clean.
+
+See [apps/extension/README.md](apps/extension/README.md).
+
 **Honesty about providers.** `/api/v1/system/providers` reports which checks this deployment can run. The landing page shows that list live, and every report lists each check as completed, unavailable, failed or skipped.
 
 ## Repository layout
 
 ```text
 apps/web/                 Next.js website and dashboard (App Router, TypeScript, Tailwind)
+apps/extension/           SENTINEL Protect browser extension (Manifest V3, TypeScript, esbuild)
 services/api/             FastAPI service, Celery worker and scheduler (one Python package)
   app/analyzers/          URL, message and file analysis, verdict rules, SSRF-safe fetcher
   app/intel/              Threat-feed import, indicator lookup, provider adapters
@@ -159,7 +169,7 @@ CI runs all of this plus migrations against PostgreSQL, `alembic check`,
 
 ## Roadmap
 
-1. **Phase 2.** SENTINEL Protect, a Manifest V3 browser extension: device enrollment, automatic site checks, warning interstitial, context-menu scans, privacy controls.
+1. **Phase 2 (done).** SENTINEL Protect browser extension.
 2. **Phase 3.** QR decoding, YARA rules, website analysis, APK static analysis (MobSF), optional AI explanations, download reputation checks.
 3. **Phase 4.** Threat-intelligence centre, community reports with moderation, admin area, Arabic interface with RTL layout.
 4. **Phase 5.** Android app, organisation tools, public API, more browsers and intelligence sources.

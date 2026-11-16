@@ -1,5 +1,7 @@
 import type {
   Activity,
+  ExtensionEvent,
+  Installation,
   Overview,
   Profile,
   ProviderStatus,
@@ -167,7 +169,11 @@ export const api = {
   },
   user: {
     profile: () => request<Profile>("/user/profile"),
-    updateSettings: (body: { display_name?: string | null; save_scan_history?: boolean }) =>
+    updateSettings: (body: {
+      display_name?: string | null;
+      save_scan_history?: boolean;
+      sync_extension_events?: boolean;
+    }) =>
       request<Profile>("/user/settings", { method: "PATCH", json: body }),
     changePassword: (body: { current_password: string; new_password: string }) =>
       request<void>("/user/password", { method: "POST", json: body }),
@@ -176,6 +182,15 @@ export const api = {
     exportData: () => request<Record<string, unknown>>("/user/export"),
     deleteAccount: (password: string) =>
       request<void>("/user/account", { method: "DELETE", json: { password } }),
+  },
+  extension: {
+    createLinkCode: () =>
+      request<{ code: string; expires_at: string }>("/extension/link-codes", { method: "POST" }),
+    installations: () => request<Installation[]>("/extension/installations"),
+    revoke: (id: string) =>
+      request<void>(`/extension/installations/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    events: () => request<ExtensionEvent[]>("/extension/events"),
+    clearEvents: () => request<void>("/extension/events", { method: "DELETE" }),
   },
   system: {
     providers: () => request<ProviderStatus[]>("/system/providers"),

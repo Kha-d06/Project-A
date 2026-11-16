@@ -1,0 +1,14 @@
+.warning { max-width: 620px; margin: 0 auto; padding: 56px 20px; display: grid; gap: 28px; }
+.headline { display: flex; gap: 16px; align-items: flex-start; }
+.icon { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; flex: none; }
+.icon svg { width: 26px; height: 26px; }
+.headline h1 { font-size: 26px; letter-spacing: -0.01em; }
+.host { font-size: 15px; }
+.reasons { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.reasons li { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+.reasons strong { display: block; margin-bottom: 2px; }
+.primary-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.primary-actions button { height: 42px; padding: 0 20px; font-size: 15px; }
+details { border-top: 1px solid var(--line); padding-top: 14px; }
+summary { cursor: pointer; color: var(--ink-muted); }
+details .stack { margin-top: 12px; }

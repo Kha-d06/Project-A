@@ -80,7 +80,9 @@ export function ScanCenter({ reportBase }: { reportBase: string }) {
         className="space-y-5 p-5 sm:p-7"
       >
         <p className="text-sm text-ink-muted">{activeTab.blurb}</p>
-        {active === "url" && <UrlScanForm reportBase={reportBase} />}
+        {active === "url" && (
+          <UrlScanForm reportBase={reportBase} initialUrl={params.get("url")?.slice(0, 2048) ?? ""} />
+        )}
         {active === "message" && <MessageScanForm reportBase={reportBase} />}
         {active === "file" && <FileScanForm reportBase={reportBase} />}
       </div>

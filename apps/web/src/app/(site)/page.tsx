@@ -208,11 +208,11 @@ export default function HomePage() {
       <Section
         id="browser-protection"
         eyebrow="Browser protection"
-        title="SENTINEL Protect is in development"
-        intro="A browser extension that checks the sites you visit and warns you about known dangerous ones is the next part of the project. It is not released yet."
+        title="Warnings before a dangerous page loads"
+        intro="SENTINEL Protect checks the sites you open against the same threat database and look-alike detection, warns you before known dangerous ones, pauses risky downloads, and adds “Scan link with SENTINEL” to the right-click menu. It works without an account."
       >
         <ButtonLink href="/browser-protection" variant="secondary">
-          See what it will do
+          Get the extension
         </ButtonLink>
       </Section>
 

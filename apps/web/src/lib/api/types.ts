@@ -32,7 +32,7 @@ export interface SessionStatus {
 
 export interface Profile {
   user: User;
-  settings: { save_scan_history: boolean };
+  settings: { save_scan_history: boolean; sync_extension_events: boolean };
 }
 
 export interface Finding {
@@ -105,6 +105,21 @@ export interface ProviderStatus {
   status: "active" | "not_configured" | "degraded" | "awaiting_first_sync";
   detail: string;
   shares_data: string;
+}
+
+export interface Installation {
+  id: string;
+  browser: string;
+  version: string;
+  created_at: string;
+  last_seen_at: string;
+}
+
+export interface ExtensionEvent {
+  kind: "warning_shown" | "went_back" | "proceeded" | "download_warning" | "link_checked";
+  host: string;
+  verdict: "dangerous" | "suspicious" | "caution" | "no_known_threat" | "unavailable";
+  created_at: string;
 }
 
 export interface FieldError {

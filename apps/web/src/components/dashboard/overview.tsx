@@ -9,7 +9,7 @@ import { Alert } from "@/components/ui/alert";
 import { ButtonLink } from "@/components/ui/button";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { ApiError, api } from "@/lib/api/client";
-import type { Activity, Overview as OverviewData, Profile, RiskLevel } from "@/lib/api/types";
+import type { Activity, Installation, Overview as OverviewData, Profile, RiskLevel } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
 import { formatRelative } from "@/lib/format";
 import { RISK, TONE_CLASSES } from "@/lib/risk";
@@ -33,6 +33,7 @@ interface Loaded {
   overview: OverviewData;
   activity: Activity[];
   profile: Profile;
+  installations: Installation[];
 }
 
 function RiskBreakdown({ overview }: { overview: OverviewData }) {
@@ -81,6 +82,38 @@ function recommendations({ overview, profile }: Loaded): string[] {
   return tips;
 }
 
+function ExtensionStatus({ installations }: { installations: Installation[] }) {
+  const latest = installations[0];
+  if (!latest) {
+    return (
+      <div className="space-y-2 text-sm">
+        <p className="font-medium text-ink">No browser linked to this account</p>
+        <p className="text-ink-muted">
+          SENTINEL Protect may still be running without an account, but this dashboard cannot see
+          it. Link it to list it here.
+        </p>
+        <a href="/dashboard/browser-protection" className="inline-block font-medium text-accent hover:underline">
+          Set up browser protection
+        </a>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2 text-sm">
+      <p className="font-medium text-ink">
+        {installations.length} browser{installations.length === 1 ? "" : "s"} linked
+      </p>
+      <p className="text-ink-muted">
+        Most recently active {formatRelative(latest.last_seen_at)}. A browser that has not been active
+        recently may be closed, paused or uninstalled.
+      </p>
+      <a href="/dashboard/browser-protection" className="inline-block font-medium text-accent hover:underline">
+        Manage browsers
+      </a>
+    </div>
+  );
+}
+
 function EmptyOverview() {
   return (
     <Panel className="px-6 py-12 text-center">
@@ -105,8 +138,8 @@ export function Overview() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([api.user.overview(), api.user.activity(), api.user.profile()])
-      .then(([overview, activity, profile]) => setData({ overview, activity, profile }))
+    Promise.all([api.user.overview(), api.user.activity(), api.user.profile(), api.extension.installations()])
+      .then(([overview, activity, profile, installations]) => setData({ overview, activity, profile, installations }))
       .catch((caught: unknown) =>
         setError(caught instanceof ApiError ? caught.message : "The overview could not be loaded."),
       );
@@ -165,14 +198,7 @@ export function Overview() {
               <PanelHeader title="Browser protection" />
               <div className="flex gap-4 px-5 py-5">
                 <Puzzle aria-hidden className="mt-0.5 size-5 shrink-0 text-ink-faint" />
-                <div className="space-y-2 text-sm">
-                  <p className="font-medium text-ink">No extension connected</p>
-                  <p className="text-ink-muted">
-                    The SENTINEL Protect extension is still in development, so there is nothing to
-                    connect yet. Until it is released, browsing is not being checked.
-                  </p>
-                  <a href="/browser-protection" className="inline-block font-medium text-accent hover:underline">What it will do</a>
-                </div>
+                <ExtensionStatus installations={data.installations} />
               </div>
             </Panel>
           </div>

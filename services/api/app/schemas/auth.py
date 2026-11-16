@@ -54,6 +54,7 @@ class SettingsOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     save_scan_history: bool
+    sync_extension_events: bool
 
 
 class ProfileOut(BaseModel):
@@ -64,6 +65,7 @@ class ProfileOut(BaseModel):
 class SettingsUpdate(BaseModel):
     display_name: str | None = Field(default=None, max_length=80)
     save_scan_history: bool | None = None
+    sync_extension_events: bool | None = None
 
 
 class PasswordChange(BaseModel):

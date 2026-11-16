@@ -50,9 +50,10 @@ function SubmissionError({ error }: { error: ApiError | null }) {
   );
 }
 
-export function UrlScanForm({ reportBase }: { reportBase: string }) {
+export function UrlScanForm({ reportBase, initialUrl = "" }: { reportBase: string; initialUrl?: string }) {
   const { pending, error, submit } = useScanSubmission(reportBase);
-  const [url, setUrl] = useState("");
+  // Prefilled (never auto-submitted) when the browser extension sends a link here.
+  const [url, setUrl] = useState(initialUrl);
   const [localError, setLocalError] = useState<string>();
 
   const onSubmit = (event: FormEvent) => {

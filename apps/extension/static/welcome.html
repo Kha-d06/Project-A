@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Welcome to SENTINEL Protect</title>
+  <link rel="stylesheet" href="ui.css" />
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <main class="options">
+    <header class="stack">
+      <span class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2.5 4.5 6.8v8.4c0 7.1 4.9 12.4 11.5 14.3 6.6-1.9 11.5-7.2 11.5-14.3V6.8L16 2.5Z" fill="currentColor"/><path d="M16 6.4 8.3 9.3v5.9c0 4.9 3.2 8.7 7.7 10.3 4.5-1.6 7.7-5.4 7.7-10.3V9.3L16 6.4Z" fill="var(--canvas)"/><rect x="6.5" y="14.2" width="19" height="2.6" rx="1.3" fill="var(--accent)"/><circle cx="16" cy="15.5" r="2.4" fill="currentColor"/></svg> SENTINEL Protect</span>
+      <h1>Protection is on</h1>
+      <p class="muted">SENTINEL now checks the sites you open against its threat database and warns you before a known dangerous page loads. It is free, and it works without an account.</p>
+    </header>
+    <section class="panel stack">
+      <h2>What the permissions are for</h2>
+      <dl class="stack">
+        <div><dt><strong>Read your browsing history</strong> (webNavigation, tabs)</dt><dd class="muted">To see which address each tab is opening so it can be checked. Addresses are sent to the SENTINEL server for checking and are not stored there.</dd></div>
+        <div><dt><strong>Manage your downloads</strong></dt><dd class="muted">To check where a download comes from and pause it if the source is known to be dangerous.</dd></div>
+        <div><dt><strong>Display notifications</strong></dt><dd class="muted">To tell you about a paused download or the result of a link you asked it to check.</dd></div>
+        <div><dt><strong>Context menus and storage</strong></dt><dd class="muted">For “Scan link with SENTINEL”, and to remember your settings in this browser.</dd></div>
+      </dl>
+      <p class="muted">It never reads passwords, form contents, card details, messages or the content of pages. Link checks on hover are off unless you turn them on.</p>
+    </section>
+    <section class="panel stack">
+      <h2>What it cannot do</h2>
+      <p class="muted">It recognises sites that are already known to be malicious, plus strong warning signs such as look-alike domains. A brand-new scam site can pass these checks, and a page may begin loading before the warning appears. It does not replace the security software on your device.</p>
+    </section>
+    <div class="row"><a class="button" id="settings-link" href="options.html">Review settings</a></div>
+  </main>
+</body>
+</html>

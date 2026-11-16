@@ -1,6 +1,6 @@
 "use client";
 
-import { History, LayoutDashboard, LogOut, Menu, ScanSearch, Settings, X } from "lucide-react";
+import { History, LayoutDashboard, LogOut, Menu, Puzzle, ScanSearch, Settings, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
@@ -14,6 +14,7 @@ const NAV = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/dashboard/scan", label: "Scan center", icon: ScanSearch },
   { href: "/dashboard/history", label: "Scan history", icon: History },
+  { href: "/dashboard/browser-protection", label: "Browser protection", icon: Puzzle },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 

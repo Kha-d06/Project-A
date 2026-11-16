@@ -14,7 +14,14 @@
 const API_ORIGIN = process.env.SENTINEL_API_URL ?? "http://localhost:8000";
 const UPSTREAM_TIMEOUT_MS = 90_000;
 
-const FORWARDED_REQUEST_HEADERS = ["accept", "content-type", "content-length", "cookie", "x-csrf-token"];
+const FORWARDED_REQUEST_HEADERS = [
+  "accept",
+  "authorization",
+  "content-type",
+  "content-length",
+  "cookie",
+  "x-csrf-token",
+];
 // Hop-by-hop headers and ones the runtime recomputes for the outgoing response.
 const DROPPED_RESPONSE_HEADERS = new Set(["connection", "keep-alive", "transfer-encoding", "content-encoding", "content-length", "set-cookie"]);
 

@@ -61,6 +61,13 @@ export function setCsrfToken(token: string | null) {
   csrfToken = token;
 }
 
+// The API writes verdict summaries and advice in the language the page is using.
+let requestLocale = "en";
+
+export function setRequestLocale(locale: string) {
+  requestLocale = locale;
+}
+
 function describeNetworkFailure(): ApiError {
   return new ApiError(
     0,
@@ -105,7 +112,7 @@ interface RequestOptions {
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const method = options.method ?? "GET";
-  const headers: Record<string, string> = { Accept: "application/json" };
+  const headers: Record<string, string> = { Accept: "application/json", "Accept-Language": requestLocale };
   if (options.json !== undefined) headers["Content-Type"] = "application/json";
   if (method !== "GET" && csrfToken) headers["X-CSRF-Token"] = csrfToken;
 

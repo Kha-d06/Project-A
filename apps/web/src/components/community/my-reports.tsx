@@ -8,30 +8,32 @@ import { ButtonLink } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { ApiError, api } from "@/lib/api/client";
 import type { CommunityReport } from "@/lib/api/types";
+import { useI18n } from "@/lib/i18n/client";
 
 import { ReportCard } from "./report-status";
 
 export function MyReports() {
+  const { t } = useI18n();
   const [reports, setReports] = useState<CommunityReport[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api.reports.mine().then(setReports, (caught: unknown) =>
-      setError(caught instanceof ApiError ? caught.message : "Your reports could not be loaded."),
+      setError(caught instanceof ApiError ? caught.message : t.community.mineFailed),
     );
-  }, []);
+  }, [t.community.mineFailed]);
 
   return (
     <>
       <PageTitle
-        title="My reports"
-        description="Scams you reported while signed in. Anonymous reports are not listed here."
-        action={<ButtonLink href="/report">Report a scam</ButtonLink>}
+        title={t.community.mine}
+        description={t.community.mineDescription}
+        action={<ButtonLink href="/report">{t.community.title}</ButtonLink>}
       />
       {error && <Alert tone="warning">{error}</Alert>}
       {reports?.length === 0 && (
         <Panel className="px-6 py-10 text-center text-sm text-ink-muted">
-          You have not reported anything yet. If someone tried to scam you, reporting it helps SENTINEL warn others.
+          {t.community.mineEmpty}
         </Panel>
       )}
       <div className="space-y-4">

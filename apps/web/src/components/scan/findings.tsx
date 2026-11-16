@@ -1,17 +1,16 @@
+"use client";
+
 import type { Finding } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
+import { useI18n } from "@/lib/i18n/client";
 import { SEVERITY, TONE_CLASSES } from "@/lib/risk";
 
 import { EvidenceList } from "./evidence";
 
 export function FindingsList({ findings }: { findings: Finding[] }) {
+  const { t } = useI18n();
   if (findings.length === 0) {
-    return (
-      <p className="px-5 py-6 text-sm text-ink-muted">
-        None of the checks below found a warning sign. That is a good sign, but it is not proof:
-        new threats often have not been reported yet.
-      </p>
-    );
+    return <p className="px-5 py-6 text-sm text-ink-muted">{t.report.findingsEmpty}</p>;
   }
   return (
     <ul className="divide-y divide-line">
@@ -32,14 +31,16 @@ export function FindingsList({ findings }: { findings: Finding[] }) {
                 )}
               >
                 <span aria-hidden className={cn("size-1.5 rounded-full bg-current")} />
-                {severity.label}
+                {t.severity[finding.severity]}
               </span>
             </div>
             <div className="min-w-0 space-y-2">
-              <h3 className="font-medium text-ink">{finding.title}</h3>
-              <p className="text-sm leading-relaxed text-ink-muted">{finding.explanation}</p>
+              <h3 className="font-medium text-ink" dir="auto">{finding.title}</h3>
+              <p className="text-sm leading-relaxed text-ink-muted" dir="auto">{finding.explanation}</p>
               <EvidenceList evidence={finding.evidence} />
-              <p className="text-xs text-ink-faint">Source: {finding.source}</p>
+              <p className="text-xs text-ink-faint">
+                {t.report.source} <span dir="auto">{finding.source}</span>
+              </p>
             </div>
           </li>
         );

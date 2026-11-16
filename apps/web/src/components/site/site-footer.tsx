@@ -1,56 +1,57 @@
+"use client";
+
 import Link from "next/link";
 
 import { Logo } from "@/components/brand/logo";
+import { LanguageSwitch } from "@/components/site/language-switch";
 import { ThemeToggle } from "@/components/site/theme-toggle";
-
-const COLUMNS = [
-  {
-    title: "Tools",
-    links: [
-      { href: "/scan?type=url", label: "Link scanner" },
-      { href: "/scan?type=message", label: "Message scanner" },
-      { href: "/scan?type=file", label: "File scanner" },
-      { href: "/scan?type=qr", label: "QR scanner" },
-      { href: "/scan?type=website", label: "Website analyzer" },
-      { href: "/scan?type=apk", label: "Android app analyzer" },
-      { href: "/browser-protection", label: "Browser protection" },
-      { href: "/intelligence", label: "Threat intelligence" },
-      { href: "/report", label: "Report a scam" },
-    ],
-  },
-  {
-    title: "Project",
-    links: [
-      { href: "/about", label: "About" },
-      { href: "/docs", label: "Documentation" },
-      { href: "/about#contact", label: "Contact" },
-    ],
-  },
-  {
-    title: "Policies",
-    links: [
-      { href: "/privacy", label: "Privacy" },
-      { href: "/terms", label: "Terms" },
-      { href: "/about#limits", label: "Detection limits" },
-    ],
-  },
-];
+import { useI18n } from "@/lib/i18n/client";
 
 export function SiteFooter() {
+  const { t } = useI18n();
+  const columns = [
+    {
+      title: t.footer.tools,
+      links: [
+        { href: "/scan?type=url", label: t.scanners.url },
+        { href: "/scan?type=message", label: t.scanners.message },
+        { href: "/scan?type=file", label: t.scanners.file },
+        { href: "/scan?type=qr", label: t.scanners.qr },
+        { href: "/scan?type=website", label: t.scanners.website },
+        { href: "/scan?type=apk", label: t.scanners.apk },
+        { href: "/browser-protection", label: t.nav.browserProtection },
+        { href: "/intelligence", label: t.footer.intelligence },
+        { href: "/report", label: t.footer.report },
+      ],
+    },
+    {
+      title: t.footer.project,
+      links: [
+        { href: "/about", label: t.footer.about },
+        { href: "/docs", label: t.footer.docs },
+        { href: "/about#contact", label: t.footer.contact },
+      ],
+    },
+    {
+      title: t.footer.policies,
+      links: [
+        { href: "/privacy", label: t.footer.privacy },
+        { href: "/terms", label: t.footer.terms },
+        { href: "/about#limits", label: t.footer.limits },
+      ],
+    },
+  ];
+
   return (
     <footer className="border-t border-line bg-surface">
       <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 md:grid-cols-[1.4fr_repeat(3,1fr)]">
         <div className="space-y-3">
           <Logo />
-          <p className="max-w-xs text-sm text-ink-muted">
-            Free tools for checking links, messages and files before you trust them.
-          </p>
+          <p className="max-w-xs text-sm text-ink-muted">{t.footer.tagline}</p>
         </div>
-        {COLUMNS.map((column) => (
+        {columns.map((column) => (
           <div key={column.title}>
-            <h2 className="text-xs font-semibold tracking-wider text-ink-faint uppercase">
-              {column.title}
-            </h2>
+            <h2 className="text-xs font-semibold tracking-wider text-ink-faint uppercase">{column.title}</h2>
             <ul className="mt-3 space-y-2">
               {column.links.map((link) => (
                 <li key={link.href}>
@@ -65,8 +66,11 @@ export function SiteFooter() {
       </div>
       <div className="border-t border-line">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-5 text-sm text-ink-faint sm:px-6">
-          <p>SENTINEL is free for everyone. There are no paid plans.</p>
-          <ThemeToggle />
+          <p>{t.footer.free}</p>
+          <div className="flex items-center gap-2">
+            <LanguageSwitch />
+            <ThemeToggle />
+          </div>
         </div>
       </div>
     </footer>

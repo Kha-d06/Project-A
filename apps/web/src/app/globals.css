@@ -145,6 +145,28 @@
     background: var(--canvas);
     color: var(--ink);
     font-family: var(--font-sans);
+  }
+  /* Arabic: a typeface drawn for Arabic script, slightly larger line height for its
+     taller letterforms, and no Latin-only letter-spacing on headings. */
+  :lang(ar) body,
+  :lang(ar) .font-display {
+    font-family: "Noto Sans Arabic Variable", var(--font-sans);
+  }
+  :lang(ar) body {
+    line-height: 1.7;
+  }
+  :lang(ar) h1,
+  :lang(ar) h2,
+  :lang(ar) .tracking-\[0\.16em\] {
+    letter-spacing: 0;
+  }
+  /* Addresses, hashes and codes are always left-to-right, even inside Arabic text. */
+  [dir="rtl"] .font-mono {
+    direction: ltr;
+    unicode-bidi: isolate;
+    text-align: right;
+  }
+  body {
     font-feature-settings: "cv11", "ss01";
     -webkit-font-smoothing: antialiased;
   }

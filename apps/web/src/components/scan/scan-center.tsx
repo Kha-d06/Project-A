@@ -5,6 +5,7 @@ import { useRef, type KeyboardEvent } from "react";
 
 import type { ScanType } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
+import { useI18n } from "@/lib/i18n/client";
 
 import { ApkScanForm, FileScanForm, MessageScanForm, QrScanForm, SCAN_TABS, UrlScanForm } from "./scan-forms";
 
@@ -20,11 +21,15 @@ export function ScanCenter({ reportBase }: { reportBase: string }) {
   const requested = params.get("type");
   const active: ScanType = isScanType(requested) ? requested : "url";
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const { t, locale } = useI18n();
 
   const select = (type: ScanType) => router.replace(`${pathname}?type=${type}`, { scroll: false });
 
   const onKeyDown = (event: KeyboardEvent, index: number) => {
-    const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+    // Arrow keys follow reading direction, so they are mirrored in right-to-left layouts.
+    const forward = locale === "ar" ? "ArrowLeft" : "ArrowRight";
+    const backward = locale === "ar" ? "ArrowRight" : "ArrowLeft";
+    const step = event.key === forward ? 1 : event.key === backward ? -1 : 0;
     if (!step) return;
     event.preventDefault();
     const next = (index + step + SCAN_TABS.length) % SCAN_TABS.length;
@@ -34,11 +39,10 @@ export function ScanCenter({ reportBase }: { reportBase: string }) {
     tabRefs.current[next]?.focus();
   };
 
-  const activeTab = SCAN_TABS.find((tab) => tab.type === active) ?? SCAN_TABS[0]!;
 
   return (
     <div className="overflow-hidden rounded-panel border border-line bg-surface shadow-raised">
-      <div role="tablist" aria-label="What do you want to check?" className="grid grid-cols-3 border-b border-line sm:grid-cols-6">
+      <div role="tablist" aria-label={t.scan.tablist} className="grid grid-cols-3 border-b border-line sm:grid-cols-6">
         {SCAN_TABS.map((tab, index) => {
           const selected = tab.type === active;
           return (
@@ -61,7 +65,7 @@ export function ScanCenter({ reportBase }: { reportBase: string }) {
               )}
             >
               <tab.icon aria-hidden className={cn("size-4", selected && "text-accent")} />
-              {tab.label}
+              {t.scanTypes[tab.type]}
               <span
                 aria-hidden
                 className={cn(
@@ -79,7 +83,7 @@ export function ScanCenter({ reportBase }: { reportBase: string }) {
         aria-labelledby={`tab-${active}`}
         className="space-y-5 p-5 sm:p-7"
       >
-        <p className="text-sm text-ink-muted">{activeTab.blurb}</p>
+        <p className="text-sm text-ink-muted">{t.scan.blurbs[active]}</p>
         {active === "url" && (
           <UrlScanForm reportBase={reportBase} initialUrl={params.get("url")?.slice(0, 2048) ?? ""} />
         )}

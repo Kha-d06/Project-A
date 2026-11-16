@@ -1,16 +1,20 @@
+"use client";
+
 import { CircleCheck, CircleDashed, CircleMinus, CircleX } from "lucide-react";
 
 import type { Check, CheckStatus } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
+import { useI18n } from "@/lib/i18n/client";
 
-const STATUS: Record<CheckStatus, { label: string; icon: typeof CircleCheck; className: string }> = {
-  completed: { label: "Completed", icon: CircleCheck, className: "text-accent" },
-  unavailable: { label: "Unavailable", icon: CircleDashed, className: "text-warning" },
-  failed: { label: "Could not complete", icon: CircleX, className: "text-warning" },
-  skipped: { label: "Not applicable", icon: CircleMinus, className: "text-ink-faint" },
+const STATUS: Record<CheckStatus, { icon: typeof CircleCheck; className: string }> = {
+  completed: { icon: CircleCheck, className: "text-accent" },
+  unavailable: { icon: CircleDashed, className: "text-warning" },
+  failed: { icon: CircleX, className: "text-warning" },
+  skipped: { icon: CircleMinus, className: "text-ink-faint" },
 };
 
 export function ChecksList({ checks }: { checks: Check[] }) {
+  const { t } = useI18n();
   return (
     <ul className="divide-y divide-line">
       {checks.map((check) => {
@@ -20,13 +24,13 @@ export function ChecksList({ checks }: { checks: Check[] }) {
             <status.icon aria-hidden className={cn("mt-0.5 size-4 shrink-0", status.className)} />
             <div className="min-w-0 flex-1 space-y-0.5">
               <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-                <p className="text-sm font-medium text-ink">{check.label}</p>
+                <p className="text-sm font-medium text-ink" dir="auto">{check.label}</p>
                 <p className="text-xs text-ink-faint">
-                  <span className="sr-only">Status: </span>
-                  {status.label}
+                  <span className="sr-only">{t.checkStatus.prefix} </span>
+                  {t.checkStatus[check.status]}
                 </p>
               </div>
-              <p className="text-sm text-ink-muted">{check.detail}</p>
+              <p className="text-sm text-ink-muted" dir="auto">{check.detail}</p>
               <p className="text-xs text-ink-faint">{check.provider}</p>
             </div>
           </li>

@@ -11,6 +11,7 @@ import { ApiError, api } from "@/lib/api/client";
 import type { Scan, ScanType } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
 import { formatBytes } from "@/lib/format";
+import { useI18n } from "@/lib/i18n/client";
 
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_MESSAGE_LENGTH = 10_000;
@@ -23,6 +24,7 @@ interface SubmitState {
 
 function useScanSubmission(reportBase: string) {
   const router = useRouter();
+  const { t } = useI18n();
   const [state, setState] = useState<SubmitState>({ pending: false, error: null });
 
   const submit = async (start: () => Promise<Scan>) => {
@@ -33,7 +35,7 @@ function useScanSubmission(reportBase: string) {
     } catch (error) {
       setState({
         pending: false,
-        error: error instanceof ApiError ? error : new ApiError(0, "unknown", "Something went wrong."),
+        error: error instanceof ApiError ? error : new ApiError(0, "unknown", t.scan.errors.generic),
       });
     }
   };
@@ -41,8 +43,9 @@ function useScanSubmission(reportBase: string) {
 }
 
 function SubmissionError({ error }: { error: ApiError | null }) {
+  const { t } = useI18n();
   if (!error || error.code === "validation_error") return null;
-  const title = error.code === "rate_limited" ? "Please slow down" : "The scan could not start";
+  const title = error.code === "rate_limited" ? t.scan.errors.slowDown : t.scan.errors.couldNotStart;
   return (
     <Alert tone="warning" title={title}>
       {error.message}
@@ -60,6 +63,7 @@ export function UrlScanForm({
   mode?: "link" | "website";
 }) {
   const { pending, error, submit } = useScanSubmission(reportBase);
+  const { t } = useI18n();
   // Prefilled (never auto-submitted) when the browser extension sends a link here.
   const [url, setUrl] = useState(initialUrl);
   const [localError, setLocalError] = useState<string>();
@@ -67,7 +71,7 @@ export function UrlScanForm({
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
     if (!url.trim()) {
-      setLocalError("Enter a link to check.");
+      setLocalError(t.scan.link.empty);
       return;
     }
     setLocalError(undefined);
@@ -77,12 +81,8 @@ export function UrlScanForm({
   return (
     <form onSubmit={onSubmit} noValidate className="space-y-4">
       <Field
-        label={mode === "website" ? "Website address" : "Link to check"}
-        hint={
-          mode === "website"
-            ? "SENTINEL fetches the page from its own server and reads it as text, without running its scripts. DNS records are checked too."
-            : "Paste the full address. SENTINEL checks it from its own server; your browser never opens it."
-        }
+        label={mode === "website" ? t.scan.link.websiteLabel : t.scan.link.label}
+        hint={mode === "website" ? t.scan.link.websiteHint : t.scan.link.hint}
         error={localError ?? error?.fieldErrors().url}
       >
         {(props) => (
@@ -101,7 +101,7 @@ export function UrlScanForm({
       </Field>
       <SubmissionError error={error} />
       <Button type="submit" size="lg" pending={pending} className="w-full sm:w-auto">
-        {pending ? "Starting scan" : mode === "website" ? "Analyse website" : "Check link"}
+        {pending ? t.scan.link.starting : mode === "website" ? t.scan.link.websiteSubmit : t.scan.link.submit}
       </Button>
     </form>
   );
@@ -109,13 +109,14 @@ export function UrlScanForm({
 
 export function MessageScanForm({ reportBase }: { reportBase: string }) {
   const { pending, error, submit } = useScanSubmission(reportBase);
+  const { t } = useI18n();
   const [content, setContent] = useState("");
   const [localError, setLocalError] = useState<string>();
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
     if (content.trim().length < MIN_MESSAGE_LENGTH) {
-      setLocalError("Paste the full message so there is enough text to analyse.");
+      setLocalError(t.scan.message.tooShort);
       return;
     }
     setLocalError(undefined);
@@ -125,12 +126,10 @@ export function MessageScanForm({ reportBase }: { reportBase: string }) {
   return (
     <form onSubmit={onSubmit} noValidate className="space-y-4">
       <Field
-        label="Message text"
+        label={t.scan.message.label}
         hint={
           <>
-            Paste an SMS, WhatsApp message, email, job offer or payment request, in English or
-            Arabic. The text is analysed and then discarded; only the first 80 characters are
-            kept as a label. {content.length > 0 && `${content.length.toLocaleString()} / 10,000`}
+            {t.scan.message.hint} {content.length > 0 && `${content.length.toLocaleString()} / 10,000`}
           </>
         }
         error={localError ?? error?.fieldErrors().content}
@@ -141,7 +140,7 @@ export function MessageScanForm({ reportBase }: { reportBase: string }) {
             name="content"
             dir="auto"
             maxLength={MAX_MESSAGE_LENGTH}
-            placeholder="Your parcel could not be delivered. Pay the 1.99 redelivery fee within 24 hours at…"
+            placeholder={t.scan.message.placeholder}
             value={content}
             onChange={(event) => setContent(event.target.value)}
           />
@@ -149,7 +148,7 @@ export function MessageScanForm({ reportBase }: { reportBase: string }) {
       </Field>
       <SubmissionError error={error} />
       <Button type="submit" size="lg" pending={pending} className="w-full sm:w-auto">
-        {pending ? "Starting analysis" : "Analyse message"}
+        {pending ? t.scan.message.starting : t.scan.message.submit}
       </Button>
     </form>
   );
@@ -169,6 +168,7 @@ interface UploadFormProps {
 
 function UploadScanForm({ reportBase, label, hint, submitLabel, accept, maxBytes, capture, start }: UploadFormProps) {
   const { pending, error, submit } = useScanSubmission(reportBase);
+  const { t } = useI18n();
   const [file, setFile] = useState<File | null>(null);
   const [localError, setLocalError] = useState<string>();
   const [dragging, setDragging] = useState(false);
@@ -180,11 +180,11 @@ function UploadScanForm({ reportBase, label, hint, submitLabel, accept, maxBytes
   const choose = (candidate: File | undefined) => {
     if (!candidate) return;
     if (candidate.size === 0) {
-      setLocalError("That file is empty, so there is nothing to scan.");
+      setLocalError(t.scan.upload.empty);
       return;
     }
     if (candidate.size > maxBytes) {
-      setLocalError(`Files larger than ${formatBytes(maxBytes)} cannot be scanned.`);
+      setLocalError(t.scan.upload.tooLarge(formatBytes(maxBytes)));
       return;
     }
     setLocalError(undefined);
@@ -194,7 +194,7 @@ function UploadScanForm({ reportBase, label, hint, submitLabel, accept, maxBytes
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
     if (!file) {
-      setLocalError("Choose a file to scan.");
+      setLocalError(t.scan.upload.missing);
       return;
     }
     void submit(() => start(file));
@@ -239,7 +239,7 @@ function UploadScanForm({ reportBase, label, hint, submitLabel, accept, maxBytes
                   if (inputRef.current) inputRef.current.value = "";
                 }}
                 className="grid size-8 place-items-center rounded-control text-ink-faint hover:bg-surface hover:text-ink"
-                aria-label="Remove selected file"
+                aria-label={t.scan.upload.remove}
               >
                 <X aria-hidden className="size-4" />
               </button>
@@ -248,13 +248,13 @@ function UploadScanForm({ reportBase, label, hint, submitLabel, accept, maxBytes
             <div className="space-y-2">
               <FileUp aria-hidden className="mx-auto size-6 text-ink-faint" />
               <p className="text-sm text-ink">
-                Drop a file here, or{" "}
+                {t.scan.upload.drop}{" "}
                 <button
                   type="button"
                   onClick={() => inputRef.current?.click()}
                   className="font-medium text-accent underline-offset-4 hover:underline"
                 >
-                  {capture ? "choose or take a photo" : "choose one"}
+                  {capture ? t.scan.upload.choosePhoto : t.scan.upload.choose}
                 </button>
               </p>
             </div>
@@ -284,7 +284,7 @@ function UploadScanForm({ reportBase, label, hint, submitLabel, accept, maxBytes
       </div>
       <SubmissionError error={error?.code === "validation_error" ? null : error} />
       <Button type="submit" size="lg" pending={pending} className="w-full sm:w-auto">
-        {pending ? "Uploading" : submitLabel}
+        {pending ? t.scan.upload.uploading : submitLabel}
       </Button>
     </form>
   );
@@ -294,82 +294,56 @@ export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 export const MAX_APK_BYTES = 100 * 1024 * 1024;
 
 export function FileScanForm({ reportBase }: { reportBase: string }) {
+  const { t } = useI18n();
   return (
     <UploadScanForm
       reportBase={reportBase}
-      label="File to scan"
-      submitLabel="Scan file"
+      label={t.scan.file.label}
+      submitLabel={t.scan.file.submit}
       maxBytes={MAX_FILE_BYTES}
-      hint={`Up to ${formatBytes(MAX_FILE_BYTES)}. The file is inspected without being opened or run, kept in isolated storage only while the scan runs, and then deleted. It is never sent to a third-party service.`}
+      hint={t.scan.file.hint(formatBytes(MAX_FILE_BYTES))}
       start={api.scans.file}
     />
   );
 }
 
 export function QrScanForm({ reportBase }: { reportBase: string }) {
+  const { t } = useI18n();
   return (
     <UploadScanForm
       reportBase={reportBase}
-      label="Photo or screenshot of the QR code"
-      submitLabel="Check QR code"
+      label={t.scan.qr.label}
+      submitLabel={t.scan.qr.submit}
       accept="image/png,image/jpeg,image/gif,image/webp,image/bmp"
       capture
       maxBytes={MAX_IMAGE_BYTES}
-      hint="SENTINEL reads the code and checks where it leads from its own server. The link is never opened on your device, and the image is deleted after the scan."
+      hint={t.scan.qr.hint}
       start={api.scans.qr}
     />
   );
 }
 
 export function ApkScanForm({ reportBase }: { reportBase: string }) {
+  const { t } = useI18n();
   return (
     <UploadScanForm
       reportBase={reportBase}
-      label="Android app file (.apk)"
-      submitLabel="Analyse app"
+      label={t.scan.apk.label}
+      submitLabel={t.scan.apk.submit}
       accept=".apk,application/vnd.android.package-archive"
       maxBytes={MAX_APK_BYTES}
-      hint={`Up to ${formatBytes(MAX_APK_BYTES)}. The app is inspected without being installed or run: permissions, components, embedded addresses and known malware. It is deleted after the scan.`}
+      hint={t.scan.apk.hint(formatBytes(MAX_APK_BYTES))}
       start={api.scans.apk}
     />
   );
 }
 
-export const SCAN_TABS: { type: ScanType; label: string; icon: typeof Link2; blurb: string }[] = [
-  {
-    type: "url",
-    label: "Link",
-    icon: Link2,
-    blurb: "Reputation, redirects, certificate, domain age and look-alike domains.",
-  },
-  {
-    type: "message",
-    label: "Message",
-    icon: MessageSquareText,
-    blurb: "Scam and phishing language in English and Arabic, plus the links inside.",
-  },
-  {
-    type: "file",
-    label: "File",
-    icon: FileUp,
-    blurb: "True file type, disguises, macros, signature rules, archive tricks and known malware.",
-  },
-  {
-    type: "qr",
-    label: "QR code",
-    icon: QrCode,
-    blurb: "Reads a QR code from a photo and checks where it leads or what payment it requests.",
-  },
-  {
-    type: "website",
-    label: "Website",
-    icon: Globe,
-    blurb: "Everything the link scan does, plus DNS and a reading of the page: forms, scripts and imitation of brands.",
-  },
-  {
-    type: "apk",
-    label: "Android app",
-    icon: Smartphone,
-    blurb: "Permissions, components, embedded addresses, known malware and imitation of popular apps.",
-  },
+/** Order and icons of the scanner tabs; labels and descriptions come from the dictionary. */
+export const SCAN_TABS: { type: ScanType; icon: typeof Link2 }[] = [
+  { type: "url", icon: Link2 },
+  { type: "message", icon: MessageSquareText },
+  { type: "file", icon: FileUp },
+  { type: "qr", icon: QrCode },
+  { type: "website", icon: Globe },
+  { type: "apk", icon: Smartphone },
 ];

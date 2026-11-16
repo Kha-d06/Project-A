@@ -1,18 +1,16 @@
+"use client";
+
 import { XCircle } from "lucide-react";
 
 import type { Scan } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
+import { useI18n } from "@/lib/i18n/client";
 import { RISK, TONE_CLASSES } from "@/lib/risk";
 
 import { RiskIcon } from "./risk-badge";
 
-const CONFIDENCE_TEXT = {
-  high: "High confidence",
-  medium: "Moderate confidence",
-  low: "Low confidence",
-} as const;
-
 export function Verdict({ scan }: { scan: Scan }) {
+  const { t } = useI18n();
   if (scan.status === "failed" || !scan.risk) {
     return (
       <div className="flex animate-fade-up gap-4">
@@ -20,10 +18,9 @@ export function Verdict({ scan }: { scan: Scan }) {
           <XCircle aria-hidden className="size-6" />
         </span>
         <div className="space-y-1">
-          <h2 className="font-display text-title font-semibold">The scan could not finish</h2>
+          <h2 className="font-display text-title font-semibold">{t.report.failedTitle}</h2>
           <p className="text-ink-muted">
-            {scan.error ?? "Something went wrong while scanning."} No verdict was reached, so
-            treat the item as unchecked.
+            {scan.error ?? t.report.failedFallback} {t.report.failedBody}
           </p>
         </div>
       </div>
@@ -47,11 +44,9 @@ export function Verdict({ scan }: { scan: Scan }) {
       <div className="space-y-2">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h2 className={cn("font-display text-title font-semibold", tone.text)}>
-            {presentation.label}
+            {t.risk[scan.risk].label}
           </h2>
-          {scan.confidence && (
-            <span className="text-sm text-ink-muted">{CONFIDENCE_TEXT[scan.confidence]}</span>
-          )}
+          {scan.confidence && <span className="text-sm text-ink-muted">{t.confidence[scan.confidence]}</span>}
         </div>
         {scan.summary && <p className="max-w-2xl text-ink">{scan.summary}</p>}
       </div>

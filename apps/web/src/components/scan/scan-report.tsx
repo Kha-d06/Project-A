@@ -13,7 +13,9 @@ import { ApiError, api } from "@/lib/api/client";
 import type { Scan } from "@/lib/api/types";
 import { formatDateTime, formatDuration } from "@/lib/format";
 import { useScan } from "@/lib/hooks/use-scan";
-import { SCAN_TYPE_LABEL, isActive } from "@/lib/risk";
+import { type Dictionary } from "@/lib/i18n/en";
+import { useI18n } from "@/lib/i18n/client";
+import { isActive } from "@/lib/risk";
 import { useSession } from "@/lib/session";
 
 import { AiExplanation } from "./ai-explanation";
@@ -34,19 +36,15 @@ function downloadReport(scan: Scan) {
 
 const WARNING_SEVERITIES = new Set(["critical", "high", "medium"]);
 
-function plural(count: number, word: string) {
-  return `${count} ${word}${count === 1 ? "" : "s"}`;
-}
-
-function describeFindings(warnings: number, notes: number): string {
-  if (warnings === 0 && notes === 0) return "No warning signs";
-  const parts = [warnings ? plural(warnings, "warning sign") : "No warning signs"];
-  if (notes) parts.push(plural(notes, "minor note"));
-  return parts.join(", ");
+function describeFindings(t: Dictionary, separator: string, warnings: number, notes: number): string {
+  const parts = [warnings ? t.report.warningSigns(warnings) : t.report.noWarnings];
+  if (notes) parts.push(t.report.minorNotes(notes));
+  return parts.join(separator);
 }
 
 function ReportActions({ scan, backHref }: { scan: Scan; backHref: string }) {
   const { session } = useSession();
+  const { t } = useI18n();
   const router = useRouter();
   const notify = useToast();
   const [deleting, setDeleting] = useState(false);
@@ -56,11 +54,11 @@ function ReportActions({ scan, backHref }: { scan: Scan; backHref: string }) {
     setDeleting(true);
     try {
       await api.scans.remove(scan.id);
-      notify("success", "The scan and its report were deleted.");
+      notify("success", t.report.deleted);
       router.push(backHref);
     } catch (error) {
       setDeleting(false);
-      notify("error", error instanceof ApiError ? error.message : "The scan could not be deleted.");
+      notify("error", error instanceof ApiError ? error.message : t.report.deleteFailed);
     }
   };
 
@@ -68,12 +66,12 @@ function ReportActions({ scan, backHref }: { scan: Scan; backHref: string }) {
     <div className="flex flex-wrap gap-2">
       <Button variant="secondary" size="sm" onClick={() => downloadReport(scan)}>
         <Download aria-hidden className="size-4" />
-        Download report
+        {t.report.download}
       </Button>
       {canDelete && (
         <Button variant="danger" size="sm" pending={deleting} onClick={remove}>
           <Trash2 aria-hidden className="size-4" />
-          Delete
+          {t.report.delete}
         </Button>
       )}
     </div>
@@ -81,6 +79,7 @@ function ReportActions({ scan, backHref }: { scan: Scan; backHref: string }) {
 }
 
 function ReportBody({ scan, backHref, newScanHref }: { scan: Scan; backHref: string; newScanHref: string }) {
+  const { t, locale } = useI18n();
   const finished = !isActive(scan.status);
   // Same definition as the verdict summary: medium severity and above are warning signs.
   const warnings = scan.findings.filter((finding) => WARNING_SEVERITIES.has(finding.severity)).length;
@@ -90,10 +89,10 @@ function ReportBody({ scan, backHref, newScanHref }: { scan: Scan; backHref: str
     <div className="space-y-6">
       <Panel className="overflow-hidden">
         <div className="space-y-6 p-5 sm:p-7">
-          <h1 className="sr-only">{SCAN_TYPE_LABEL[scan.scan_type]} scan report</h1>
+          <h1 className="sr-only">{t.report.submitted(t.scanTypes[scan.scan_type], formatDateTime(scan.created_at))}</h1>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-ink-muted">
-              {SCAN_TYPE_LABEL[scan.scan_type]} scan · submitted {formatDateTime(scan.created_at)}
+              {t.report.submitted(t.scanTypes[scan.scan_type], formatDateTime(scan.created_at))}
             </p>
             {finished && <ReportActions scan={scan} backHref={backHref} />}
           </div>
@@ -101,6 +100,9 @@ function ReportBody({ scan, backHref, newScanHref }: { scan: Scan; backHref: str
             {scan.target}
           </p>
           {finished ? <Verdict scan={scan} /> : <ScanProgress scan={scan} />}
+          {finished && t.common.findingsInEnglish && scan.findings.length > 0 && (
+            <p className="text-xs text-ink-faint">{t.common.findingsInEnglish}</p>
+          )}
         </div>
       </Panel>
 
@@ -109,17 +111,17 @@ function ReportBody({ scan, backHref, newScanHref }: { scan: Scan; backHref: str
           <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
             <Panel>
               <PanelHeader
-                title="What we found"
-                description={describeFindings(warnings, notes)}
+                title={t.report.found}
+                description={describeFindings(t, locale === "ar" ? "، " : ", ", warnings, notes)}
               />
               <FindingsList findings={scan.findings} />
             </Panel>
             <div className="space-y-6">
               <Panel>
-                <PanelHeader title="What to do next" />
+                <PanelHeader title={t.report.nextSteps} />
                 <ul className="space-y-3 px-5 py-4 text-sm leading-relaxed text-ink">
                   {scan.recommendations.map((item) => (
-                    <li key={item} className="flex gap-2.5">
+                    <li key={item} className="flex gap-2.5" dir="auto">
                       <span aria-hidden className="mt-2 size-1 shrink-0 rounded-full bg-accent" />
                       {item}
                     </li>
@@ -128,10 +130,10 @@ function ReportBody({ scan, backHref, newScanHref }: { scan: Scan; backHref: str
               </Panel>
               {scan.limitations.length > 0 && (
                 <Panel>
-                  <PanelHeader title="Limits of this scan" />
+                  <PanelHeader title={t.report.limits} />
                   <ul className="space-y-2.5 px-5 py-4 text-sm leading-relaxed text-ink-muted">
                     {scan.limitations.map((item) => (
-                      <li key={item}>{item}</li>
+                      <li key={item} dir="auto">{item}</li>
                     ))}
                   </ul>
                 </Panel>
@@ -143,14 +145,14 @@ function ReportBody({ scan, backHref, newScanHref }: { scan: Scan; backHref: str
 
           <Panel>
             <PanelHeader
-              title="Checks performed"
-              description="Every check we attempted, including the ones that could not run."
+              title={t.report.checks}
+              description={t.report.checksDescription}
             />
             <ChecksList checks={scan.checks} />
           </Panel>
 
           <Panel>
-            <PanelHeader title="Technical details" />
+            <PanelHeader title={t.report.technical} />
             <ScanDetails scan={scan} />
           </Panel>
         </>
@@ -158,12 +160,12 @@ function ReportBody({ scan, backHref, newScanHref }: { scan: Scan; backHref: str
 
       <div className="flex flex-wrap items-center justify-between gap-4 text-sm text-ink-faint">
         <p>
-          Scan ID <span className="font-mono">{scan.id}</span>
-          {scan.started_at && scan.completed_at && ` · took ${formatDuration(scan.started_at, scan.completed_at)}`}
-          {!scan.saved_to_history && " · not saved to an account"}
+          {t.report.scanId} <span className="font-mono">{scan.id}</span>
+          {scan.started_at && scan.completed_at && ` · ${t.report.took(formatDuration(scan.started_at, scan.completed_at))}`}
+          {!scan.saved_to_history && ` · ${t.report.notSaved}`}
         </p>
         <ButtonLink href={newScanHref} variant="secondary" size="sm">
-          Scan something else
+          {t.report.scanAgain}
         </ButtonLink>
       </div>
     </div>
@@ -180,6 +182,7 @@ export function ScanReport({
   newScanHref: string;
 }) {
   const state = useScan(scanId);
+  const { t } = useI18n();
 
   return (
     <div className="space-y-6">
@@ -187,26 +190,24 @@ export function ScanReport({
         href={backHref}
         className="inline-flex items-center gap-1.5 text-sm text-ink-muted hover:text-ink"
       >
-        <ArrowLeft aria-hidden className="size-4" />
-        Back
+        <ArrowLeft aria-hidden className="size-4 rtl:rotate-180" />
+        {t.common.back}
       </Link>
       {state.phase === "loading" && (
         <Panel className="p-7" aria-busy>
           <div className="space-y-3">
             <div className="h-4 w-1/3 animate-pulse rounded bg-surface-sunken" />
             <div className="h-8 w-2/3 animate-pulse rounded bg-surface-sunken" />
-            <span className="sr-only">Loading the report</span>
+            <span className="sr-only">{t.report.loading}</span>
           </div>
         </Panel>
       )}
       {state.phase === "error" && (
         <Alert
           tone="warning"
-          title={state.error.status === 404 ? "This report is not available" : "We could not load this report"}
+          title={state.error.status === 404 ? t.report.notAvailableTitle : t.report.loadFailedTitle}
         >
-          {state.error.status === 404
-            ? "It may have been deleted, or it belongs to an account you are not signed in to. Reports for scans made without an account are removed after 30 days."
-            : state.error.message}
+          {state.error.status === 404 ? t.report.notAvailableBody : state.error.message}
         </Alert>
       )}
       {state.phase === "ready" && <ReportBody scan={state.scan} backHref={backHref} newScanHref={newScanHref} />}

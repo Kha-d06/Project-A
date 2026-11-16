@@ -1,8 +1,11 @@
+"use client";
+
 import { CircleHelp, Loader, OctagonAlert, ShieldCheck, TriangleAlert, XCircle } from "lucide-react";
 
 import type { RiskLevel, ScanStatus } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
-import { RISK, STATUS_LABEL, TONE_CLASSES, isActive } from "@/lib/risk";
+import { useI18n } from "@/lib/i18n/client";
+import { RISK, TONE_CLASSES, isActive } from "@/lib/risk";
 
 const RISK_ICON: Record<RiskLevel, typeof ShieldCheck> = {
   known_malicious: OctagonAlert,
@@ -26,13 +29,14 @@ export function RiskBadge({
   status: ScanStatus;
   className?: string;
 }) {
+  const { t } = useI18n();
   const chip = "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium";
 
   if (isActive(status)) {
     return (
       <span className={cn(chip, "border-line-strong text-ink-muted", className)}>
         <Loader aria-hidden className="size-3.5 motion-safe:animate-spin" />
-        {STATUS_LABEL[status]}
+        {t.status[status]}
       </span>
     );
   }
@@ -40,7 +44,7 @@ export function RiskBadge({
     return (
       <span className={cn(chip, "border-line-strong text-ink-muted", className)}>
         <XCircle aria-hidden className="size-3.5" />
-        Scan failed
+        {t.status.scanFailed}
       </span>
     );
   }
@@ -50,7 +54,7 @@ export function RiskBadge({
   return (
     <span className={cn(chip, tone.border, tone.soft, tone.text, className)}>
       <Icon aria-hidden className="size-3.5" />
-      {presentation.short}
+      {t.risk[risk].short}
     </span>
   );
 }

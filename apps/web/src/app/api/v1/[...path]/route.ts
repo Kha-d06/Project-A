@@ -16,6 +16,7 @@ const UPSTREAM_TIMEOUT_MS = 90_000;
 
 const FORWARDED_REQUEST_HEADERS = [
   "accept",
+  "accept-language",
   "authorization",
   "content-type",
   "content-length",

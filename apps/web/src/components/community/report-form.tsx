@@ -9,11 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { ApiError, api } from "@/lib/api/client";
 import type { ReportCategory, ReportCreated } from "@/lib/api/types";
-import { CATEGORY } from "@/lib/community";
+import { useI18n } from "@/lib/i18n/client";
 import { useSession } from "@/lib/session";
 
 export function ReportForm() {
   const { session } = useSession();
+  const { t } = useI18n();
+  const c = t.community;
   const [category, setCategory] = useState<ReportCategory>("website");
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
@@ -26,8 +28,8 @@ export function ReportForm() {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const found: Record<string, string> = {};
-    if (subject.trim().length < 3) found.subject = "Tell us what you are reporting.";
-    if (description.trim().length < 10) found.description = "Describe what happened in a sentence or two.";
+    if (subject.trim().length < 3) found.subject = c.subjectMissing;
+    if (description.trim().length < 10) found.description = c.descriptionMissing;
     setErrors(found);
     if (Object.keys(found).length) return;
     setPending(true);
@@ -40,7 +42,7 @@ export function ReportForm() {
         const fields = caught.fieldErrors();
         setErrors(Object.keys(fields).length ? fields : { form: caught.message });
       } else {
-        setErrors({ form: "The report could not be sent." });
+        setErrors({ form: c.failed });
       }
     } finally {
       setPending(false);
@@ -55,40 +57,38 @@ export function ReportForm() {
       <div className="animate-fade-up space-y-4 rounded-panel border border-line bg-surface p-6" role="status">
         <p className="flex items-center gap-2 font-display text-lg font-semibold text-ink">
           <CheckCircle2 aria-hidden className="size-5 text-accent" />
-          Thank you. Your report was received.
+          {c.thanks}
         </p>
         <p className="text-sm text-ink-muted">
-          A moderator will review it. Reports are not published until they are confirmed, and your own
-          words are never published.
-          {created.similar_reports > 0 &&
-            ` ${created.similar_reports} other ${created.similar_reports === 1 ? "person has" : "people have"} reported the same thing.`}
+          {c.afterSend}
+          {created.similar_reports > 0 && c.others(created.similar_reports)}
         </p>
         {created.tracking_token ? (
-          <Alert title="Keep this link to follow your report">
+          <Alert title={c.keepLink}>
             <span className="break-all">
-              This is the only way to see your report’s status, because it is not linked to an account:{" "}
+              {c.keepLinkBody}{" "}
               <Link className="text-accent underline" href={trackHref}>
-                view report status
+                {c.viewStatus}
               </Link>
             </span>
           </Alert>
         ) : (
           <Link className="text-sm font-medium text-accent underline underline-offset-4" href={trackHref}>
-            See your reports
+            {c.seeReports}
           </Link>
         )}
       </div>
     );
   }
 
-  const info = CATEGORY[category];
+  const info = c.categories[category];
   return (
     <form onSubmit={submit} noValidate className="space-y-5">
       {errors.form && <Alert tone="danger">{errors.form}</Alert>}
-      <Field label="What are you reporting?">
+      <Field label={c.what}>
         {(props) => (
           <Select {...props} value={category} onChange={(event) => setCategory(event.target.value as ReportCategory)} className="w-full">
-            {Object.entries(CATEGORY).map(([value, item]) => (
+            {Object.entries(c.categories).map(([value, item]) => (
               <option key={value} value={value}>
                 {item.label}
               </option>
@@ -96,20 +96,20 @@ export function ReportForm() {
           </Select>
         )}
       </Field>
-      <Field label={info.subjectLabel} error={errors.subject}>
+      <Field label={info.subject} error={errors.subject}>
         {(props) => (
           <Input {...props} value={subject} maxLength={500} placeholder={info.placeholder} onChange={(event) => setSubject(event.target.value)} dir="auto" />
         )}
       </Field>
-      <Field label="What happened?" error={errors.description} hint="For example how you were contacted and what they asked for.">
+      <Field label={c.happened} error={errors.description} hint={c.happenedHint}>
         {(props) => (
           <Textarea {...props} value={description} maxLength={2000} className="min-h-28" onChange={(event) => setDescription(event.target.value)} dir="auto" />
         )}
       </Field>
       <Field
-        label="Evidence (optional)"
+        label={c.evidence}
         error={errors.evidence}
-        hint="Paste the message text or other details. Only moderators can see it. Remove your own personal details first."
+        hint={c.evidenceHint}
       >
         {(props) => (
           <Textarea {...props} value={evidence} maxLength={5000} className="min-h-28" onChange={(event) => setEvidence(event.target.value)} dir="auto" />
@@ -119,13 +119,13 @@ export function ReportForm() {
         <label className="flex items-start gap-3 text-sm">
           <input type="checkbox" className="mt-1 size-4 accent-[var(--accent)]" checked={anonymous} onChange={(event) => setAnonymous(event.target.checked)} />
           <span>
-            <span className="font-medium text-ink">Report anonymously</span>
-            <span className="block text-ink-muted">The report will not be linked to your account. You will get a private link to follow it instead.</span>
+            <span className="font-medium text-ink">{c.anonymous}</span>
+            <span className="block text-ink-muted">{c.anonymousHint}</span>
           </span>
         </label>
       )}
       <Button type="submit" size="lg" pending={pending}>
-        Send report
+        {c.send}
       </Button>
     </form>
   );

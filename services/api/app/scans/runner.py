@@ -70,7 +70,7 @@ def run_scan(db: Session, scan_id: uuid.UUID) -> None:
         _finish(db, job)
         return
 
-    assessment = assess(job.scan_type, outcome)
+    assessment = assess(job.scan_type, outcome, str(job.payload.get("locale", "en")))
     job.status = assessment.status
     job.risk = assessment.risk
     job.confidence = assessment.confidence

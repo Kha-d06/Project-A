@@ -19,34 +19,33 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { Logo } from "@/components/brand/logo";
+import { LanguageSwitch } from "@/components/site/language-switch";
 import { ThemeToggle } from "@/components/site/theme-toggle";
+import type { ScanType } from "@/lib/api/types";
+import { type Dictionary } from "@/lib/i18n/en";
+import { useI18n } from "@/lib/i18n/client";
 import { cn } from "@/lib/cn";
 import { useSession } from "@/lib/session";
 
-const NAV = [
-  { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
-  { href: "/dashboard/scan", label: "Scan center", icon: ScanSearch },
-  { href: "/dashboard/history", label: "Scan history", icon: History },
-  { href: "/dashboard/browser-protection", label: "Browser protection", icon: Puzzle },
-  { href: "/dashboard/intelligence", label: "Threat intelligence", icon: Radar },
-  { href: "/dashboard/reports", label: "My reports", icon: Flag },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
+type NavKey = keyof Dictionary["dashboard"]["nav"];
+
+const NAV: { href: string; key: NavKey; icon: typeof History }[] = [
+  { href: "/dashboard", key: "overview", icon: LayoutDashboard },
+  { href: "/dashboard/scan", key: "scanCenter", icon: ScanSearch },
+  { href: "/dashboard/history", key: "history", icon: History },
+  { href: "/dashboard/browser-protection", key: "browserProtection", icon: Puzzle },
+  { href: "/dashboard/intelligence", key: "intelligence", icon: Radar },
+  { href: "/dashboard/reports", key: "myReports", icon: Flag },
+  { href: "/dashboard/settings", key: "settings", icon: Settings },
 ];
 
 // Shown only to these roles. The API enforces the same rule on every request.
-const STAFF_NAV = [
-  { href: "/dashboard/moderation", label: "Moderation", icon: Gavel, roles: ["moderator", "admin"] },
-  { href: "/dashboard/admin", label: "Administration", icon: ShieldCheck, roles: ["admin"] },
+const STAFF_NAV: { href: string; key: NavKey; icon: typeof History; roles: string[] }[] = [
+  { href: "/dashboard/moderation", key: "moderation", icon: Gavel, roles: ["moderator", "admin"] },
+  { href: "/dashboard/admin", key: "admin", icon: ShieldCheck, roles: ["admin"] },
 ];
 
-const SCANNERS = [
-  { href: "/dashboard/scan?type=url", label: "Link scanner" },
-  { href: "/dashboard/scan?type=message", label: "Message scanner" },
-  { href: "/dashboard/scan?type=file", label: "File scanner" },
-  { href: "/dashboard/scan?type=qr", label: "QR scanner" },
-  { href: "/dashboard/scan?type=website", label: "Website analyzer" },
-  { href: "/dashboard/scan?type=apk", label: "APK analyzer" },
-];
+const SCANNERS: ScanType[] = ["url", "message", "file", "qr", "website", "apk"];
 
 function isCurrent(pathname: string, href: string) {
   return href === "/dashboard" ? pathname === href : pathname.startsWith(href);
@@ -55,11 +54,12 @@ function isCurrent(pathname: string, href: string) {
 function SidebarNav() {
   const pathname = usePathname();
   const { session, signOut } = useSession();
+  const { t } = useI18n();
   const router = useRouter();
 
   return (
     <div className="flex h-full flex-col gap-6">
-      <nav aria-label="Dashboard" className="space-y-6">
+      <nav aria-label={t.dashboard.nav.label} className="space-y-6">
         <ul className="space-y-0.5">
           {[
             ...NAV,
@@ -77,19 +77,19 @@ function SidebarNav() {
                   )}
                 >
                   <item.icon aria-hidden className={cn("size-4", current && "text-accent")} />
-                  {item.label}
+                  {t.dashboard.nav[item.key]}
                 </Link>
               </li>
             );
           })}
         </ul>
         <div>
-          <p className="px-3 text-xs font-semibold tracking-wider text-ink-faint uppercase">Scanners</p>
+          <p className="px-3 text-xs font-semibold tracking-wider text-ink-faint uppercase">{t.dashboard.nav.scanners}</p>
           <ul className="mt-2 space-y-0.5">
-            {SCANNERS.map((item) => (
-              <li key={item.href}>
-                <Link href={item.href} className="block rounded-control px-3 py-1.5 text-sm text-ink-muted hover:text-ink">
-                  {item.label}
+            {SCANNERS.map((type) => (
+              <li key={type}>
+                <Link href={`/dashboard/scan?type=${type}`} className="block rounded-control px-3 py-1.5 text-sm text-ink-muted hover:text-ink">
+                  {t.scanners[type]}
                 </Link>
               </li>
             ))}
@@ -111,10 +111,13 @@ function SidebarNav() {
             }}
             className="inline-flex items-center gap-2 rounded-control px-2 py-1.5 text-sm text-ink-muted hover:text-ink"
           >
-            <LogOut aria-hidden className="size-4" />
-            Sign out
+            <LogOut aria-hidden className="size-4 rtl:rotate-180" />
+            {t.dashboard.nav.signOut}
           </button>
           <ThemeToggle />
+        </div>
+        <div className="px-1">
+          <LanguageSwitch />
         </div>
       </div>
     </div>
@@ -123,6 +126,7 @@ function SidebarNav() {
 
 export function DashboardShell({ children }: { children: ReactNode }) {
   const { session } = useSession();
+  const { t } = useI18n();
   const router = useRouter();
   const pathname = usePathname();
   const [openOn, setOpenOn] = useState<string | null>(null);
@@ -137,29 +141,29 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   if (session.status !== "signed-in") {
     return (
       <div className="grid min-h-dvh place-items-center" role="status">
-        <span className="text-sm text-ink-muted">Loading your dashboard…</span>
+        <span className="text-sm text-ink-muted">{t.dashboard.nav.loading}</span>
       </div>
     );
   }
 
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[15rem_1fr]">
-      <aside className="sticky top-0 hidden h-dvh border-e border-line bg-surface px-3 py-5 lg:block">
-        <Link href="/" aria-label="SENTINEL home" className="mb-8 block px-3">
+      <aside className="sticky top-0 hidden h-dvh overflow-y-auto border-e border-line bg-surface px-3 py-5 lg:block">
+        <Link href="/" aria-label={t.nav.home} className="mb-8 block px-3">
           <Logo />
         </Link>
         <SidebarNav />
       </aside>
 
       <div className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-line bg-canvas/90 px-4 backdrop-blur lg:hidden">
-        <Link href="/" aria-label="SENTINEL home">
+        <Link href="/" aria-label={t.nav.home}>
           <Logo />
         </Link>
         <button
           type="button"
           aria-expanded={menuOpen}
           aria-controls="dashboard-menu"
-          aria-label={menuOpen ? "Close menu" : "Open menu"}
+          aria-label={menuOpen ? t.nav.closeMenu : t.nav.openMenu}
           onClick={() => setOpenOn(menuOpen ? null : pathname)}
           className="grid size-10 place-items-center rounded-control"
         >

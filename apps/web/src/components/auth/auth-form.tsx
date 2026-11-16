@@ -8,6 +8,8 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { ApiError } from "@/lib/api/client";
+import { type Dictionary } from "@/lib/i18n/en";
+import { useI18n } from "@/lib/i18n/client";
 import { useSession } from "@/lib/session";
 
 const MIN_PASSWORD_LENGTH = 10;
@@ -23,17 +25,17 @@ export function safeNextPath(next: string | null): string {
     : "/dashboard";
 }
 
-function validate(mode: Mode, email: string, password: string): Errors {
+function validate(t: Dictionary, mode: Mode, email: string, password: string): Errors {
   const errors: Errors = {};
-  if (!EMAIL_PATTERN.test(email)) errors.email = "Enter a valid email address.";
-  if (!password) errors.password = "Enter your password.";
-  else if (mode === "sign-up" && password.length < MIN_PASSWORD_LENGTH)
-    errors.password = `Use at least ${MIN_PASSWORD_LENGTH} characters.`;
+  if (!EMAIL_PATTERN.test(email)) errors.email = t.auth.invalidEmail;
+  if (!password) errors.password = t.auth.enterPassword;
+  else if (mode === "sign-up" && password.length < MIN_PASSWORD_LENGTH) errors.password = t.auth.passwordShort;
   return errors;
 }
 
 export function AuthForm({ mode }: { mode: Mode }) {
   const { signIn, register } = useSession();
+  const { t } = useI18n();
   const router = useRouter();
   const params = useSearchParams();
   const [email, setEmail] = useState("");
@@ -44,7 +46,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    const found = validate(mode, email.trim(), password);
+    const found = validate(t, mode, email.trim(), password);
     setErrors(found);
     if (Object.keys(found).length) return;
 
@@ -59,7 +61,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
         const fields = error.fieldErrors();
         setErrors(Object.keys(fields).length ? fields : { form: error.message });
       } else {
-        setErrors({ form: "Something went wrong. Please try again." });
+        setErrors({ form: t.auth.generic });
       }
     }
   };
@@ -69,7 +71,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
     <form onSubmit={onSubmit} noValidate className="space-y-5">
       {errors.form && <Alert tone="danger">{errors.form}</Alert>}
       {isSignUp && (
-        <Field label="Name (optional)" error={errors.display_name}>
+        <Field label={t.auth.name} error={errors.display_name}>
           {(props) => (
             <Input
               {...props}
@@ -81,7 +83,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
           )}
         </Field>
       )}
-      <Field label="Email" error={errors.email}>
+      <Field label={t.auth.email} error={errors.email}>
         {(props) => (
           <Input
             {...props}
@@ -93,9 +95,9 @@ export function AuthForm({ mode }: { mode: Mode }) {
         )}
       </Field>
       <Field
-        label="Password"
+        label={t.auth.password}
         error={errors.password}
-        hint={isSignUp ? `At least ${MIN_PASSWORD_LENGTH} characters. A short phrase works well.` : undefined}
+        hint={isSignUp ? t.auth.passwordHint : undefined}
       >
         {(props) => (
           <Input
@@ -109,16 +111,22 @@ export function AuthForm({ mode }: { mode: Mode }) {
         )}
       </Field>
       <Button type="submit" size="lg" pending={pending} className="w-full">
-        {isSignUp ? "Create account" : "Sign in"}
+        {isSignUp ? t.auth.createAccount : t.auth.signIn}
       </Button>
       <p className="text-center text-sm text-ink-muted">
         {isSignUp ? (
           <>
-            Already have an account? <Link href="/sign-in" className="font-medium text-accent hover:underline">Sign in</Link>
+            {t.auth.haveAccount}{" "}
+            <Link href="/sign-in" className="font-medium text-accent hover:underline">
+              {t.auth.signIn}
+            </Link>
           </>
         ) : (
           <>
-            New to SENTINEL? <Link href="/sign-up" className="font-medium text-accent hover:underline">Create an account</Link>
+            {t.auth.newHere}{" "}
+            <Link href="/sign-up" className="font-medium text-accent hover:underline">
+              {t.auth.createLink}
+            </Link>
           </>
         )}
       </p>

@@ -15,10 +15,11 @@ Every result is one of four verdicts, used consistently in the API and the UI:
 
 Nothing is ever reported as "safe".
 
-> **Status: Phases 1–3.** Link, message, file, QR, website and Android app scanning,
-> optional AI explanations, accounts, dashboard, history and the SENTINEL Protect
-> browser extension work end to end. Community reports, the admin area and the
-> Arabic interface are later phases (see [Roadmap](#roadmap)). The code has tests but has not had an
+> **Status: Phases 1–4.** Scanning (links, messages, files, QR codes, websites and
+> Android apps), optional AI explanations, accounts, the dashboard, the SENTINEL
+> Protect browser extension, threat-intelligence lookups, community reports with
+> moderation, the admin area and an Arabic interface all work end to end. See
+> [Roadmap](#roadmap) for what is next. The code has tests but has not had an
 > independent security review, so it is not yet production-ready.
 
 ## What works today
@@ -97,6 +98,13 @@ The app is never installed or run.
 - **Privacy:** job monitoring never shows what people scanned.
 
 The first administrator is created with `python -m app.cli set-role you@example.com admin`.
+
+**Arabic interface.** The site is available in English and Arabic.
+- **Language choice.** It follows the browser's language until the visitor picks one with the language switch.
+- **Layout.** Arabic gets a proper right-to-left layout: direction-aware spacing, mirrored arrows and tab keys, an Arabic typeface, and addresses and hashes kept left to right.
+- **Scope of translation.** Navigation, the home page, all scanners, reports, sign-in, the dashboard, intelligence lookup and community reporting are translated. Scans submitted from an Arabic page get Arabic verdict summaries and advice, and the scam-pattern findings are written in Arabic too.
+- **Still English.** Other technical findings, the long policy pages, the browser extension and the staff tools are in English for now. Arabic pages say so rather than half-translating.
+- **Extending it.** Dictionaries are typed (`apps/web/src/lib/i18n`), so a new language has to supply every string.
 
 **SENTINEL Protect browser extension** (`apps/extension`, Chrome and Edge, Manifest V3):
 - warns before known dangerous sites and convincing imitations load, with evidence and a way back;
@@ -222,7 +230,7 @@ CI runs all of this plus migrations against PostgreSQL, `alembic check`,
 
 1. **Phase 2 (done).** SENTINEL Protect browser extension.
 2. **Phase 3 (done).** QR, website and APK analysis, YARA, macro and executable analysis, AI explanations. Download reputation checks shipped with the extension.
-3. **Phase 4.** Threat-intelligence centre, community reports with moderation, admin area, Arabic interface with RTL layout.
+3. **Phase 4 (done).** Threat-intelligence lookups, community reports with moderation, admin area, Arabic interface.
 4. **Phase 5.** Android app, organisation tools, public API, more browsers and intelligence sources.
 
 See [docs/architecture.md](docs/architecture.md),

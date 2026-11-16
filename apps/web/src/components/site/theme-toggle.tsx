@@ -4,6 +4,7 @@ import { Monitor, Moon, Sun } from "lucide-react";
 import { useSyncExternalStore } from "react";
 
 import { cn } from "@/lib/cn";
+import { useI18n } from "@/lib/i18n/client";
 import {
   applyThemePreference,
   readThemePreference,
@@ -11,30 +12,31 @@ import {
   type ThemePreference,
 } from "@/lib/theme";
 
-const OPTIONS: { value: ThemePreference; label: string; icon: typeof Sun }[] = [
-  { value: "light", label: "Light theme", icon: Sun },
-  { value: "dark", label: "Dark theme", icon: Moon },
-  { value: "system", label: "Match system theme", icon: Monitor },
+const OPTIONS: { value: ThemePreference; key: "light" | "dark" | "system"; icon: typeof Sun }[] = [
+  { value: "light", key: "light", icon: Sun },
+  { value: "dark", key: "dark", icon: Moon },
+  { value: "system", key: "system", icon: Monitor },
 ];
 
 export function ThemeToggle({ className }: { className?: string }) {
   // The server cannot know the stored choice, so nothing is selected until hydration.
   const preference = useSyncExternalStore(subscribeToTheme, readThemePreference, () => null);
+  const { t } = useI18n();
 
   return (
     <div
       role="radiogroup"
-      aria-label="Colour theme"
+      aria-label={t.theme.group}
       className={cn("inline-flex rounded-control border border-line p-0.5", className)}
     >
-      {OPTIONS.map(({ value, label, icon: Icon }) => (
+      {OPTIONS.map(({ value, key, icon: Icon }) => (
         <button
           key={value}
           type="button"
           role="radio"
           aria-checked={preference === value}
-          aria-label={label}
-          title={label}
+          aria-label={t.theme[key]}
+          title={t.theme[key]}
           onClick={() => applyThemePreference(value)}
           className={cn(
             "grid size-7 place-items-center rounded-[0.35rem] transition-colors",

@@ -25,12 +25,19 @@ def owner_for_new_scan(user: User | None) -> uuid.UUID | None:
 
 
 def create_scan(
-    db: Session, *, scan_type: str, target: str, payload: dict[str, Any], user: User | None
+    db: Session,
+    *,
+    scan_type: str,
+    target: str,
+    payload: dict[str, Any],
+    user: User | None,
+    locale: str = "en",
 ) -> ScanJob:
     job = ScanJob(
         scan_type=scan_type,
         target=target[:_TARGET_MAX_LENGTH],
-        payload=payload,
+        # The language of the page that submitted the scan; summaries follow it.
+        payload={**payload, "locale": locale},
         user_id=owner_for_new_scan(user),
     )
     db.add(job)

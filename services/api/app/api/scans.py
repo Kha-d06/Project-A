@@ -39,6 +39,11 @@ _MESSAGE_TARGET_LENGTH = 80
 _UNSAFE_FILENAME_CHARS = re.compile(r"[\x00-\x1f\x7f/\\]")
 
 
+def request_locale(request: Request) -> str:
+    """Arabic if the page asked for it, English otherwise (the only two supported)."""
+    return "ar" if request.headers.get("accept-language", "").lower().startswith("ar") else "en"
+
+
 def _limit_subject(request: Request, user: User | None) -> str:
     return f"user:{user.id}" if user else f"ip:{client_address(request)}"
 
@@ -65,7 +70,12 @@ def _get_visible_scan(db: Db, scan_id: uuid.UUID, user: User | None) -> ScanJob:
 def scan_url(body: UrlScanRequest, request: Request, db: Db, user: OptionalUser) -> ScanOut:
     rate_limit.enforce(SCAN_LIMIT, _limit_subject(request, user))
     job = service.create_scan(
-        db, scan_type="url", target=body.url, payload={"url": body.url}, user=user
+        db,
+        scan_type="url",
+        target=body.url,
+        payload={"url": body.url},
+        user=user,
+        locale=request_locale(request),
     )
     return _to_scan_out(job)
 
@@ -77,13 +87,23 @@ def scan_message(body: MessageScanRequest, request: Request, db: Db, user: Optio
     if len(excerpt) > _MESSAGE_TARGET_LENGTH:
         excerpt = excerpt[:_MESSAGE_TARGET_LENGTH].rstrip() + "…"
     job = service.create_scan(
-        db, scan_type="message", target=excerpt, payload={"content": body.content}, user=user
+        db,
+        scan_type="message",
+        target=excerpt,
+        payload={"content": body.content},
+        user=user,
+        locale=request_locale(request),
     )
     return _to_scan_out(job)
 
 
 def _upload_scan(
-    db: Db, user: User | None, upload: UploadFile, scan_type: str, max_bytes: int
+    request: Request,
+    db: Db,
+    user: User | None,
+    upload: UploadFile,
+    scan_type: str,
+    max_bytes: int,
 ) -> ScanOut:
     # The client's name is kept for display and extension checks only. It is never
     # used as a path: samples are stored under a random name.
@@ -96,6 +116,7 @@ def _upload_scan(
             target=file_name,
             payload={"storage_name": storage_name, "file_name": file_name},
             user=user,
+            locale=request_locale(request),
         )
     except Exception:
         delete_sample(storage_name)
@@ -108,7 +129,7 @@ def scan_file(
     request: Request, db: Db, user: OptionalUser, file: Annotated[UploadFile, File()]
 ) -> ScanOut:
     rate_limit.enforce(FILE_SCAN_LIMIT, _limit_subject(request, user))
-    return _upload_scan(db, user, file, "file", get_settings().max_upload_bytes)
+    return _upload_scan(request, db, user, file, "file", get_settings().max_upload_bytes)
 
 
 @router.post("/qr", response_model=ScanOut, status_code=202)
@@ -117,7 +138,7 @@ def scan_qr(
 ) -> ScanOut:
     """Decode a QR code from an image. The decoded link is checked, never opened."""
     rate_limit.enforce(FILE_SCAN_LIMIT, _limit_subject(request, user))
-    return _upload_scan(db, user, file, "qr", get_settings().max_image_bytes)
+    return _upload_scan(request, db, user, file, "qr", get_settings().max_image_bytes)
 
 
 @router.post("/apk", response_model=ScanOut, status_code=202)
@@ -125,7 +146,7 @@ def scan_apk(
     request: Request, db: Db, user: OptionalUser, file: Annotated[UploadFile, File()]
 ) -> ScanOut:
     rate_limit.enforce(FILE_SCAN_LIMIT, _limit_subject(request, user))
-    return _upload_scan(db, user, file, "apk", get_settings().max_apk_bytes)
+    return _upload_scan(request, db, user, file, "apk", get_settings().max_apk_bytes)
 
 
 @router.post("/website", response_model=ScanOut, status_code=202)
@@ -134,7 +155,12 @@ def scan_website(body: UrlScanRequest, request: Request, db: Db, user: OptionalU
     rate_limit.enforce(SCAN_LIMIT, _limit_subject(request, user))
     rate_limit.enforce(WEBSITE_SCAN_LIMIT, _limit_subject(request, user))
     job = service.create_scan(
-        db, scan_type="website", target=body.url, payload={"url": body.url}, user=user
+        db,
+        scan_type="website",
+        target=body.url,
+        payload={"url": body.url},
+        user=user,
+        locale=request_locale(request),
     )
     return _to_scan_out(job)
 

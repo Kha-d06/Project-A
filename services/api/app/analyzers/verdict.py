@@ -182,7 +182,64 @@ def _summary(subject: str, risk: str, outcome: Outcome) -> str:
     )
 
 
-def assess(scan_type: str, outcome: Outcome) -> Assessment:
+# Arabic wording. Sentences are built so they agree with any subject: Arabic verbs
+# and adjectives change with gender, and "this link" and "this message" differ.
+_SUBJECT_AR = {
+    "url": "هذا الرابط",
+    "message": "هذه الرسالة",
+    "file": "هذا الملف",
+    "qr": "رمز QR هذا",
+    "website": "هذا الموقع",
+    "apk": "هذا التطبيق",
+}
+_RECOMMENDATIONS_AR: dict[str, list[str]] = {
+    "known_malicious": [
+        "لا تفتحه ولا تتفاعل معه، واحذفه إن أمكن.",
+        "إن كنت قد أدخلت كلمة مرور أو بيانات دفع، فغيّر كلمة المرور فورًا وتواصل مع بنكك.",
+        "إن نزّلت أو ثبّتّ شيئًا منه، فاحذفه وشغّل فحصًا كاملًا ببرنامج الحماية في جهازك.",
+    ],
+    "suspicious": [
+        "لا تُدخل كلمات مرور أو أرقام بطاقات أو رموز تحقق، ولا ترسل مالًا.",
+        "تواصل مع الجهة المعنية عبر موقعها أو تطبيقها الرسمي، لا عبر التفاصيل الواردة هنا.",
+        "إن وصلك من شخص تعرفه، فتحقّق منه عبر وسيلة تواصل أخرى.",
+    ],
+    "no_known_threat": [
+        "لم يُعثر على تهديد معروف، وهذا ليس ضمانًا؛ فالتهديدات الجديدة تحتاج وقتًا لتظهر في المصادر.",
+        "تحقّق دائمًا من العنوان قبل تسجيل الدخول أو الدفع، واحذر أي طلب لرموز أو أموال.",
+    ],
+    "inconclusive": [
+        "تعذّر إجراء فحص أساسي، فاعتبر النتيجة غير موثّقة.",
+        "أعد المحاولة لاحقًا، أو تحقّق عبر وسيلة تعرفها وتثق بها.",
+    ],
+}
+
+
+def _warning_count_ar(n: int) -> str:
+    if n == 1:
+        return "علامة تحذير واحدة"
+    if n == 2:
+        return "علامتا تحذير"
+    return f"{n} علامات تحذير" if n <= 10 else f"{n} علامة تحذير"
+
+
+def _summary_ar(scan_type: str, risk: str, outcome: Outcome) -> str:
+    subject = _SUBJECT_AR[scan_type]
+    if risk == "known_malicious":
+        return f"تهديد معروف: وُجد تطابق بين {subject} ومعلومات تهديدات موثوقة أو بصمة برمجية خبيثة."
+    if risk == "suspicious":
+        count = sum(1 for f in outcome.findings if f.severity in ("critical", "high", "medium"))
+        return (
+            f"وُجدت {_warning_count_ar(count)} في {subject} من النوع الذي يُرى كثيرًا في عمليات "
+            "الاحتيال أو الهجمات. هذا ليس دليلًا قاطعًا على الضرر، لكنه يستدعي الحذر."
+        )
+    if risk == "no_known_threat":
+        return (
+            f"لم يُكتشف تهديد معروف في {subject}. جاءت الفحوصات أدناه سليمة، لكن ذلك لا يضمن الأمان."
+        )
+    return f"لم نتمكن من الوصول إلى حكم بشأن {subject} لأن فحصًا يعتمد عليه الحكم لم يكن متاحًا."
+
+
+def assess(scan_type: str, outcome: Outcome, locale: str = "en") -> Assessment:
     severities = [finding.severity for finding in outcome.findings]
     core_checks = [check for check in outcome.checks if check.core]
     core_completed = [check for check in core_checks if check.status == "completed"]
@@ -199,10 +256,15 @@ def assess(scan_type: str, outcome: Outcome) -> Assessment:
     else:
         risk, confidence = "inconclusive", "low"
 
+    arabic = locale == "ar"
     return Assessment(
         status="inconclusive" if risk == "inconclusive" else "completed",
         risk=risk,
         confidence=confidence,
-        summary=_summary(_SUBJECT[scan_type], risk, outcome),
-        recommendations=_RECOMMENDATIONS[(scan_type, risk)],
+        summary=_summary_ar(scan_type, risk, outcome)
+        if arabic
+        else _summary(_SUBJECT[scan_type], risk, outcome),
+        recommendations=_RECOMMENDATIONS_AR[risk]
+        if arabic
+        else _RECOMMENDATIONS[(scan_type, risk)],
     )

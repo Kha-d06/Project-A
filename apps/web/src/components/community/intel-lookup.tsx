@@ -9,8 +9,8 @@ import { Field, Input } from "@/components/ui/field";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { ApiError, api } from "@/lib/api/client";
 import type { LookupResult, PublicReport } from "@/lib/api/types";
-import { CATEGORY } from "@/lib/community";
 import { formatDateTime, formatRelative } from "@/lib/format";
+import { useI18n } from "@/lib/i18n/client";
 
 /** Works out what kind of indicator the user typed. */
 export function lookupKind(value: string): "domain" | "ip" | "hash" | null {
@@ -21,21 +21,21 @@ export function lookupKind(value: string): "domain" | "ip" | "hash" | null {
   return host.includes(".") ? "domain" : null;
 }
 
-const VERDICT = {
-  listed: { risk: "known_malicious", text: "Listed in threat intelligence" },
-  community_verified: { risk: "suspicious", text: "Reported by users and verified by a moderator" },
-  not_listed: { risk: "no_known_threat", text: "Not listed in the sources below" },
-  unavailable: { risk: "inconclusive", text: "Cannot say: the threat feed is not up to date" },
+const VERDICT_RISK = {
+  listed: "known_malicious",
+  community_verified: "suspicious",
+  not_listed: "no_known_threat",
+  unavailable: "inconclusive",
 } as const;
 
 function Result({ result }: { result: LookupResult }) {
-  const verdict = VERDICT[result.verdict];
+  const { t } = useI18n();
   return (
     <Panel className="animate-fade-up">
       <PanelHeader
         title={<span className="font-mono text-sm break-all">{result.query}</span>}
-        description={verdict.text}
-        action={<RiskBadge risk={verdict.risk} status="completed" />}
+        description={t.intel.verdicts[result.verdict]}
+        action={<RiskBadge risk={VERDICT_RISK[result.verdict]} status="completed" />}
       />
       {result.indicators.length > 0 && (
         <ul className="divide-y divide-line">
@@ -45,7 +45,7 @@ function Result({ result }: { result: LookupResult }) {
               <p className="text-ink-muted">
                 {indicator.source}
                 {indicator.threat && ` · ${indicator.threat.replaceAll("_", " ")}`}
-                {indicator.first_seen && ` · first reported ${formatDateTime(indicator.first_seen)}`}
+                {indicator.first_seen && ` · ${t.intel.firstReported(formatDateTime(indicator.first_seen))}`}
               </p>
             </li>
           ))}
@@ -53,14 +53,19 @@ function Result({ result }: { result: LookupResult }) {
       )}
       <div className="space-y-2 border-t border-line px-5 py-4 text-sm text-ink-muted">
         {result.notes.map((note) => (
-          <p key={note}>{note}</p>
+          <p key={note} dir="auto">
+            {note}
+          </p>
         ))}
         <p className="text-xs text-ink-faint">
-          Sources checked:{" "}
+          {t.intel.sourcesChecked}{" "}
           {result.sources.length === 0
-            ? "none available on this server"
+            ? t.intel.noSources
             : result.sources
-                .map((s) => `${s.name} (${s.last_updated ? `updated ${formatRelative(s.last_updated)}` : "never updated"}${s.fresh ? "" : ", out of date"})`)
+                .map(
+                  (s) =>
+                    `${s.name} (${s.last_updated ? t.intel.updated(formatRelative(s.last_updated)) : t.intel.neverUpdated}${s.fresh ? "" : `, ${t.intel.outOfDate}`})`,
+                )
                 .join("; ")}
         </p>
       </div>
@@ -69,6 +74,7 @@ function Result({ result }: { result: LookupResult }) {
 }
 
 export function IntelLookup() {
+  const { t } = useI18n();
   const [value, setValue] = useState("");
   const [result, setResult] = useState<LookupResult | null>(null);
   const [error, setError] = useState<string>();
@@ -83,7 +89,7 @@ export function IntelLookup() {
     event.preventDefault();
     const kind = lookupKind(value);
     if (!kind) {
-      setError("Enter a domain (example.com), an IP address, or a SHA-256 file fingerprint.");
+      setError(t.intel.invalid);
       return;
     }
     setError(undefined);
@@ -93,7 +99,7 @@ export function IntelLookup() {
       setResult(await api.intelligence.lookup(kind, query));
     } catch (caught) {
       setResult(null);
-      setError(caught instanceof ApiError ? caught.message : "The lookup failed.");
+      setError(caught instanceof ApiError ? caught.message : t.intel.failed);
     } finally {
       setPending(false);
     }
@@ -103,7 +109,7 @@ export function IntelLookup() {
     <div className="space-y-8">
       <form onSubmit={submit} noValidate className="flex flex-col gap-3 sm:flex-row sm:items-end">
         <div className="flex-1">
-          <Field label="Domain, IP address or SHA-256 fingerprint" error={error}>
+          <Field label={t.intel.field} error={error}>
             {(props) => (
               <Input
                 {...props}
@@ -119,7 +125,7 @@ export function IntelLookup() {
         </div>
         <Button type="submit" size="lg" pending={pending} className={error ? "sm:mb-7" : undefined}>
           <Search aria-hidden className="size-4" />
-          Look up
+          {t.intel.lookup}
         </Button>
       </form>
 
@@ -127,13 +133,13 @@ export function IntelLookup() {
 
       <Panel>
         <PanelHeader
-          title="Recently verified community reports"
-          description="Reports from SENTINEL users that a moderator confirmed. Phone numbers are partly hidden because scammers often spoof real people’s numbers."
+          title={t.intel.verifiedTitle}
+          description={t.intel.verifiedDescription}
         />
         {verified === null ? (
           <div className="h-24 animate-pulse" aria-busy />
         ) : verified.length === 0 ? (
-          <p className="px-5 py-5 text-sm text-ink-muted">No reports have been verified yet.</p>
+          <p className="px-5 py-5 text-sm text-ink-muted">{t.intel.noneVerified}</p>
         ) : (
           <ul className="divide-y divide-line">
             {verified.map((entry) => (
@@ -141,9 +147,9 @@ export function IntelLookup() {
                 <span className="min-w-0 flex-1 truncate font-mono text-[0.8rem] text-ink" dir="ltr">
                   {entry.subject}
                 </span>
-                <span className="text-ink-muted">{CATEGORY[entry.category].label}</span>
+                <span className="text-ink-muted">{t.community.categories[entry.category].label}</span>
                 <span className="text-xs text-ink-faint">
-                  {entry.reports} report{entry.reports === 1 ? "" : "s"} · verified {formatRelative(entry.verified_at)}
+                  {t.intel.reports(entry.reports)} · {t.intel.verified(formatRelative(entry.verified_at))}
                 </span>
               </li>
             ))}

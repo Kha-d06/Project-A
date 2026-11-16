@@ -12,6 +12,7 @@ import { Panel, PanelHeader } from "@/components/ui/panel";
 import { useToast } from "@/components/ui/toast";
 import { ApiError, api } from "@/lib/api/client";
 import type { Profile } from "@/lib/api/types";
+import { useI18n } from "@/lib/i18n/client";
 import { useSession } from "@/lib/session";
 
 function message(error: unknown, fallback: string) {
@@ -21,6 +22,8 @@ function message(error: unknown, fallback: string) {
 function ProfileSection({ profile, onSaved }: { profile: Profile; onSaved: (profile: Profile) => void }) {
   const notify = useToast();
   const { updateUser } = useSession();
+  const { t } = useI18n();
+  const s = t.dashboard.settings;
   const [name, setName] = useState(profile.user.display_name ?? "");
   const [pending, setPending] = useState(false);
 
@@ -31,9 +34,9 @@ function ProfileSection({ profile, onSaved }: { profile: Profile; onSaved: (prof
       const updated = await api.user.updateSettings({ display_name: name.trim() || null });
       updateUser(updated.user);
       onSaved(updated);
-      notify("success", "Profile saved.");
+      notify("success", s.profileSaved);
     } catch (error) {
-      notify("error", message(error, "Your profile could not be saved."));
+      notify("error", message(error, s.profileFailed));
     } finally {
       setPending(false);
     }
@@ -41,12 +44,14 @@ function ProfileSection({ profile, onSaved }: { profile: Profile; onSaved: (prof
 
   return (
     <Panel>
-      <PanelHeader title="Profile" description={`Signed in as ${profile.user.email}`} />
+      <PanelHeader title={s.profile} description={s.signedInAs(profile.user.email)} />
       <form onSubmit={save} className="space-y-4 px-5 py-5">
-        <Field label="Display name" hint="Shown only to you, in the dashboard.">
+        <Field label={s.displayName} hint={s.displayNameHint}>
           {(props) => <Input {...props} value={name} maxLength={80} onChange={(event) => setName(event.target.value)} />}
         </Field>
-        <Button type="submit" variant="secondary" pending={pending}>Save profile</Button>
+        <Button type="submit" variant="secondary" pending={pending}>
+          {s.saveProfile}
+        </Button>
       </form>
     </Panel>
   );
@@ -55,15 +60,17 @@ function ProfileSection({ profile, onSaved }: { profile: Profile; onSaved: (prof
 function PrivacySection({ profile, onSaved }: { profile: Profile; onSaved: (profile: Profile) => void }) {
   const notify = useToast();
   const [pending, setPending] = useState(false);
+  const { t } = useI18n();
+  const s = t.dashboard.settings;
   const enabled = profile.settings.save_scan_history;
 
   const toggle = async () => {
     setPending(true);
     try {
       onSaved(await api.user.updateSettings({ save_scan_history: !enabled }));
-      notify("success", enabled ? "New scans will not be saved." : "New scans will be saved to your history.");
+      notify("success", enabled ? s.historyOff : s.historyOn);
     } catch (error) {
-      notify("error", message(error, "The setting could not be changed."));
+      notify("error", message(error, s.settingFailed));
     } finally {
       setPending(false);
     }
@@ -78,21 +85,20 @@ function PrivacySection({ profile, onSaved }: { profile: Profile; onSaved: (prof
       link.click();
       URL.revokeObjectURL(link.href);
     } catch (error) {
-      notify("error", message(error, "Your data could not be exported."));
+      notify("error", message(error, s.exportFailed));
     }
   };
 
   return (
     <Panel>
-      <PanelHeader title="Privacy and data" />
+      <PanelHeader title={s.privacy} />
       <div className="divide-y divide-line">
         <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
           <div className="max-w-lg space-y-1">
-            <p id="history-label" className="font-medium text-ink">Save scans to my history</p>
-            <p className="text-sm text-ink-muted">
-              When off, scans you run while signed in are handled like anonymous ones: reachable by
-              their link for 30 days, then deleted. Existing history is not affected.
+            <p id="history-label" className="font-medium text-ink">
+              {s.saveHistory}
             </p>
+            <p className="text-sm text-ink-muted">{s.saveHistoryHint}</p>
           </div>
           <button
             type="button"
@@ -111,10 +117,12 @@ function PrivacySection({ profile, onSaved }: { profile: Profile; onSaved: (prof
         </div>
         <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
           <div className="max-w-lg space-y-1">
-            <p className="font-medium text-ink">Export my data</p>
-            <p className="text-sm text-ink-muted">Download your account details, settings, saved scans and activity log as JSON.</p>
+            <p className="font-medium text-ink">{s.export}</p>
+            <p className="text-sm text-ink-muted">{s.exportHint}</p>
           </div>
-          <Button variant="secondary" onClick={exportData}>Export</Button>
+          <Button variant="secondary" onClick={exportData}>
+            {s.exportButton}
+          </Button>
         </div>
       </div>
     </Panel>
@@ -123,6 +131,8 @@ function PrivacySection({ profile, onSaved }: { profile: Profile; onSaved: (prof
 
 function PasswordSection() {
   const notify = useToast();
+  const { t } = useI18n();
+  const s = t.dashboard.settings;
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -136,11 +146,11 @@ function PasswordSection() {
       await api.user.changePassword({ current_password: current, new_password: next });
       setCurrent("");
       setNext("");
-      notify("success", "Password changed. Other devices have been signed out.");
+      notify("success", s.passwordChanged);
     } catch (error) {
       if (error instanceof ApiError && error.code === "wrong_password") setErrors({ current_password: error.message });
       else if (error instanceof ApiError && Object.keys(error.fieldErrors()).length) setErrors(error.fieldErrors());
-      else notify("error", message(error, "Your password could not be changed."));
+      else notify("error", message(error, s.passwordFailed));
     } finally {
       setPending(false);
     }
@@ -148,16 +158,18 @@ function PasswordSection() {
 
   return (
     <Panel>
-      <PanelHeader title="Password" description="Changing it signs you out everywhere else." />
+      <PanelHeader title={s.password} description={s.passwordDescription} />
       <form onSubmit={submit} noValidate className="grid gap-4 px-5 py-5 sm:grid-cols-2">
-        <Field label="Current password" error={errors.current_password}>
+        <Field label={s.currentPassword} error={errors.current_password}>
           {(props) => <Input {...props} type="password" autoComplete="current-password" value={current} onChange={(event) => setCurrent(event.target.value)} />}
         </Field>
-        <Field label="New password" error={errors.new_password} hint="At least 10 characters.">
+        <Field label={s.newPassword} error={errors.new_password} hint={s.newPasswordHint}>
           {(props) => <Input {...props} type="password" autoComplete="new-password" value={next} onChange={(event) => setNext(event.target.value)} />}
         </Field>
         <div className="sm:col-span-2">
-          <Button type="submit" variant="secondary" pending={pending} disabled={!current || !next}>Change password</Button>
+          <Button type="submit" variant="secondary" pending={pending} disabled={!current || !next}>
+            {s.changePassword}
+          </Button>
         </div>
       </form>
     </Panel>
@@ -166,6 +178,8 @@ function PasswordSection() {
 
 function DeleteAccountSection() {
   const { clear } = useSession();
+  const { t } = useI18n();
+  const s = t.dashboard.settings;
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState("");
@@ -180,19 +194,19 @@ function DeleteAccountSection() {
       clear();
       router.push("/");
     } catch (caught) {
-      setError(message(caught, "Your account could not be deleted."));
+      setError(message(caught, s.deleteFailed));
       setPending(false);
     }
   };
 
   return (
     <Panel className="border-danger/30">
-      <PanelHeader title="Delete account" />
+      <PanelHeader title={s.deleteAccount} />
       <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
-        <p className="max-w-lg text-sm text-ink-muted">
-          Permanently deletes your account, all saved scans and your activity log. This cannot be undone.
-        </p>
-        <Button variant="danger" onClick={() => setOpen(true)}>Delete account</Button>
+        <p className="max-w-lg text-sm text-ink-muted">{s.deleteAccountHint}</p>
+        <Button variant="danger" onClick={() => setOpen(true)}>
+          {s.deleteAccount}
+        </Button>
       </div>
       <Dialog
         open={open}
@@ -201,16 +215,20 @@ function DeleteAccountSection() {
           setPassword("");
           setError(undefined);
         }}
-        title="Delete your account?"
-        description="Enter your password to confirm. Your account and all its data will be removed immediately."
+        title={s.deleteTitle}
+        description={s.deleteBody}
       >
         <form onSubmit={confirm} className="space-y-4">
-          <Field label="Password" error={error}>
+          <Field label={s.password} error={error}>
             {(props) => <Input {...props} type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />}
           </Field>
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button type="submit" variant="danger" pending={pending} disabled={!password}>Delete permanently</Button>
+            <Button variant="secondary" onClick={() => setOpen(false)}>
+              {t.common.cancel}
+            </Button>
+            <Button type="submit" variant="danger" pending={pending} disabled={!password}>
+              {s.deleteConfirm}
+            </Button>
           </div>
         </form>
       </Dialog>
@@ -219,26 +237,25 @@ function DeleteAccountSection() {
 }
 
 export function Settings() {
+  const { t } = useI18n();
+  const s = t.dashboard.settings;
   const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.user.profile().then(setProfile, (caught: unknown) => setError(message(caught, "Settings could not be loaded.")));
-  }, []);
+    api.user.profile().then(setProfile, (caught: unknown) => setError(message(caught, s.loadFailed)));
+  }, [s.loadFailed]);
 
   return (
     <div className="max-w-3xl">
-      <PageTitle title="Settings" />
+      <PageTitle title={s.title} />
       {error && <Alert tone="warning">{error}</Alert>}
       {profile && (
         <div className="space-y-6">
           <ProfileSection profile={profile} onSaved={setProfile} />
           <PrivacySection profile={profile} onSaved={setProfile} />
           <PasswordSection />
-          <Alert title="Email verification and password reset are not available yet">
-            They need an email delivery service, which this deployment does not have configured.
-            Keep your password somewhere safe, such as a password manager.
-          </Alert>
+          <Alert title={s.emailTitle}>{s.emailBody}</Alert>
           <DeleteAccountSection />
         </div>
       )}

@@ -31,15 +31,15 @@ def _excerpt(text: str, match: re.Match[str]) -> str:
     return f"{'…' if start else ''}{snippet}{'…' if end < len(text) else ''}"
 
 
-def _rule_finding(rule: MessageRule, text: str) -> FindingData | None:
+def _rule_finding(rule: MessageRule, text: str, arabic: bool = False) -> FindingData | None:
     for pattern in rule.patterns:
         match = pattern.search(text)
         if match:
             return FindingData(
                 rule.severity,
                 rule.category,
-                rule.title,
-                rule.explanation,
+                rule.title_ar if arabic and rule.title_ar else rule.title,
+                rule.explanation_ar if arabic and rule.explanation_ar else rule.explanation,
                 SOURCE,
                 {"matched_text": _excerpt(text, match)},
             )
@@ -81,8 +81,9 @@ def analyze_message(payload: dict[str, Any], db: Session) -> Outcome:
     text: str = payload["content"]
     outcome = Outcome()
 
+    arabic = payload.get("locale") == "ar"
     for rule in RULES:
-        finding = _rule_finding(rule, text)
+        finding = _rule_finding(rule, text, arabic)
         if finding:
             outcome.findings.append(finding)
     outcome.checks.append(

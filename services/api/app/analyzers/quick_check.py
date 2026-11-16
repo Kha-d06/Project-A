@@ -16,7 +16,7 @@ from app.analyzers.types import FindingData
 from app.analyzers.url_heuristics import analyze_url_text
 from app.analyzers.url_scan import indicator_findings
 from app.analyzers.urls import ParsedUrl, parse_url
-from app.intel.feeds import URLHAUS
+from app.intel.feeds import THREATFOX, URLHAUS
 from app.intel.lookup import fresh_sources
 from app.models.base import utcnow
 
@@ -85,7 +85,7 @@ def _evaluate(db: Session, url: ParsedUrl, *, host_only: bool = False) -> QuickR
         )
 
     findings = analyze_url_text(url) + indicator_findings(db, url)
-    feeds = fresh_sources(db, (URLHAUS,))
+    feeds = fresh_sources(db, (URLHAUS, THREATFOX))
     result = QuickResult(
         _verdict_for(findings, bool(feeds)),
         url.host,

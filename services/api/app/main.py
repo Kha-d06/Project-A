@@ -2,7 +2,18 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import RequestResponseEndpoint
 
-from app.api import admin, auth, extension, intelligence, reports, scans, system, user
+from app.api import (
+    admin,
+    api_keys,
+    auth,
+    extension,
+    intelligence,
+    metrics,
+    reports,
+    scans,
+    system,
+    user,
+)
 from app.core.config import get_settings
 from app.core.errors import register_error_handlers
 
@@ -60,6 +71,8 @@ def create_app() -> FastAPI:
         intelligence.router,
         reports.router,
         admin.router,
+        api_keys.router,
+        metrics.router,
         system.router,
     ):
         app.include_router(router, prefix=API_PREFIX)

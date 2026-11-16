@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 COMMUNITY = "community"
 URLHAUS = "urlhaus"
 MALWAREBAZAAR = "malwarebazaar"
+THREATFOX = "threatfox"
 # Development-only indicators on reserved domains; see app.cli load-test-fixtures.
 TEST_FIXTURES = "test-fixtures"
 MAX_FEED_BYTES = 80 * 1024 * 1024
@@ -70,6 +71,38 @@ def parse_urlhaus_csv(text: str) -> Iterator[FeedIndicator]:
             yield FeedIndicator("host", parsed.host, row[5] or None, None, None, first_seen)
 
 
+def parse_threatfox_csv(text: str) -> Iterator[FeedIndicator]:
+    """ThreatFox recent IOCs. Columns: first_seen_utc, ioc_id, ioc_value, ioc_type,
+    threat_type, fk_malware, malware_alias, malware_printable, last_seen_utc,
+    confidence_level, reference, tags, anonymous, reporter."""
+    # The export separates fields with ", " (comma and space).
+    rows = csv.reader(
+        (line for line in io.StringIO(text) if line.strip() and line[0] != "#"),
+        skipinitialspace=True,
+    )
+    for row in rows:
+        if len(row) < 12:
+            continue
+        value, ioc_type = row[2].strip(), row[3].strip()
+        threat = row[7].strip() or row[4].strip() or None
+        tags = row[11].strip()[:300] or None
+        first_seen = _parse_timestamp(row[0])
+        reference = f"https://threatfox.abuse.ch/ioc/{row[1].strip()}/"
+        if ioc_type == "url":
+            try:
+                parsed = parse_url(value)
+            except InvalidUrlError:
+                continue
+            yield FeedIndicator("url", parsed.normalized, threat, tags, reference, first_seen)
+        elif ioc_type in ("domain", "ip:port"):
+            host = value.rsplit(":", 1)[0] if ioc_type == "ip:port" else value
+            yield FeedIndicator(
+                "host", host.lower().strip("[]"), threat, tags, reference, first_seen
+            )
+        elif ioc_type == "sha256_hash" and len(value) == _SHA256_LENGTH:
+            yield FeedIndicator("sha256", value.lower(), threat, tags, reference, first_seen)
+
+
 def parse_sha256_list(text: str) -> Iterator[FeedIndicator]:
     for line in text.splitlines():
         value = line.strip().lower()
@@ -88,6 +121,12 @@ class Feed:
 FEEDS = (
     Feed(URLHAUS, "URLhaus (abuse.ch)", lambda: get_settings().urlhaus_feed_url, parse_urlhaus_csv),
     Feed(
+        THREATFOX,
+        "ThreatFox (abuse.ch)",
+        lambda: get_settings().threatfox_feed_url,
+        parse_threatfox_csv,
+    ),
+    Feed(
         MALWAREBAZAAR,
         "MalwareBazaar (abuse.ch)",
         lambda: get_settings().malwarebazaar_feed_url,
@@ -97,7 +136,10 @@ FEEDS = (
 
 
 def download_feed(url: str) -> str:
-    with httpx.stream("GET", url, timeout=60, follow_redirects=True) as response:
+    # abuse.ch may require an Auth-Key for downloads; send it when one is configured.
+    key = get_settings().urlhaus_auth_key
+    headers = {"Auth-Key": key} if key else {}
+    with httpx.stream("GET", url, timeout=60, follow_redirects=True, headers=headers) as response:
         response.raise_for_status()
         chunks: list[bytes] = []
         size = 0

@@ -246,6 +246,7 @@ def test_admin_overview_and_scan_monitoring_hide_scan_targets(db: Session) -> No
     assert overview["workers"]["detail"].startswith("Scans run inline")
     assert {feed["name"] for feed in overview["feeds"]} == {
         "URLhaus (abuse.ch)",
+        "ThreatFox (abuse.ch)",
         "MalwareBazaar (abuse.ch)",
     }
 

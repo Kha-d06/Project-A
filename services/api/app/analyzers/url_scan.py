@@ -9,7 +9,7 @@ from app.analyzers.types import Check, FindingData, Outcome
 from app.analyzers.url_heuristics import analyze_url_text
 from app.analyzers.urls import InvalidUrlError, ParsedUrl, parse_url
 from app.intel import providers
-from app.intel.feeds import COMMUNITY, URLHAUS
+from app.intel.feeds import COMMUNITY, THREATFOX, URLHAUS
 from app.intel.lookup import IndicatorMatch, find_indicators, fresh_sources
 from app.models.base import utcnow
 
@@ -84,7 +84,7 @@ def _local_feed_check(db: Session, url: ParsedUrl, outcome: Outcome) -> None:
     # Stored indicators are evidence even if the feed is stale, so always look.
     # Whether a miss means anything depends on the feed being fresh.
     outcome.findings += indicator_findings(db, url)
-    sources = fresh_sources(db, (URLHAUS,))
+    sources = fresh_sources(db, (URLHAUS, THREATFOX))
     if not sources:
         outcome.checks.append(
             Check(
@@ -97,15 +97,15 @@ def _local_feed_check(db: Session, url: ParsedUrl, outcome: Outcome) -> None:
             )
         )
         return
-    source = sources[0]
+    oldest = min(source.last_success_at for source in sources if source.last_success_at)
     outcome.checks.append(
         Check(
             "local_threat_feed",
             "Known malicious links",
-            "URLhaus feed (local copy)",
+            ", ".join(source.name for source in sources) + " (local copies)",
             "completed",
-            f"Compared against {source.indicator_count:,} indicators, last updated "
-            f"{source.last_success_at:%Y-%m-%d %H:%M} UTC.",
+            f"Compared against {sum(s.indicator_count for s in sources):,} indicators, all "
+            f"updated since {oldest:%Y-%m-%d %H:%M} UTC.",
             core=True,
         )
     )

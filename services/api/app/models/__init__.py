@@ -1,3 +1,4 @@
+from app.models.api_key import ApiKey
 from app.models.audit import AuditEvent
 from app.models.base import Base
 from app.models.community import CommunityReport
@@ -7,6 +8,7 @@ from app.models.scan import Finding, ScanJob
 from app.models.user import User, UserSession, UserSettings
 
 __all__ = [
+    "ApiKey",
     "AuditEvent",
     "Base",
     "CommunityReport",

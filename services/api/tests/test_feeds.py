@@ -22,7 +22,7 @@ URLHAUS_SAMPLE = """\
 "3002","2026-11-14 21:40:11","https://Files.Example.net/update.exe","offline","","malware_download","None","https://urlhaus.abuse.ch/url/3002/","reporter2"
 "3003","2026-11-14 21:40:11","not a url","offline","","malware_download","None","https://urlhaus.abuse.ch/url/3003/","reporter2"
 """
-URLHAUS_FEED, MALWAREBAZAAR_FEED = FEEDS
+URLHAUS_FEED = next(feed for feed in FEEDS if feed.key == "urlhaus")
 
 
 def test_urlhaus_csv_is_parsed_into_url_and_host_indicators() -> None:
@@ -87,6 +87,7 @@ def test_indicators_no_longer_in_the_feed_expire(db: Session) -> None:
 def test_provider_status_reflects_real_configuration(client: TestClient, db: Session) -> None:
     before = {p["key"]: p for p in client.get("/api/v1/system/providers").json()}
     assert before["urlhaus"]["status"] == "awaiting_first_sync"
+    assert before["threatfox"]["status"] == "awaiting_first_sync"
     assert before["urlhaus_api"]["status"] == "not_configured"
     assert before["clamav"]["status"] == "not_configured"
 
@@ -145,3 +146,67 @@ def test_real_sync_restores_the_feed_name(db: Session) -> None:
     assert (
         sync_feed(db, URLHAUS_FEED, fetch=lambda url: URLHAUS_SAMPLE).name == "URLhaus (abuse.ch)"
     )
+
+
+THREATFOX_SAMPLE = """\
+################################################################
+# ThreatFox IOCs: recent
+################################################################
+# "first_seen_utc","ioc_id","ioc_value","ioc_type","threat_type","fk_malware","malware_alias","malware_printable","last_seen_utc","confidence_level","reference","tags","anonymous","reporter"
+"2026-11-15 10:00:00", "1001", "http://drop.example.com/x.bin", "url", "payload_delivery", "win.agent", "", "Agent", "", "75", "", "exe", "0", "r1"
+"2026-11-15 11:00:00", "1002", "c2.example.org", "domain", "botnet_cc", "win.rat", "", "Some RAT", "", "100", "", "rat", "0", "r2"
+"2026-11-15 12:00:00", "1003", "45.33.32.156:443", "ip:port", "botnet_cc", "win.rat", "", "Some RAT", "", "100", "", "", "0", "r2"
+"2026-11-15 13:00:00", "1004", "{sha}", "sha256_hash", "payload", "win.agent", "", "Agent", "", "100", "", "", "0", "r3"
+""".replace("{sha}", "c" * 64)
+
+
+def test_threatfox_csv_is_parsed(db: Session) -> None:
+    from app.intel.feeds import parse_threatfox_csv
+
+    indicators = {(i.kind, i.value): i for i in parse_threatfox_csv(THREATFOX_SAMPLE)}
+    assert ("url", "http://drop.example.com/x.bin") in indicators
+    assert ("host", "c2.example.org") in indicators
+    assert ("host", "45.33.32.156") in indicators
+    assert indicators[("sha256", "c" * 64)].threat == "Agent"
+    assert (
+        indicators[("host", "c2.example.org")].reference_url
+        == "https://threatfox.abuse.ch/ioc/1002/"
+    )
+
+
+def test_threatfox_alone_can_back_a_link_check(client: TestClient, db: Session) -> None:
+    feed = next(feed for feed in FEEDS if feed.key == "threatfox")
+    sync_feed(db, feed, fetch=lambda url: THREATFOX_SAMPLE)
+    listed = client.post("/api/v1/scans/url", json={"url": "http://drop.example.com/x.bin"}).json()
+    assert listed["risk"] == "known_malicious"
+    clean = client.post("/api/v1/scans/url", json={"url": "https://example.org/"}).json()
+    assert clean["risk"] == "no_known_threat"
+    lookup = client.get("/api/v1/intelligence/ip/45.33.32.156").json()
+    assert lookup["verdict"] == "listed"
+
+
+def test_feed_downloads_send_the_abusech_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.intel import feeds
+
+    seen: dict[str, str] = {}
+
+    class FakeStream:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            seen.update(kwargs.get("headers") or {})  # type: ignore[arg-type]
+
+        def __enter__(self) -> "FakeStream":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def iter_bytes(self) -> list[bytes]:
+            return [b"data"]
+
+    monkeypatch.setattr(feeds.httpx, "stream", FakeStream)
+    monkeypatch.setattr(get_settings(), "urlhaus_auth_key", "abc123")
+    assert feeds.download_feed("https://example.org/feed") == "data"
+    assert seen == {"Auth-Key": "abc123"}

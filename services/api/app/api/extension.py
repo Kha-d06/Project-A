@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.analyzers.quick_check import QuickResult, quick_check_download, quick_check_url
 from app.analyzers.urls import parse_url
-from app.api.deps import Db, RequiredUser
+from app.api.deps import Db, SessionUser
 from app.api.extension_auth import (
     ACCESS_TOKEN_SECONDS,
     CurrentInstallation,
@@ -204,7 +204,7 @@ def report_event(body: EventReport, installation: CurrentInstallation, db: Db) -
 
 
 @router.post("/link-codes", response_model=LinkCodeOut, status_code=201)
-def create_link_code(user: RequiredUser, db: Db) -> LinkCodeOut:
+def create_link_code(user: SessionUser, db: Db) -> LinkCodeOut:
     code = "".join(secrets.choice(_CODE_ALPHABET) for _ in range(_CODE_LENGTH))
     expires_at = utcnow() + LINK_CODE_LIFETIME
     db.add(
@@ -215,7 +215,7 @@ def create_link_code(user: RequiredUser, db: Db) -> LinkCodeOut:
 
 
 @router.get("/installations", response_model=list[InstallationOut])
-def list_installations(user: RequiredUser, db: Db) -> list[ExtensionInstallation]:
+def list_installations(user: SessionUser, db: Db) -> list[ExtensionInstallation]:
     return list(
         db.scalars(
             select(ExtensionInstallation)
@@ -229,7 +229,7 @@ def list_installations(user: RequiredUser, db: Db) -> list[ExtensionInstallation
 
 
 @router.delete("/installations/{installation_id}", status_code=204)
-def revoke_installation(installation_id: uuid.UUID, user: RequiredUser, db: Db) -> None:
+def revoke_installation(installation_id: uuid.UUID, user: SessionUser, db: Db) -> None:
     installation = db.get(ExtensionInstallation, installation_id)
     if installation is None or installation.user_id != user.id:
         raise ApiError(404, "installation_not_found", "This extension is not linked to you.")
@@ -238,7 +238,7 @@ def revoke_installation(installation_id: uuid.UUID, user: RequiredUser, db: Db) 
 
 
 @router.get("/events", response_model=list[ExtensionEventOut])
-def list_events(user: RequiredUser, db: Db) -> list[ExtensionEvent]:
+def list_events(user: SessionUser, db: Db) -> list[ExtensionEvent]:
     return list(
         db.scalars(
             select(ExtensionEvent)
@@ -250,7 +250,7 @@ def list_events(user: RequiredUser, db: Db) -> list[ExtensionEvent]:
 
 
 @router.delete("/events", status_code=204)
-def clear_events(user: RequiredUser, db: Db) -> None:
+def clear_events(user: SessionUser, db: Db) -> None:
     for event in db.scalars(select(ExtensionEvent).where(ExtensionEvent.user_id == user.id)):
         db.delete(event)
     db.commit()

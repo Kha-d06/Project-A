@@ -14,7 +14,7 @@ from app.analyzers.types import Check, FindingData, Outcome
 from app.analyzers.url_heuristics import analyze_url_text
 from app.analyzers.url_scan import community_finding, indicator_findings
 from app.analyzers.urls import InvalidUrlError, ParsedUrl, parse_url
-from app.intel.feeds import COMMUNITY, URLHAUS
+from app.intel.feeds import COMMUNITY, THREATFOX, URLHAUS
 from app.intel.lookup import find_indicators, fresh_sources
 
 SOURCE = "SENTINEL message pattern analysis"
@@ -99,7 +99,7 @@ def analyze_message(payload: dict[str, Any], db: Session) -> Outcome:
 
     urls = extract_urls(text)
     checked = urls[:_MAX_URLS_CHECKED]
-    feed_available = bool(fresh_sources(db, (URLHAUS,)))
+    feed_available = bool(fresh_sources(db, (URLHAUS, THREATFOX)))
     for url in checked:
         for finding in analyze_url_text(url):
             finding.evidence = {"link": url.normalized, **finding.evidence}

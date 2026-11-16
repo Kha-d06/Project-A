@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     urlhaus_auth_key: str | None = None
     urlhaus_feed_url: str = "https://urlhaus.abuse.ch/downloads/csv_recent/"
     malwarebazaar_feed_url: str = "https://bazaar.abuse.ch/export/txt/sha256/recent/"
+    threatfox_feed_url: str = "https://threatfox.abuse.ch/export/csv/recent/"
     feed_sync_enabled: bool = True
     feed_stale_after_hours: int = 48
     indicator_retention_days: int = 90
@@ -50,6 +51,9 @@ class Settings(BaseSettings):
 
     clamav_host: str | None = None
     clamav_port: int = 3310
+
+    # Bearer token Prometheus uses to read /api/v1/system/metrics. Unset: no metrics.
+    metrics_token: str | None = None
 
     # Extra YARA rule files (*.yar) to load next to the built-in ones.
     yara_rules_dir: Path | None = None

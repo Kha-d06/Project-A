@@ -16,7 +16,7 @@ from app.analyzers.types import Check, FindingData, Outcome, Severity
 from app.analyzers.yara_scan import yara_check
 from app.core.config import get_settings
 from app.intel import providers
-from app.intel.feeds import MALWAREBAZAAR
+from app.intel.feeds import MALWAREBAZAAR, THREATFOX
 from app.intel.lookup import find_indicators, fresh_sources
 
 SOURCE = "SENTINEL static file inspection"
@@ -320,7 +320,7 @@ def hash_reputation_check(db: Session, sha256: str, outcome: Outcome) -> None:
                 match.evidence(),
             )
         )
-    sources = fresh_sources(db, (MALWAREBAZAAR,))
+    sources = fresh_sources(db, (MALWAREBAZAAR, THREATFOX))
     if not sources:
         outcome.checks.append(
             Check(
@@ -339,7 +339,8 @@ def hash_reputation_check(db: Session, sha256: str, outcome: Outcome) -> None:
             label,
             provider,
             "completed",
-            f"Compared the SHA-256 fingerprint against {sources[0].indicator_count:,} recently "
+            f"Compared the SHA-256 fingerprint against "
+            f"{sum(source.indicator_count for source in sources):,} recently "
             "reported samples. Only recent samples are covered.",
             core=True,
         )

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Request, Response
 from sqlalchemy import func, select
 
 from app.api.auth import clear_session_cookie, record_event
-from app.api.deps import CurrentSession, Db, RequiredUser
+from app.api.deps import CurrentSession, Db, RequiredUser, SessionUser
 from app.core import rate_limit
 from app.core.errors import ApiError
 from app.core.rate_limit import RateLimit
@@ -45,7 +45,7 @@ def get_profile(user: RequiredUser) -> ProfileOut:
 
 
 @router.patch("/settings", response_model=ProfileOut)
-def update_settings(body: SettingsUpdate, user: RequiredUser, db: Db) -> ProfileOut:
+def update_settings(body: SettingsUpdate, user: SessionUser, db: Db) -> ProfileOut:
     changes = body.model_dump(exclude_unset=True)
     if "display_name" in changes:
         user.display_name = (changes["display_name"] or "").strip() or None
@@ -58,7 +58,7 @@ def update_settings(body: SettingsUpdate, user: RequiredUser, db: Db) -> Profile
 
 @router.post("/password", status_code=204)
 def change_password(
-    body: PasswordChange, request: Request, user: RequiredUser, session: CurrentSession, db: Db
+    body: PasswordChange, request: Request, user: SessionUser, session: CurrentSession, db: Db
 ) -> None:
     rate_limit.enforce(PASSWORD_CHECK_LIMIT, f"user:{user.id}")
     if not verify_password(body.current_password, user.password_hash):
@@ -132,7 +132,7 @@ def overview(user: RequiredUser, db: Db) -> OverviewOut:
 
 
 @router.get("/export")
-def export_data(user: RequiredUser, db: Db) -> dict[str, Any]:
+def export_data(user: SessionUser, db: Db) -> dict[str, Any]:
     """Everything stored about the account, in one machine-readable document."""
     scans = db.scalars(service.history_query(user.id).order_by(ScanJob.created_at)).all()
     events = db.scalars(
@@ -183,7 +183,7 @@ def export_data(user: RequiredUser, db: Db) -> dict[str, Any]:
 
 
 @router.delete("/account", status_code=204)
-def delete_account(body: AccountDeletion, response: Response, user: RequiredUser, db: Db) -> None:
+def delete_account(body: AccountDeletion, response: Response, user: SessionUser, db: Db) -> None:
     rate_limit.enforce(PASSWORD_CHECK_LIMIT, f"user:{user.id}")
     if not verify_password(body.password, user.password_hash):
         raise ApiError(403, "wrong_password", "Your password is incorrect.")

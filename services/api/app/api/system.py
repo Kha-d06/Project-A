@@ -14,6 +14,7 @@ router = APIRouter(prefix="/system", tags=["System"])
 
 _FEED_PURPOSE = {
     "urlhaus": "Links known to distribute malware",
+    "threatfox": "Malware hosts, links and file fingerprints from many sources",
     "malwarebazaar": "Fingerprints of recently reported malware files",
 }
 _NOTHING_SHARED = "Nothing leaves this server during a scan."

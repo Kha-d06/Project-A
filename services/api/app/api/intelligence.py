@@ -13,7 +13,7 @@ from app.core import rate_limit
 from app.core.config import get_settings
 from app.core.errors import ApiError
 from app.core.rate_limit import RateLimit, client_address
-from app.intel.feeds import COMMUNITY, MALWAREBAZAAR, URLHAUS
+from app.intel.feeds import COMMUNITY, MALWAREBAZAAR, THREATFOX, URLHAUS
 from app.intel.lookup import IndicatorMatch, find_by_host, find_indicators
 from app.models import ThreatSource
 from app.models.base import utcnow
@@ -48,7 +48,6 @@ def _result(
     kind: str,
     matches: list[IndicatorMatch],
     sources: list[SourceFreshness],
-    primary: str,
 ) -> LookupResult:
     feed_matches = [m for m in matches if m.source_key != COMMUNITY]
     if feed_matches:
@@ -56,7 +55,9 @@ def _result(
     elif matches:
         verdict = "community_verified"
     else:
-        primary_fresh = any(s.fresh and s.name.lower().startswith(primary) for s in sources)
+        primary_fresh = any(
+            s.fresh and not s.name.startswith("SENTINEL community") for s in sources
+        )
         verdict = "not_listed" if primary_fresh else "unavailable"
     notes = [NOT_A_GUARANTEE] if verdict in ("not_listed", "community_verified") else []
     if verdict == "unavailable":
@@ -95,7 +96,10 @@ def lookup_domain(domain: str, request: Request, db: Db) -> LookupResult:
     except InvalidUrlError as exc:
         raise ApiError(422, "invalid_domain", "Enter a domain name such as example.com.") from exc
     return _result(
-        host, "domain", find_by_host(db, host), _sources(db, (URLHAUS, COMMUNITY)), "urlhaus"
+        host,
+        "domain",
+        find_by_host(db, host),
+        _sources(db, (URLHAUS, THREATFOX, COMMUNITY)),
     )
 
 
@@ -110,7 +114,10 @@ def lookup_ip(ip: str, request: Request, db: Db) -> LookupResult:
         raise ApiError(422, "private_ip", "Private and reserved addresses are not looked up.")
     query = str(address)
     return _result(
-        query, "ip", find_by_host(db, query), _sources(db, (URLHAUS, COMMUNITY)), "urlhaus"
+        query,
+        "ip",
+        find_by_host(db, query),
+        _sources(db, (URLHAUS, THREATFOX, COMMUNITY)),
     )
 
 
@@ -127,9 +134,9 @@ def lookup_hash(file_hash: str, request: Request, db: Db) -> LookupResult:
         )
         raise ApiError(422, "invalid_hash", message)
     matches = find_indicators(db, "sha256", value)
-    return _result(value, "hash", matches, _sources(db, (MALWAREBAZAAR,)), "malwarebazaar")
+    return _result(value, "hash", matches, _sources(db, (MALWAREBAZAAR, THREATFOX)))
 
 
 @router.get("/sources", response_model=list[SourceFreshness])
 def list_sources(db: Db) -> list[SourceFreshness]:
-    return _sources(db, (URLHAUS, MALWAREBAZAAR, COMMUNITY))
+    return _sources(db, (URLHAUS, THREATFOX, MALWAREBAZAAR, COMMUNITY))

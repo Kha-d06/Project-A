@@ -13,7 +13,7 @@ export function proxy(request: NextRequest) {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self'",
-    "connect-src 'self'",
+    "connect-src 'self' https://api.pwnedpasswords.com",
     // strict-dynamic ignores 'self' for scripts, so the service worker needs its own rule.
     "worker-src 'self'",
     "manifest-src 'self'",

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Download, Trash2 } from "lucide-react";
+import { ArrowLeft, Download, Printer, Share2, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -23,6 +23,7 @@ import { ChecksList } from "./checks";
 import { FindingsList } from "./findings";
 import { ScanDetails } from "./scan-details";
 import { ScanProgress } from "./scan-progress";
+import { ShareDialog } from "./share-dialog";
 import { Verdict } from "./verdict";
 
 function downloadReport(scan: Scan) {
@@ -48,6 +49,7 @@ function ReportActions({ scan, backHref }: { scan: Scan; backHref: string }) {
   const router = useRouter();
   const notify = useToast();
   const [deleting, setDeleting] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const canDelete = session.status === "signed-in" && scan.saved_to_history;
 
   const remove = async () => {
@@ -63,7 +65,21 @@ function ReportActions({ scan, backHref }: { scan: Scan; backHref: string }) {
   };
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-2 print:hidden">
+      {canDelete && (
+        <>
+          <Button variant="secondary" size="sm" onClick={() => setSharing(true)}>
+            <Share2 aria-hidden className="size-4" />
+            {t.extra.share.button}
+          </Button>
+          <ShareDialog scanId={scan.id} open={sharing} onClose={() => setSharing(false)} />
+        </>
+      )}
+      {/* The browser's own "Save as PDF" keeps Arabic text shaped and laid out correctly. */}
+      <Button variant="secondary" size="sm" onClick={() => window.print()}>
+        <Printer aria-hidden className="size-4" />
+        {t.extra.share.print}
+      </Button>
       <Button variant="secondary" size="sm" onClick={() => downloadReport(scan)}>
         <Download aria-hidden className="size-4" />
         {t.report.download}
@@ -100,7 +116,7 @@ function ReportBody({ scan, backHref, newScanHref }: { scan: Scan; backHref: str
             {scan.target}
           </p>
           {finished ? <Verdict scan={scan} /> : <ScanProgress scan={scan} />}
-          {finished && t.common.findingsInEnglish && scan.findings.length > 0 && (
+          {finished && t.common.findingsInEnglish && scan.findings.length > 0 && scan.details.findings_language !== "ar" && (
             <p className="text-xs text-ink-faint">{t.common.findingsInEnglish}</p>
           )}
         </div>

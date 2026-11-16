@@ -64,22 +64,30 @@ function ReviewControls({ item, onDone }: { item: ModerationItem; onDone: () => 
   );
 }
 
+const REPUTATION = {
+  trusted: "Trusted reporter",
+  new: "New reporter",
+  unreliable: "Reporter often not confirmed",
+  anonymous: "Anonymous",
+} as const;
+
 export function Moderation() {
   const [status, setStatus] = useState<ReportStatus>("pending");
+  const [sort, setSort] = useState<"oldest" | "reputation">("oldest");
   const [items, setItems] = useState<ModerationItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    api.moderation.queue(status).then(
+    api.moderation.queue(status, sort).then(
       (loaded) => !cancelled && setItems(loaded),
       (caught: unknown) => !cancelled && setError(caught instanceof ApiError ? caught.message : "The queue could not be loaded."),
     );
     return () => {
       cancelled = true;
     };
-  }, [status, reloadKey]);
+  }, [status, sort, reloadKey]);
 
   return (
     <>
@@ -87,6 +95,14 @@ export function Moderation() {
         title="Moderation"
         description="Review community reports. Only verified reports are published or used for warnings."
         action={
+          <div className="flex flex-wrap gap-3">
+          <label className="flex items-center gap-2 text-sm text-ink-muted">
+            Order
+            <Select value={sort} onChange={(event) => setSort(event.target.value as "oldest" | "reputation")}>
+              <option value="oldest">Oldest first</option>
+              <option value="reputation">Trusted reporters first</option>
+            </Select>
+          </label>
           <label className="flex items-center gap-2 text-sm text-ink-muted">
             Show
             <Select value={status} onChange={(event) => setStatus(event.target.value as ReportStatus)}>
@@ -97,6 +113,7 @@ export function Moderation() {
               ))}
             </Select>
           </label>
+          </div>
         }
       />
       {error && <Alert tone="warning">{error}</Alert>}
@@ -106,7 +123,10 @@ export function Moderation() {
           <Panel key={item.id} className="space-y-3 p-5">
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-ink-muted">
               <span>
-                {CATEGORY[item.category].label} · {formatDateTime(item.created_at)} · {item.anonymous ? "anonymous" : "signed-in reporter"}
+                {CATEGORY[item.category].label} · {formatDateTime(item.created_at)} ·{" "}
+                {REPUTATION[item.reporter_reputation.level]}
+                {!item.anonymous && ` (${item.reporter_reputation.verified} confirmed, ${item.reporter_reputation.rejected} not confirmed)`}
+                {item.verification_expires_at && ` · verification expires ${formatDateTime(item.verification_expires_at)}`}
               </span>
               <span>
                 {item.similar_reports > 0 ? `${item.similar_reports} similar report(s)` : "No similar reports"}

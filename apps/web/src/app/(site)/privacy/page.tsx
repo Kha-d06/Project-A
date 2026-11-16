@@ -3,10 +3,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { ProsePage } from "@/components/site/prose";
+import { getLocale } from "@/lib/i18n/server";
+
+import { PrivacyArabic } from "./privacy-ar";
 
 export const metadata: Metadata = { title: "Privacy" };
 
-export default function PrivacyPage() {
+export default async function PrivacyPage() {
+  if ((await getLocale()) === "ar") return <PrivacyArabic />;
   return (
     <ProsePage
       title="Privacy"
@@ -59,6 +63,16 @@ export default function PrivacyPage() {
           <li>If you turn on the on-screen assistant, it reads the names of cookies (never their values) and the domains of trackers a page loads, and shows them to you. When you ask it a question, the question, the site’s domain, its verdict, the warning titles and those cookie and tracker names are sent to the SENTINEL server, and on to the AI provider if the operator has configured one.</li>
           <li>Recent alerts, your lists and settings are stored only in your browser.</li>
           <li>If you link it to an account and turn on warning history, the domain, the verdict and what you chose are saved to your account. You can delete that history at any time.</li>
+        </ul>
+      </section>
+      <section>
+        <h2>Sharing, groups, bots and email</h2>
+        <ul>
+          <li><strong>Share links</strong> show a read-only copy of one result. What was scanned is hidden unless you choose to include it. Links expire (30 days by default) and you can withdraw them at any time.</li>
+          <li><strong>Family and team groups</strong> show members’ names and email addresses to each other. Owners and admins see how many warnings a member had in the last 30 days only if that member turns it on, and never which sites, messages or files.</li>
+          <li><strong>Telegram, WhatsApp and scan-by-email</strong> work without an account. Your chat ID, phone number or email address is kept only until the reply is sent. Messages pass through Telegram, Meta or the operator’s mail provider under their own privacy terms.</li>
+          <li><strong>Breach checks</strong> send your own account email address to Have I Been Pwned. Password checks never leave your browser except for the first five characters of the password’s SHA-1 fingerprint.</li>
+          <li><strong>Webhooks</strong> send your own scan results to the address you set up.</li>
         </ul>
       </section>
       <section>

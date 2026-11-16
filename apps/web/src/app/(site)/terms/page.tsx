@@ -1,10 +1,39 @@
 import type { Metadata } from "next";
 
 import { ProsePage } from "@/components/site/prose";
+import { getLocale } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Terms" };
 
-export default function TermsPage() {
+function TermsArabic() {
+  return (
+    <ProsePage language="ar" title="شروط الاستخدام" intro="مختصرة، لأن الخدمة بسيطة ومجانية.">
+      <section>
+        <h2>ما هي الخدمة</h2>
+        <p>
+          يقدّم SENTINEL رأيًا حول الروابط والرسائل والملفات بناءً على الفحوصات الموضحة في كل
+          تقرير. الخدمة مجانية وتُقدَّم كما هي. نتيجة «لا يوجد تهديد معروف» ليست وعدًا بأن الشيء
+          آمن، ولا يغني SENTINEL عن برامج الحماية على جهازك.
+        </p>
+      </section>
+      <section>
+        <h2>الاستخدام العادل</h2>
+        <ul>
+          <li>لا ترسل إلا محتوى يحق لك مشاركته، ولا ترفع ملفات خاصة بالآخرين.</li>
+          <li>لا تستخدم SENTINEL لفحص أنظمة أخرى أو مهاجمتها، أو للتحايل على حدود الاستخدام.</li>
+          <li>لا تحاول اختراق الحسابات أو الخدمة نفسها، وأبلغ المشغّل عن المشكلات الأمنية بدلًا من ذلك.</li>
+        </ul>
+      </section>
+      <section>
+        <h2>الحسابات</h2>
+        <p>أنت مسؤول عن الحفاظ على سرية كلمة مرورك، ويمكنك حذف حسابك في أي وقت من إعداداته.</p>
+      </section>
+    </ProsePage>
+  );
+}
+
+export default async function TermsPage() {
+  if ((await getLocale()) === "ar") return <TermsArabic />;
   return (
     <ProsePage title="Terms of use" intro="Short, because the service is simple and free.">
       <section>

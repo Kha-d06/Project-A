@@ -193,3 +193,17 @@
     display: none;
   }
 }
+
+/* "Save as PDF": print the report on white paper, without navigation or buttons. */
+@media print {
+  :root {
+    color-scheme: light;
+  }
+  body {
+    background: #fff !important;
+  }
+  section,
+  .rounded-panel {
+    break-inside: avoid;
+  }
+}

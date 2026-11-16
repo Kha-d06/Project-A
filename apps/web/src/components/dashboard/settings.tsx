@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 
 import { PageTitle } from "@/components/dashboard/dashboard-shell";
+import { WebhooksSection } from "@/components/dashboard/webhooks";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -503,6 +504,7 @@ export function Settings() {
           <PasswordSection />
           <SecuritySection />
           <ApiKeysSection />
+          <WebhooksSection />
           <DeleteAccountSection />
         </div>
       )}

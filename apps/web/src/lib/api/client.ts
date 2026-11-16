@@ -28,6 +28,14 @@ import type {
   ScanType,
   SessionInfo,
   SessionStatus,
+  BreachResult,
+  Group,
+  GroupSharedScan,
+  InviteCreated,
+  Share,
+  SharedScan,
+  Webhook,
+  WebhookEvent,
 } from "./types";
 
 const BASE = "/api/v1";
@@ -162,6 +170,36 @@ export interface HistoryFilters {
 }
 
 export const api = {
+  sharing: {
+    create: (scanId: string, body: { include_target?: boolean; note?: string; expires_in_days?: number; group_id?: string }) =>
+      request<Share>(`/scans/${encodeURIComponent(scanId)}/shares`, { method: "POST", json: body }),
+    list: (scanId: string) => request<Share[]>(`/scans/${encodeURIComponent(scanId)}/shares`),
+    revoke: (shareId: string) => request<void>(`/shares/${encodeURIComponent(shareId)}`, { method: "DELETE" }),
+    view: (token: string) => request<SharedScan>(`/shared/${encodeURIComponent(token)}`),
+  },
+  groups: {
+    list: () => request<Group[]>("/groups"),
+    create: (name: string, kind: Group["kind"]) => request<Group>("/groups", { method: "POST", json: { name, kind } }),
+    invite: (groupId: string, email: string, role: "admin" | "member") =>
+      request<InviteCreated>(`/groups/${encodeURIComponent(groupId)}/invites`, { method: "POST", json: { email, role } }),
+    accept: (token: string) => request<Group>("/groups/invites/accept", { method: "POST", json: { token } }),
+    updateMember: (groupId: string, userId: string, changes: { role?: "admin" | "member"; share_activity?: boolean }) =>
+      request<Group>(`/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`, { method: "PATCH", json: changes }),
+    removeMember: (groupId: string, userId: string) =>
+      request<void>(`/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`, { method: "DELETE" }),
+    remove: (groupId: string) => request<void>(`/groups/${encodeURIComponent(groupId)}`, { method: "DELETE" }),
+    shares: (groupId: string) => request<GroupSharedScan[]>(`/groups/${encodeURIComponent(groupId)}/shares`),
+  },
+  webhooks: {
+    list: () => request<Webhook[]>("/user/webhooks"),
+    create: (url: string, events: WebhookEvent[]) => request<Webhook>("/user/webhooks", { method: "POST", json: { url, events } }),
+    setActive: (id: string, active: boolean) =>
+      request<Webhook>(`/user/webhooks/${encodeURIComponent(id)}`, { method: "PATCH", query: { active: String(active) } }),
+    remove: (id: string) => request<void>(`/user/webhooks/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  },
+  breach: {
+    email: () => request<BreachResult>("/breach/email"),
+  },
   auth: {
     session: () => request<SessionStatus>("/auth/session"),
     register: (body: { email: string; password: string; display_name?: string }) =>
@@ -264,8 +302,8 @@ export const api = {
       request<CommunityReport>(`/reports/${encodeURIComponent(id)}`, { query: { token } }),
   },
   moderation: {
-    queue: (status: ReportStatus = "pending") =>
-      request<ModerationItem[]>("/admin/reports", { query: { status } }),
+    queue: (status: ReportStatus = "pending", sort: "oldest" | "reputation" = "oldest") =>
+      request<ModerationItem[]>("/admin/reports", { query: { status, sort } }),
     review: (id: string, body: { status: "verified" | "rejected" | "duplicate"; note?: string; duplicate_of?: string }) =>
       request<CommunityReport>(`/admin/reports/${encodeURIComponent(id)}/review`, { method: "POST", json: body }),
   },

@@ -17,6 +17,7 @@ const NAV = [
   { href: "/scan", key: "tools" },
   { href: "/browser-protection", key: "browserProtection" },
   { href: "/#how-it-works", key: "howItWorks" },
+  { href: "/learn", key: "learn" },
   { href: "/about", key: "about" },
 ] as const;
 
@@ -61,7 +62,7 @@ export function SiteHeader() {
   });
 
   return (
-    <header className="sticky top-0 z-40 border-b border-line bg-canvas/85 backdrop-blur-md">
+    <header className="sticky top-0 z-40 print:hidden border-b border-line bg-canvas/85 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 sm:px-6">
         <Link href="/" aria-label={t.nav.home} className="rounded-control">
           <Logo />
@@ -78,7 +79,7 @@ export function SiteHeader() {
                     pathname === item.href ? "text-ink" : "text-ink-muted hover:text-ink",
                   )}
                 >
-                  {t.nav[item.key]}
+                  {(item.key === "learn" ? t.extra.nav.learn : t.nav[item.key])}
                 </Link>
               </li>
             ))}
@@ -112,7 +113,7 @@ export function SiteHeader() {
                     href={item.href}
                     className="block rounded-control px-3 py-3 text-base text-ink hover:bg-surface-sunken"
                   >
-                    {t.nav[item.key]}
+                    {(item.key === "learn" ? t.extra.nav.learn : t.nav[item.key])}
                   </Link>
                 </li>
               ))}

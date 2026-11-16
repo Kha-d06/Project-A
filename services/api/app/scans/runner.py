@@ -7,6 +7,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.orm import Session
 
 from app.analyzers.apk_scan import analyze_apk
+from app.analyzers.arabic import translate_check, translate_finding
 from app.analyzers.file_scan import analyze_file
 from app.analyzers.message_scan import analyze_message
 from app.analyzers.qr_scan import analyze_qr
@@ -45,6 +46,22 @@ def _finish(db: Session, job: ScanJob) -> None:
     db.commit()
 
 
+_ARABIC_LETTERS = range(0x0600, 0x0700)
+
+
+def _arabic(outcome: Outcome) -> None:
+    """Rewrite findings and check names in Arabic where the catalogue covers them,
+    and record whether any English remains so the report can say so."""
+    untranslated = 0
+    for finding in outcome.findings:
+        already_arabic = any(ord(char) in _ARABIC_LETTERS for char in finding.title)
+        if not already_arabic and not translate_finding(finding):
+            untranslated += 1
+    for check in outcome.checks:
+        translate_check(check)
+    outcome.details["findings_language"] = "ar" if untranslated == 0 else "mixed"
+
+
 def run_scan(db: Session, scan_id: uuid.UUID) -> None:
     job = db.get(ScanJob, scan_id)
     if job is None or job.status != "queued":
@@ -70,7 +87,10 @@ def run_scan(db: Session, scan_id: uuid.UUID) -> None:
         _finish(db, job)
         return
 
-    assessment = assess(job.scan_type, outcome, str(job.payload.get("locale", "en")))
+    locale = str(job.payload.get("locale", "en"))
+    if locale == "ar":
+        _arabic(outcome)
+    assessment = assess(job.scan_type, outcome, locale)
     job.status = assessment.status
     job.risk = assessment.risk
     job.confidence = assessment.confidence

@@ -170,6 +170,8 @@ export interface PublicReport {
 export interface ModerationItem extends CommunityReport {
   similar_reports: number;
   anonymous: boolean;
+  reporter_reputation: { level: "trusted" | "new" | "unreliable" | "anonymous"; verified: number; rejected: number };
+  verification_expires_at?: string | null;
 }
 
 export interface IntelIndicator {
@@ -269,4 +271,96 @@ export interface SecurityStatus {
 export interface FieldError {
   field: string;
   message: string;
+}
+
+// --- Sharing, groups, webhooks, breach check -----------------------------------------
+
+export interface Share {
+  id: string;
+  scan_id: string;
+  group_id: string | null;
+  include_target: boolean;
+  note: string | null;
+  views: number;
+  created_at: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+  url?: string | null;
+}
+
+export interface SharedScan {
+  scan_type: ScanType;
+  status: ScanStatus;
+  risk: RiskLevel | null;
+  confidence: Confidence | null;
+  summary: string | null;
+  target: string | null;
+  findings: (Omit<Finding, "evidence"> & { evidence: Record<string, unknown> | null })[];
+  checks: Check[];
+  recommendations: string[];
+  limitations: string[];
+  details: Record<string, unknown> | null;
+  completed_at: string | null;
+  note: string | null;
+  shared_at: string;
+  expires_at: string | null;
+}
+
+export type GroupKind = "family" | "organisation";
+export type GroupRole = "owner" | "admin" | "member";
+
+export interface GroupMember {
+  user_id: string;
+  email: string;
+  display_name: string | null;
+  role: GroupRole;
+  share_activity: boolean;
+  joined_at: string;
+  warnings_last_30_days: number | null;
+}
+
+export interface Group {
+  id: string;
+  name: string;
+  kind: GroupKind;
+  created_at: string;
+  my_role: GroupRole;
+  my_share_activity: boolean;
+  members: GroupMember[];
+  pending_invites: { email: string; role: GroupRole; expires_at: string }[];
+}
+
+export interface GroupSharedScan {
+  share_id: string;
+  shared_by: string;
+  note: string | null;
+  shared_at: string;
+  scan: SharedScan;
+}
+
+export interface InviteCreated {
+  email: string;
+  expires_at: string;
+  emailed: boolean;
+  url: string;
+}
+
+export type WebhookEvent = "scan.completed" | "scan.dangerous";
+
+export interface Webhook {
+  id: string;
+  url: string;
+  events: WebhookEvent[];
+  active: boolean;
+  created_at: string;
+  last_delivery_at: string | null;
+  last_status: string | null;
+  consecutive_failures: number;
+  secret?: string;
+}
+
+export interface BreachResult {
+  email: string;
+  breaches: { name: string; title: string; domain: string | null; breach_date: string | null; data_classes: string[]; verified: boolean }[];
+  checked_at: string;
 }

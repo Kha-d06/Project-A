@@ -3,6 +3,8 @@
  * must satisfy (see ar.ts). Counted phrases are functions, because plural rules
  * differ between languages.
  */
+import { extraEn } from "./extra";
+
 type Count = (n: number) => string;
 const plural = (one: string, many: string): Count => (n) => `${n} ${n === 1 ? one : many}`;
 
@@ -561,6 +563,7 @@ export const en = {
     mineEmpty: "You have not reported anything yet. If someone tried to scam you, reporting it helps SENTINEL warn others.",
     mineFailed: "Your reports could not be loaded.",
   },
+  extra: extraEn,
 };
 
 type Widen<T> = T extends (...args: infer A) => string

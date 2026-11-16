@@ -2,6 +2,8 @@
 
 import {
   Flag,
+  KeyRound,
+  Users,
   Gavel,
   History,
   LayoutDashboard,
@@ -27,7 +29,7 @@ import { useI18n } from "@/lib/i18n/client";
 import { cn } from "@/lib/cn";
 import { useSession } from "@/lib/session";
 
-type NavKey = keyof Dictionary["dashboard"]["nav"];
+type NavKey = keyof Dictionary["dashboard"]["nav"] | `extra.${keyof Dictionary["extra"]["nav"]}`;
 
 const NAV: { href: string; key: NavKey; icon: typeof History }[] = [
   { href: "/dashboard", key: "overview", icon: LayoutDashboard },
@@ -36,6 +38,8 @@ const NAV: { href: string; key: NavKey; icon: typeof History }[] = [
   { href: "/dashboard/browser-protection", key: "browserProtection", icon: Puzzle },
   { href: "/dashboard/intelligence", key: "intelligence", icon: Radar },
   { href: "/dashboard/reports", key: "myReports", icon: Flag },
+  { href: "/dashboard/groups", key: "extra.groups", icon: Users },
+  { href: "/dashboard/breach", key: "extra.breach", icon: KeyRound },
   { href: "/dashboard/settings", key: "settings", icon: Settings },
 ];
 
@@ -77,7 +81,9 @@ function SidebarNav() {
                   )}
                 >
                   <item.icon aria-hidden className={cn("size-4", current && "text-accent")} />
-                  {t.dashboard.nav[item.key]}
+                  {item.key.startsWith("extra.")
+                    ? t.extra.nav[item.key.slice(6) as keyof Dictionary["extra"]["nav"]]
+                    : t.dashboard.nav[item.key as keyof Dictionary["dashboard"]["nav"]]}
                 </Link>
               </li>
             );
@@ -147,15 +153,15 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="min-h-dvh lg:grid lg:grid-cols-[15rem_1fr]">
-      <aside className="sticky top-0 hidden h-dvh overflow-y-auto border-e border-line bg-surface px-3 py-5 lg:block">
+    <div className="min-h-dvh lg:grid lg:grid-cols-[15rem_1fr] print:block">
+      <aside className="sticky top-0 hidden h-dvh print:!hidden overflow-y-auto border-e border-line bg-surface px-3 py-5 lg:block">
         <Link href="/" aria-label={t.nav.home} className="mb-8 block px-3">
           <Logo />
         </Link>
         <SidebarNav />
       </aside>
 
-      <div className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-line bg-canvas/90 px-4 backdrop-blur lg:hidden">
+      <div className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-line bg-canvas/90 px-4 backdrop-blur lg:hidden print:hidden">
         <Link href="/" aria-label={t.nav.home}>
           <Logo />
         </Link>

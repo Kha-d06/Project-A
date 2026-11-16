@@ -1,4 +1,5 @@
 import type { Dictionary } from "./en";
+import { extraAr } from "./extra";
 
 /**
  * Arabic (Modern Standard Arabic). Counted phrases follow Arabic number agreement:
@@ -565,4 +566,5 @@ export const ar: Dictionary = {
     mineEmpty: "لم تبلّغ عن أي شيء بعد. إن حاول أحدهم الاحتيال عليك، فإن الإبلاغ يساعد سنتينل على تحذير الآخرين.",
     mineFailed: "تعذّر تحميل بلاغاتك.",
   },
+  extra: extraAr,
 };

@@ -107,10 +107,11 @@ export function UrlScanForm({
   );
 }
 
-export function MessageScanForm({ reportBase }: { reportBase: string }) {
+export function MessageScanForm({ reportBase, initialText = "" }: { reportBase: string; initialText?: string }) {
   const { pending, error, submit } = useScanSubmission(reportBase);
   const { t } = useI18n();
-  const [content, setContent] = useState("");
+  // Prefilled (never auto-submitted) when text is shared to SENTINEL from another app.
+  const [content, setContent] = useState(initialText);
   const [localError, setLocalError] = useState<string>();
 
   const onSubmit = (event: FormEvent) => {

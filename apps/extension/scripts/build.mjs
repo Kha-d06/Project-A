@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 import { createManifest } from "./manifest.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const out = join(root, "dist", "chrome");
+const browser = process.env.TARGET_BROWSER === "firefox" ? "firefox" : "chrome";
+const out = join(root, "dist", browser);
 const { version } = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
 const serverOrigin = new URL(process.env.SENTINEL_SERVER ?? "http://localhost:8080").origin;
 
@@ -15,12 +16,13 @@ await mkdir(out, { recursive: true });
 
 const shared = {
   bundle: true,
-  target: "chrome116",
+  target: browser === "firefox" ? "firefox128" : "chrome116",
   minify: process.env.NODE_ENV === "production",
   sourcemap: process.env.NODE_ENV === "production" ? false : "linked",
   define: {
     __SENTINEL_SERVER__: JSON.stringify(serverOrigin),
     __EXTENSION_VERSION__: JSON.stringify(version),
+    __TARGET_BROWSER__: JSON.stringify(browser),
   },
   logLevel: "warning",
 };
@@ -40,5 +42,5 @@ await build({
 await build({ ...shared, format: "iife", entryPoints: { hover: join(root, "src/hover.ts") }, outdir: out });
 
 await cp(join(root, "static"), out, { recursive: true });
-await writeFile(join(out, "manifest.json"), JSON.stringify(createManifest({ version, serverOrigin }), null, 2));
-console.log(`Built SENTINEL Protect ${version} for ${serverOrigin} -> ${out}`);
+await writeFile(join(out, "manifest.json"), JSON.stringify(createManifest({ version, serverOrigin, browser }), null, 2));
+console.log(`Built SENTINEL Protect ${version} (${browser}) for ${serverOrigin} -> ${out}`);

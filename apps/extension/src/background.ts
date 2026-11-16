@@ -7,6 +7,11 @@ import { loadSettings, saveSettings, type Settings } from "./lib/settings";
 import type { CheckResult, ProtectionState, Verdict } from "./lib/types";
 import { BADGE_COLORS, VERDICTS, shouldInterrupt } from "./lib/verdicts";
 
+declare const __TARGET_BROWSER__: string;
+const IS_FIREFOX = typeof __TARGET_BROWSER__ === "string" && __TARGET_BROWSER__ === "firefox";
+// Extensions cannot open Firefox's new-tab page, so a blank page is the fallback there.
+const NEW_TAB_URL = IS_FIREFOX ? "about:blank" : "chrome://newtab/";
+
 const ACCOUNT_KEY = "account";
 const HOVER_SCRIPT_ID = "sentinel-hover";
 const MENU_LINK = "sentinel-scan-link";
@@ -72,14 +77,17 @@ function warningPageUrl(target: string): string {
 }
 
 async function notify(id: string, title: string, message: string, buttons?: { title: string }[]) {
-  await chrome.notifications.create(id, {
+  const options: chrome.notifications.NotificationCreateOptions = {
     type: "basic",
     iconUrl: chrome.runtime.getURL("icons/icon-128.png"),
     title,
     message,
-    buttons,
     priority: 1,
-  });
+  };
+  // Firefox does not support notification buttons; the message then says where to act.
+  if (buttons && !IS_FIREFOX) options.buttons = buttons;
+  else if (buttons) options.message = `${message} Open the downloads panel to cancel or resume it.`;
+  await chrome.notifications.create(id, options);
 }
 
 // --- Page navigation ------------------------------------------------------------------
@@ -95,7 +103,7 @@ async function rememberSafePage(tabId: number, url: string) {
 
 async function safePageFor(tabId: number): Promise<string> {
   const stored = await chrome.storage.session.get(SAFE_PREFIX + tabId);
-  return (stored[SAFE_PREFIX + tabId] as string | undefined) ?? "chrome://newtab/";
+  return (stored[SAFE_PREFIX + tabId] as string | undefined) ?? NEW_TAB_URL;
 }
 
 // If enrollment failed (server down at install time), retry quietly on later

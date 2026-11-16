@@ -1,5 +1,6 @@
 import type {
   Activity,
+  ApiKey,
   AdminOverview,
   AdminScan,
   AdminUser,
@@ -207,6 +208,11 @@ export const api = {
     overview: () => request<Overview>("/user/overview"),
     activity: () => request<Activity[]>("/user/activity"),
     exportData: () => request<Record<string, unknown>>("/user/export"),
+    apiKeys: () => request<ApiKey[]>("/user/api-keys"),
+    createApiKey: (name: string) =>
+      request<ApiKey & { key: string }>("/user/api-keys", { method: "POST", json: { name } }),
+    revokeApiKey: (id: string) =>
+      request<void>(`/user/api-keys/${encodeURIComponent(id)}`, { method: "DELETE" }),
     deleteAccount: (password: string) =>
       request<void>("/user/account", { method: "DELETE", json: { password } }),
   },

@@ -15,11 +15,12 @@ Every result is one of four verdicts, used consistently in the API and the UI:
 
 Nothing is ever reported as "safe".
 
-> **Status: Phases 1–4.** Scanning (links, messages, files, QR codes, websites and
+> **Status: Phases 1–5.** Scanning (links, messages, files, QR codes, websites and
 > Android apps), optional AI explanations, accounts, the dashboard, the SENTINEL
 > Protect browser extension, threat-intelligence lookups, community reports with
-> moderation, the admin area and an Arabic interface all work end to end. See
-> [Roadmap](#roadmap) for what is next. The code has tests but has not had an
+> moderation, the admin area, an Arabic interface, an installable mobile web app,
+> personal API keys and Prometheus metrics all work end to end. A native Android
+> app and organisation accounts are not built; see [Roadmap](#roadmap). The code has tests but has not had an
 > independent security review, so it is not yet production-ready.
 
 ## What works today
@@ -105,6 +106,26 @@ The first administrator is created with `python -m app.cli set-role you@example.
 - **Scope of translation.** Navigation, the home page, all scanners, reports, sign-in, the dashboard, intelligence lookup and community reporting are translated. Scans submitted from an Arabic page get Arabic verdict summaries and advice, and the scam-pattern findings are written in Arabic too.
 - **Still English.** Other technical findings, the long policy pages, the browser extension and the staff tools are in English for now. Arabic pages say so rather than half-translating.
 - **Extending it.** Dictionaries are typed (`apps/web/src/lib/i18n`), so a new language has to supply every string.
+
+**On phones.** SENTINEL is an installable web app.
+- **Share target.** On Android, installing it adds SENTINEL to the system share sheet. Sharing a link or a message from any app opens the matching scanner with it filled in, and nothing is submitted until you confirm.
+- **QR camera.** The QR scanner opens the rear camera directly.
+- **Offline.** A minimal service worker shows an offline notice ("nothing has been checked") and caches nothing else.
+
+There is no native Android app. Building one needs the Android SDK, which was not available, and the web app covers the main mobile flows.
+
+**Public API.** Every endpoint is documented at `/api/v1/docs` and `/docs`.
+- **Personal keys.** Keys (`Authorization: Bearer snt_…`) let scripts scan and read their owner's history.
+- **Kept away from account actions.** Keys cannot reach account settings, key management or staff functions. Those always need a website session.
+
+**Threat feeds.** URLhaus, ThreatFox and MalwareBazaar (all abuse.ch, CC0) are synchronised hourly. Any fresh feed can back a link, file or extension verdict. If abuse.ch requires an Auth-Key for downloads, set `SENTINEL_URLHAUS_AUTH_KEY`, which is sent with feed requests too.
+
+**Monitoring.** With `SENTINEL_METRICS_TOKEN` set, `/api/v1/system/metrics` serves Prometheus metrics:
+- scans in the last 24 hours by type and status, and stuck scans;
+- feed age and size;
+- pending reports, users and extension installations.
+
+`docker compose --profile monitoring up` runs Prometheus with alert rules for stale feeds, stuck scans and failure spikes.
 
 **SENTINEL Protect browser extension** (`apps/extension`, Chrome and Edge, Manifest V3):
 - warns before known dangerous sites and convincing imitations load, with evidence and a way back;
@@ -198,6 +219,7 @@ All settings use the `SENTINEL_` prefix. See [`.env.example`](.env.example) and
 | `SENTINEL_MOBSF_URL`, `SENTINEL_MOBSF_API_KEY` | no | Self-hosted MobSF for deeper APK analysis. |
 | `SENTINEL_OPENAI_API_KEY`, `SENTINEL_OPENAI_MODEL` | no | Optional AI explanations (both required). |
 | `SENTINEL_YARA_RULES_DIR` | no | Extra YARA rule files, subject to their licences. |
+| `SENTINEL_METRICS_TOKEN` | no | Enables the Prometheus metrics endpoint. |
 | `NEXT_PUBLIC_CONTACT_URL` | no | Operator contact shown on the About page. |
 
 ### External services
@@ -231,7 +253,15 @@ CI runs all of this plus migrations against PostgreSQL, `alembic check`,
 1. **Phase 2 (done).** SENTINEL Protect browser extension.
 2. **Phase 3 (done).** QR, website and APK analysis, YARA, macro and executable analysis, AI explanations. Download reputation checks shipped with the extension.
 3. **Phase 4 (done).** Threat-intelligence lookups, community reports with moderation, admin area, Arabic interface.
-4. **Phase 5.** Android app, organisation tools, public API, more browsers and intelligence sources.
+4. **Phase 5 (done, with gaps).**
+   - **Built:** installable mobile web app with a share target, public API keys, the ThreatFox feed, Prometheus metrics and alerts, and a Firefox build of the extension (experimental, not yet tested in Firefox).
+   - **Not built:** a native Android app (the web app covers sharing and QR scanning on Android) and organisation accounts (marked "if needed later").
+
+**Still to do:**
+- **Email:** verification, password reset and two-factor sign-in, which need an email service.
+- **Arabic:** translated technical findings, policy pages and extension.
+- **Data-store hardening:** a separate least-privilege database role for scan workers.
+- **Review:** an independent security review before production use.
 
 See [docs/architecture.md](docs/architecture.md),
 [docs/security.md](docs/security.md) and [docs/design.md](docs/design.md).

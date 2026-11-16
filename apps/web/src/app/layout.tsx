@@ -7,6 +7,7 @@ import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 
+import { ServiceWorker } from "@/components/site/service-worker";
 import { ToastProvider } from "@/components/ui/toast";
 import { I18nProvider } from "@/lib/i18n/client";
 import { directionOf } from "@/lib/i18n/locales";
@@ -15,6 +16,8 @@ import { SessionProvider } from "@/lib/session";
 import { themeBootScript } from "@/lib/theme";
 
 export const metadata: Metadata = {
+  appleWebApp: { capable: true, title: "SENTINEL", statusBarStyle: "black-translucent" },
+  icons: { apple: "/icons/apple-touch-icon.png" },
   title: { default: "SENTINEL: check links, messages and files", template: "%s · SENTINEL" },
   description:
     "SENTINEL helps you spot phishing links, scam messages and malicious files, and explains what it found in plain language. Free for everyone.",
@@ -43,6 +46,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         >
           {t.nav.skip}
         </a>
+        <ServiceWorker />
         <I18nProvider locale={locale}>
           <SessionProvider>
             <ToastProvider>{children}</ToastProvider>

@@ -1,0 +1,17 @@
+groups:
+  - name: sentinel
+    rules:
+      - alert: ThreatFeedStale
+        expr: sentinel_feed_age_seconds > 172800
+        for: 30m
+        annotations:
+          summary: "Threat feed {{ $labels.feed }} has not synchronised for over 48 hours; link and file checks will report 'inconclusive'."
+      - alert: ScansStuck
+        expr: sentinel_scans_stuck > 0
+        for: 15m
+        annotations:
+          summary: "Scans are waiting without a worker. Check that the scan workers are running."
+      - alert: ScansFailing
+        expr: sum(sentinel_scans_24h{status="failed"}) > 20
+        annotations:
+          summary: "More than 20 scans failed in the last 24 hours."

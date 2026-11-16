@@ -55,6 +55,16 @@ account (cascading to scans and the audit log). [The privacy page](../apps/web/s
 documents exactly what is stored and shared, and must be kept in step with the
 code.
 
+## API keys and metrics
+
+- **API keys.** Personal keys are 256-bit random values prefixed `snt_`, shown once and stored only as SHA-256 digests. They are revocable and limited to ten per account. Keys authenticate scanning, history and lookups only. Account changes, key management, extension linking and all staff functions require a website session with its CSRF token, so a leaked key cannot take over or escalate an account. Disabling an account stops its keys working immediately.
+- **Metrics.** The metrics endpoint is disabled unless `SENTINEL_METRICS_TOKEN` is set. Requests without the right bearer token get the same 404 as an unknown route.
+
+## Mobile web app
+
+- **Service worker.** It caches only the offline notice. Pages, scan results and API responses are never stored on the device.
+- **Shared content.** Content shared into SENTINEL is placed in the form, not submitted. It travels in the address of a page on this site, so it is visible to this server's access logs if those are enabled.
+
 ## Known gaps
 
 - Email verification, password reset and two-factor authentication are not implemented.

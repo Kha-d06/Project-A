@@ -14,6 +14,8 @@ const ENDPOINTS = [
   ["POST", "/api/v1/scans/{id}/explanation", "Optional AI explanation of a finished scan, if configured."],
   ["GET", "/api/v1/scans/{id}", "Fetch a scan. Poll until status is no longer queued or processing."],
   ["GET", "/api/v1/scans/history", "Your saved scans, filterable by type, risk, status and date."],
+  ["GET", "/api/v1/intelligence/{domain|ip|hash}/{value}", "Look up a domain, IP address or SHA-256 in the threat feeds."],
+  ["POST", "/api/v1/reports", "Report a scam (reviewed by a moderator before it is used)."],
   ["GET", "/api/v1/system/providers", "Which checks this server can perform right now."],
 ];
 
@@ -71,6 +73,30 @@ export default function DocsPage() {
           {/* A full page load on purpose: this is the API's own HTML, not a Next.js page. */}
           {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
           <a href="/api/v1/docs">/api/v1/docs</a>.
+        </p>
+      </section>
+      <section>
+        <h2>Using the API from your own code</h2>
+        <p>
+          Every endpoint above works without an account. To save scans to your history from a
+          script, create a personal API key under Settings and send it with each request:
+        </p>
+        <pre
+          tabIndex={0}
+          aria-label="Example request"
+          className="overflow-x-auto rounded-control bg-surface-sunken p-4 font-mono text-xs text-ink"
+        >
+{`curl -X POST https://your-sentinel.example/api/v1/scans/url \
+  -H "Authorization: Bearer snt_..." \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com/login"}'`}
+        </pre>
+        <p>
+          Keys can scan, read your scan history and look up intelligence. They cannot change your
+          password, export or delete your account, manage keys, or use moderator and administrator
+          functions, so a leaked key cannot take over your account. Revoke a key in Settings at any
+          time. Send <code className="font-mono text-ink">Accept-Language: ar</code> to receive verdict
+          summaries and advice in Arabic.
         </p>
       </section>
       <section>

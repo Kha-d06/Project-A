@@ -11,7 +11,8 @@ import { Field, Input } from "@/components/ui/field";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { useToast } from "@/components/ui/toast";
 import { ApiError, api } from "@/lib/api/client";
-import type { Profile } from "@/lib/api/types";
+import type { ApiKey, Profile } from "@/lib/api/types";
+import { formatRelative } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 import { useSession } from "@/lib/session";
 
@@ -176,6 +177,96 @@ function PasswordSection() {
   );
 }
 
+function ApiKeysSection() {
+  const notify = useToast();
+  const { t } = useI18n();
+  const s = t.dashboard.settings;
+  const [keys, setKeys] = useState<ApiKey[] | null>(null);
+  const [name, setName] = useState("");
+  const [created, setCreated] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    api.user.apiKeys().then(setKeys, () => setKeys([]));
+  }, [reloadKey]);
+
+  const create = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!name.trim()) return;
+    setPending(true);
+    try {
+      setCreated((await api.user.createApiKey(name.trim())).key);
+      setName("");
+      setReloadKey((key) => key + 1);
+    } catch (error) {
+      notify("error", message(error, s.keyFailed));
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const revoke = async (key: ApiKey) => {
+    try {
+      await api.user.revokeApiKey(key.id);
+      notify("success", s.revoked);
+      setReloadKey((value) => value + 1);
+    } catch (error) {
+      notify("error", message(error, s.keyFailed));
+    }
+  };
+
+  return (
+    <Panel>
+      <PanelHeader title={s.apiKeys} description={s.apiKeysDescription} />
+      <div className="space-y-4 px-5 py-5">
+        {created && (
+          <Alert tone="warning" title={s.newKeyTitle}>
+            <span className="block">{s.newKeyBody}</span>
+            <span className="mt-2 flex flex-wrap items-center gap-2">
+              <code className="font-mono text-xs break-all text-ink">{created}</code>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => navigator.clipboard.writeText(created).then(() => notify("success", s.copied))}
+              >
+                {s.copy}
+              </Button>
+            </span>
+          </Alert>
+        )}
+        <form onSubmit={create} className="flex flex-wrap items-end gap-2">
+          <div className="min-w-56 flex-1">
+            <Field label={s.apiKeyName}>
+              {(props) => (
+                <Input {...props} value={name} maxLength={80} placeholder={s.apiKeyNamePlaceholder} onChange={(event) => setName(event.target.value)} />
+              )}
+            </Field>
+          </div>
+          <Button type="submit" variant="secondary" pending={pending} disabled={!name.trim()}>
+            {s.createKey}
+          </Button>
+        </form>
+        {keys?.length === 0 && <p className="text-sm text-ink-muted">{s.noKeys}</p>}
+        <ul className="divide-y divide-line">
+          {keys?.map((key) => (
+            <li key={key.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
+              <span className="font-medium text-ink">{key.name}</span>
+              <code className="font-mono text-xs text-ink-faint">{key.prefix}…</code>
+              <span className="text-xs text-ink-faint">
+                {key.last_used_at ? s.lastUsed(formatRelative(key.last_used_at)) : s.neverUsed}
+              </span>
+              <Button size="sm" variant="danger" className="ms-auto" onClick={() => revoke(key)}>
+                {s.revoke}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </Panel>
+  );
+}
+
 function DeleteAccountSection() {
   const { clear } = useSession();
   const { t } = useI18n();
@@ -255,6 +346,7 @@ export function Settings() {
           <ProfileSection profile={profile} onSaved={setProfile} />
           <PrivacySection profile={profile} onSaved={setProfile} />
           <PasswordSection />
+          <ApiKeysSection />
           <Alert title={s.emailTitle}>{s.emailBody}</Alert>
           <DeleteAccountSection />
         </div>

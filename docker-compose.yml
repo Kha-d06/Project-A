@@ -21,6 +21,7 @@ x-api-environment: &api-environment
   SENTINEL_OPENAI_API_KEY: ${SENTINEL_OPENAI_API_KEY:-}
   SENTINEL_OPENAI_MODEL: ${SENTINEL_OPENAI_MODEL:-}
   SENTINEL_YARA_RULES_DIR: ${SENTINEL_YARA_RULES_DIR:-}
+  SENTINEL_METRICS_TOKEN: ${SENTINEL_METRICS_TOKEN:-}
 
 services:
   postgres:
@@ -123,7 +124,26 @@ services:
     profiles: [clamav]
     mem_limit: 2g
 
+  # Metrics and alert rules. Needs SENTINEL_METRICS_TOKEN in .env. Not published;
+  # reach it with `docker compose port prometheus 9090` or an SSH tunnel.
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    profiles: [monitoring]
+    volumes:
+      - ./infrastructure/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infrastructure/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    secrets:
+      - source: metrics-token
+        target: /etc/prometheus/metrics-token
+    depends_on: [api]
+
 volumes:
   postgres-data:
   uploads:
   caddy-data:
+  prometheus-data:
+
+secrets:
+  metrics-token:
+    environment: SENTINEL_METRICS_TOKEN

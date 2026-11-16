@@ -87,7 +87,9 @@ export function ScanCenter({ reportBase }: { reportBase: string }) {
         {active === "url" && (
           <UrlScanForm reportBase={reportBase} initialUrl={params.get("url")?.slice(0, 2048) ?? ""} />
         )}
-        {active === "message" && <MessageScanForm reportBase={reportBase} />}
+        {active === "message" && (
+          <MessageScanForm reportBase={reportBase} initialText={params.get("text")?.slice(0, 10_000) ?? ""} />
+        )}
         {active === "file" && <FileScanForm reportBase={reportBase} />}
         {active === "qr" && <QrScanForm reportBase={reportBase} />}
         {active === "website" && (

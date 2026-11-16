@@ -115,7 +115,10 @@ export function Moderation() {
             <p className="font-mono text-sm break-all text-ink" dir="auto">{item.subject}</p>
             <p className="text-sm whitespace-pre-line text-ink" dir="auto">{item.description}</p>
             {item.evidence && (
-              <pre className="max-h-60 overflow-auto rounded-control bg-surface-sunken p-3 font-mono text-xs whitespace-pre-wrap text-ink" dir="auto">
+              <pre
+                tabIndex={0}
+                aria-label="Evidence submitted with the report"
+                className="max-h-60 overflow-auto rounded-control bg-surface-sunken p-3 font-mono text-xs whitespace-pre-wrap text-ink" dir="auto">
                 {item.evidence}
               </pre>
             )}

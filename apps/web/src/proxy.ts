@@ -14,6 +14,9 @@ export function proxy(request: NextRequest) {
     "img-src 'self' data: blob:",
     "font-src 'self'",
     "connect-src 'self'",
+    // strict-dynamic ignores 'self' for scripts, so the service worker needs its own rule.
+    "worker-src 'self'",
+    "manifest-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -33,7 +36,7 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     {
-      source: "/((?!api|_next/static|_next/image|favicon.ico|icon.svg).*)",
+      source: "/((?!api|_next/static|_next/image|favicon.ico|icon.svg|icons/|sw.js|manifest.webmanifest).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },

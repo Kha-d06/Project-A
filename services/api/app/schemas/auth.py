@@ -43,6 +43,13 @@ class SessionOut(BaseModel):
     csrf_token: str
 
 
+class SessionStatus(BaseModel):
+    """Answer to "who am I?". Being signed out is a normal state, not an error."""
+
+    user: UserOut | None
+    csrf_token: str | None
+
+
 class SettingsOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

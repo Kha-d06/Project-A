@@ -19,7 +19,7 @@ from app.core.security import (
 )
 from app.models import AuditEvent, User, UserSession, UserSettings
 from app.models.base import utcnow
-from app.schemas.auth import LoginRequest, RegisterRequest, SessionOut, UserOut
+from app.schemas.auth import LoginRequest, RegisterRequest, SessionOut, SessionStatus, UserOut
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -112,8 +112,8 @@ def logout(request: Request, response: Response, session: CurrentSession, db: Db
     clear_session_cookie(response)
 
 
-@router.get("/session", response_model=SessionOut)
-def current_session(session: CurrentSession) -> SessionOut:
+@router.get("/session", response_model=SessionStatus)
+def current_session(session: CurrentSession) -> SessionStatus:
     if session is None:
-        raise ApiError(401, "not_authenticated", "You are not signed in.")
-    return SessionOut(user=UserOut.model_validate(session.user), csrf_token=session.csrf_token)
+        return SessionStatus(user=None, csrf_token=None)
+    return SessionStatus(user=UserOut.model_validate(session.user), csrf_token=session.csrf_token)

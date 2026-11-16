@@ -1,0 +1,16 @@
+# Public entry point. Set SENTINEL_SITE_ADDRESS to your domain (for example
+# sentinel.example.org) and Caddy obtains and renews a TLS certificate for it.
+# The default, :8080, serves plain HTTP for local use.
+{$SENTINEL_SITE_ADDRESS::8080} {
+	encode zstd gzip
+
+	# With no trusted_proxies configured, Caddy discards any X-Forwarded-For sent by
+	# the client and sets it to the real client address. The API's per-client rate
+	# limits depend on this, so the web and API containers must only be reachable
+	# through here.
+	reverse_proxy web:3000
+
+	request_body {
+		max_size 30MB
+	}
+}

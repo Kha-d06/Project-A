@@ -57,7 +57,7 @@ def test_login_and_logout(client: TestClient) -> None:
 
     headers = {"X-CSRF-Token": login.json()["csrf_token"]}
     assert other.post(f"{AUTH}/logout", headers=headers).status_code == 204
-    assert other.get(f"{AUTH}/session").status_code == 401
+    assert other.get(f"{AUTH}/session").json()["user"] is None
 
 
 def test_state_changing_requests_need_the_csrf_token(client: TestClient) -> None:
@@ -74,7 +74,7 @@ def test_state_changing_requests_need_the_csrf_token(client: TestClient) -> None
 
 def test_invalid_session_cookie_is_treated_as_signed_out(client: TestClient) -> None:
     client.cookies.set("sentinel_session", "forged-token")
-    assert client.get(f"{AUTH}/session").status_code == 401
+    assert client.get(f"{AUTH}/session").json()["user"] is None
     assert client.get("/api/v1/scans/history").status_code == 401
 
 
@@ -110,5 +110,5 @@ def test_changing_password_signs_out_other_devices(client: TestClient) -> None:
         headers=headers,
     )
     assert changed.status_code == 204
-    assert other.get(f"{AUTH}/session").status_code == 401
-    assert client.get(f"{AUTH}/session").status_code == 200
+    assert other.get(f"{AUTH}/session").json()["user"] is None
+    assert client.get(f"{AUTH}/session").json()["user"] is not None

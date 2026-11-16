@@ -93,8 +93,7 @@ def analyze_message(payload: dict[str, Any], db: Session) -> Outcome:
         for finding in analyze_url_text(url):
             finding.evidence = {"link": url.normalized, **finding.evidence}
             outcome.findings.append(finding)
-        if feed_available:
-            outcome.findings += indicator_findings(db, url)
+        outcome.findings += indicator_findings(db, url)
 
     if urls:
         outcome.checks.append(

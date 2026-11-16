@@ -61,6 +61,9 @@ def indicator_findings(db: Session, url: ParsedUrl) -> list[FindingData]:
 
 
 def _local_feed_check(db: Session, url: ParsedUrl, outcome: Outcome) -> None:
+    # Stored indicators are evidence even if the feed is stale, so always look.
+    # Whether a miss means anything depends on the feed being fresh.
+    outcome.findings += indicator_findings(db, url)
     sources = fresh_sources(db, (URLHAUS,))
     if not sources:
         outcome.checks.append(
@@ -74,7 +77,6 @@ def _local_feed_check(db: Session, url: ParsedUrl, outcome: Outcome) -> None:
             )
         )
         return
-    outcome.findings += indicator_findings(db, url)
     source = sources[0]
     outcome.checks.append(
         Check(
@@ -177,8 +179,7 @@ def _redirect_check(db: Session, url: ParsedUrl, outcome: Outcome) -> ParsedUrl:
             )
         )
         outcome.findings += analyze_url_text(final)
-        if fresh_sources(db, (URLHAUS,)):
-            outcome.findings += indicator_findings(db, final)
+        outcome.findings += indicator_findings(db, final)
 
     if trace.stopped:
         message = _STOP_MESSAGES.get(trace.stopped, "The destination could not be reached.")

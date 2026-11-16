@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 
 URLHAUS = "urlhaus"
 MALWAREBAZAAR = "malwarebazaar"
+# Development-only indicators on reserved domains; see app.cli load-test-fixtures.
+TEST_FIXTURES = "test-fixtures"
 MAX_FEED_BYTES = 80 * 1024 * 1024
 _BATCH_SIZE = 500
 _SHA256_LENGTH = 64
@@ -169,6 +171,7 @@ def remove_stale_indicators(db: Session, source: ThreatSource) -> None:
 
 def sync_feed(db: Session, feed: Feed, fetch: Callable[[str], str] = download_feed) -> ThreatSource:
     source = get_or_create_source(db, feed.key, feed.name)
+    source.name = feed.name
     source.last_attempt_at = utcnow()
     db.commit()
     try:

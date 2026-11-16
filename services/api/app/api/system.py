@@ -5,7 +5,7 @@ from sqlalchemy import select, text
 
 from app.api.deps import Db
 from app.core.config import get_settings
-from app.intel.feeds import FEEDS
+from app.intel.feeds import FEEDS, TEST_FIXTURES
 from app.models import ThreatSource
 from app.models.base import utcnow
 from app.schemas.scans import ProviderStatus
@@ -56,6 +56,19 @@ def provider_status(db: Db) -> list[ProviderStatus]:
     settings = get_settings()
     sources = {source.key: source for source in db.scalars(select(ThreatSource))}
     statuses = [_feed_status(sources.get(feed.key), feed.key, feed.name) for feed in FEEDS]
+    fixtures = sources.get(TEST_FIXTURES)
+    if fixtures:
+        statuses.append(
+            ProviderStatus(
+                key=TEST_FIXTURES,
+                name=fixtures.name,
+                purpose="Lets developers exercise detections without internet access",
+                status="active",
+                detail=f"{fixtures.indicator_count} indicators on reserved example domains. "
+                "Matches are shown as evidence but never count as a reputation check.",
+                shares_data=_NOTHING_SHARED,
+            )
+        )
 
     statuses.append(
         ProviderStatus(

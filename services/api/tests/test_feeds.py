@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -107,3 +108,40 @@ def test_old_anonymous_scans_are_purged(client: TestClient, db: Session) -> None
 
     purge_expired_data(db)
     assert client.get(f"/api/v1/scans/{scan['id']}").status_code == 404
+
+
+def test_test_fixtures_detect_but_never_vouch_for_a_link(client: TestClient, db: Session) -> None:
+    from app.cli import load_test_fixtures
+
+    assert load_test_fixtures(db) == 0
+    listed = client.post(
+        "/api/v1/scans/url", json={"url": "http://malware.example.net/payload.exe"}
+    ).json()
+    assert listed["risk"] == "known_malicious"
+    assert "not real threat data" in listed["findings"][0]["source"]
+
+    # Fixtures alone are not a reputation source, so a clean link stays inconclusive.
+    clean = client.post("/api/v1/scans/url", json={"url": "https://example.org/"}).json()
+    assert clean["risk"] == "inconclusive"
+
+    statuses = {p["key"]: p for p in client.get("/api/v1/system/providers").json()}
+    assert "not real threat data" in statuses["test-fixtures"]["name"]
+
+
+def test_test_fixtures_are_refused_in_production(
+    db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.cli import load_test_fixtures
+
+    monkeypatch.setattr(get_settings(), "environment", "production")
+    assert load_test_fixtures(db) == 1
+
+
+def test_real_sync_restores_the_feed_name(db: Session) -> None:
+    from app.intel.feeds import get_or_create_source
+
+    get_or_create_source(db, "urlhaus", "Old name")
+    db.commit()
+    assert (
+        sync_feed(db, URLHAUS_FEED, fetch=lambda url: URLHAUS_SAMPLE).name == "URLhaus (abuse.ch)"
+    )

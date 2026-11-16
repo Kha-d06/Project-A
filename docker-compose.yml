@@ -1,0 +1,124 @@
+# Local development and single-host deployment.
+#
+#   cp .env.example .env        # then set SENTINEL_SECRET_KEY and POSTGRES_PASSWORD
+#   docker compose up --build
+#   docker compose --profile clamav up --build   # also run ClamAV (about 1 GB of RAM)
+#
+# Caddy is the only published service: http://localhost:8080, or HTTPS on your
+# domain when SENTINEL_SITE_ADDRESS is set. Every other container is internal.
+
+x-api-environment: &api-environment
+  SENTINEL_ENVIRONMENT: ${SENTINEL_ENVIRONMENT:-development}
+  SENTINEL_SECRET_KEY: ${SENTINEL_SECRET_KEY:?Set SENTINEL_SECRET_KEY in .env}
+  SENTINEL_DATABASE_URL: postgresql+psycopg://sentinel:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/sentinel
+  SENTINEL_REDIS_URL: redis://redis:6379/0
+  SENTINEL_SESSION_COOKIE_SECURE: ${SENTINEL_SESSION_COOKIE_SECURE:-false}
+  SENTINEL_TRUST_FORWARDED_FOR: "true"
+  SENTINEL_URLHAUS_AUTH_KEY: ${SENTINEL_URLHAUS_AUTH_KEY:-}
+  SENTINEL_CLAMAV_HOST: ${SENTINEL_CLAMAV_HOST:-}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: sentinel
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  migrate:
+    build: ./services/api
+    command: ["alembic", "upgrade", "head"]
+    environment: *api-environment
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    build: ./services/api
+    environment: *api-environment
+    volumes:
+      - uploads:/var/lib/sentinel/uploads
+    read_only: true
+    tmpfs: [/tmp]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/system/health')"]
+      interval: 10s
+      retries: 5
+
+  # Scans run here, not in the API process. The worker never executes samples, but it
+  # still runs unprivileged, on a read-only filesystem, with capped memory and CPU.
+  worker:
+    build: ./services/api
+    command: ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=INFO", "--concurrency=4", "--max-tasks-per-child=200"]
+    environment: *api-environment
+    volumes:
+      - uploads:/var/lib/sentinel/uploads
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 1g
+    cpus: 2
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  # Hourly feed refresh and retention sweep.
+  scheduler:
+    build: ./services/api
+    command: ["celery", "-A", "app.workers.celery_app", "beat", "--loglevel=INFO", "--schedule=/tmp/celerybeat-schedule"]
+    environment: *api-environment
+    read_only: true
+    tmpfs: [/tmp]
+    depends_on:
+      redis: { condition: service_healthy }
+
+  web:
+    build: ./apps/web
+    environment:
+      SENTINEL_API_URL: http://api:8000
+      NEXT_PUBLIC_CONTACT_URL: ${NEXT_PUBLIC_CONTACT_URL:-}
+    read_only: true
+    tmpfs: [/tmp]
+    depends_on:
+      api: { condition: service_healthy }
+
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      SENTINEL_SITE_ADDRESS: ${SENTINEL_SITE_ADDRESS:-:8080}
+    ports:
+      - "8080:8080"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infrastructure/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on: [web]
+
+  clamav:
+    image: clamav/clamav:stable
+    profiles: [clamav]
+    mem_limit: 2g
+
+volumes:
+  postgres-data:
+  uploads:
+  caddy-data:

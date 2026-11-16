@@ -487,4 +487,4 @@ def test_overview_export_and_account_deletion(client: TestClient, db: Session) -
     )
     assert deleted.status_code == 204
     assert db.query(ScanJob).count() == 0
-    assert client.get("/api/v1/auth/session").status_code == 401
+    assert client.get("/api/v1/auth/session").json()["user"] is None

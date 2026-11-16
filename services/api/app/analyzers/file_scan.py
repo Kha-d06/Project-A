@@ -360,6 +360,18 @@ def _content_findings(path: Path, filename: str, detected: FileType, outcome: Ou
 
 def _hash_reputation_check(db: Session, sha256: str, outcome: Outcome) -> None:
     label, provider = "Known malware hashes", "MalwareBazaar feed (local copy)"
+    for match in find_indicators(db, "sha256", sha256):
+        outcome.findings.append(
+            FindingData(
+                "critical",
+                "threat_intelligence",
+                f"This file is listed as malware by {match.source_name}",
+                "The file's fingerprint matches a sample that was submitted and catalogued as "
+                "malware. Delete it and do not open it.",
+                match.source_name,
+                match.evidence(),
+            )
+        )
     sources = fresh_sources(db, (MALWAREBAZAAR,))
     if not sources:
         outcome.checks.append(
@@ -373,18 +385,6 @@ def _hash_reputation_check(db: Session, sha256: str, outcome: Outcome) -> None:
             )
         )
         return
-    for match in find_indicators(db, "sha256", sha256):
-        outcome.findings.append(
-            FindingData(
-                "critical",
-                "threat_intelligence",
-                f"This file is listed as malware by {match.source_name}",
-                "The file's fingerprint matches a sample that was submitted and catalogued as "
-                "malware. Delete it and do not open it.",
-                match.source_name,
-                match.evidence(),
-            )
-        )
     outcome.checks.append(
         Check(
             "hash_reputation",

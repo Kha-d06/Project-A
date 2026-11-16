@@ -20,6 +20,9 @@ x-api-environment: &api-environment
   SENTINEL_MOBSF_API_KEY: ${SENTINEL_MOBSF_API_KEY:-}
   SENTINEL_OPENAI_API_KEY: ${SENTINEL_OPENAI_API_KEY:-}
   SENTINEL_OPENAI_MODEL: ${SENTINEL_OPENAI_MODEL:-}
+  SENTINEL_WEB_RISK_API_KEY: ${SENTINEL_WEB_RISK_API_KEY:-}
+  SENTINEL_VIRUSTOTAL_API_KEY: ${SENTINEL_VIRUSTOTAL_API_KEY:-}
+  SENTINEL_BROWSER_RENDERING: ${SENTINEL_BROWSER_RENDERING:-false}
   SENTINEL_YARA_RULES_DIR: ${SENTINEL_YARA_RULES_DIR:-}
   SENTINEL_METRICS_TOKEN: ${SENTINEL_METRICS_TOKEN:-}
   SENTINEL_EMAIL_BACKEND: ${SENTINEL_EMAIL_BACKEND:-disabled}
@@ -53,7 +56,10 @@ services:
       retries: 10
 
   migrate:
-    build: ./services/api
+    build:
+      context: ./services/api
+      args:
+        WITH_BROWSER: ${SENTINEL_WITH_BROWSER:-false}
     command: ["alembic", "upgrade", "head"]
     environment: *api-environment
     depends_on:
@@ -77,7 +83,10 @@ services:
     restart: "no"
 
   api:
-    build: ./services/api
+    build:
+      context: ./services/api
+      args:
+        WITH_BROWSER: ${SENTINEL_WITH_BROWSER:-false}
     environment: *api-environment
     volumes:
       - uploads:/var/lib/sentinel/uploads
@@ -94,15 +103,21 @@ services:
   # Scans run here, not in the API process. The worker never executes samples, but it
   # still runs unprivileged, on a read-only filesystem, with capped memory and CPU.
   worker:
-    build: ./services/api
+    build:
+      context: ./services/api
+      args:
+        WITH_BROWSER: ${SENTINEL_WITH_BROWSER:-false}
     command: ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=INFO", "--concurrency=4", "--max-tasks-per-child=200"]
     environment:
       <<: *api-environment
       SENTINEL_WORKER_DATABASE_URL: postgresql+psycopg://sentinel_worker:${WORKER_DB_PASSWORD}@postgres:5432/sentinel
+      # The headless browser (when enabled) keeps its profile under $HOME.
+      HOME: /tmp
     volumes:
       - uploads:/var/lib/sentinel/uploads
     read_only: true
     tmpfs: [/tmp]
+    shm_size: 256m
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     mem_limit: 1g
@@ -113,7 +128,10 @@ services:
 
   # Hourly feed refresh and retention sweep.
   scheduler:
-    build: ./services/api
+    build:
+      context: ./services/api
+      args:
+        WITH_BROWSER: ${SENTINEL_WITH_BROWSER:-false}
     command: ["celery", "-A", "app.workers.celery_app", "beat", "--loglevel=INFO", "--schedule=/tmp/celerybeat-schedule"]
     environment: *api-environment
     read_only: true

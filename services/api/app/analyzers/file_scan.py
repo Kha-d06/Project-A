@@ -3,6 +3,7 @@
 import hashlib
 import re
 import zipfile
+import zlib
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -13,7 +14,7 @@ from app.analyzers.file_types import FileType, extension_of
 from app.analyzers.office_macros import macro_findings
 from app.analyzers.pe_info import pe_findings
 from app.analyzers.types import Check, FindingData, Outcome, Severity
-from app.analyzers.yara_scan import yara_check
+from app.analyzers.yara_scan import SCAN_TIMEOUT_SECONDS, load_rules, yara_check
 from app.core.config import get_settings
 from app.intel import providers
 from app.intel.feeds import MALWAREBAZAAR, THREATFOX
@@ -37,6 +38,22 @@ _RUNNABLE_EXTENSIONS = frozenset(
 _DOCUMENT_EXTENSIONS = frozenset({"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt",
                                   "jpg", "jpeg", "png", "gif", "rtf", "csv"})  # fmt: skip
 _ARCHIVE_EXTENSIONS = frozenset({"zip", "rar", "7z", "gz", "tar", "iso"})
+
+# Archive members are read into memory, one at a time, under these limits. They
+# are never written to disk and never run.
+_MAX_MEMBERS_SCANNED = 200
+_MAX_MEMBER_BYTES = 10 * 1024 * 1024
+_MAX_MEMBERS_TOTAL_BYTES = 50 * 1024 * 1024
+
+# PDF stream decompression limits.
+_MAX_PDF_STREAMS = 500
+_MAX_PDF_STREAM_BYTES = 2 * 1024 * 1024
+_MAX_PDF_INFLATED_BYTES = 16 * 1024 * 1024
+_PDF_STREAM = re.compile(
+    rb"<<(?:(?!>>\s*stream).){0,2000}?/FlateDecode.{0,2000}?>>\s*stream\r?\n", re.S
+)
+
+_EXECUTABLE_MAGIC = ((b"MZ", "Windows program"), (b"\x7fELF", "Linux program"))
 
 # The EICAR string is a harmless, industry-standard antivirus test pattern.
 _EICAR = rb"X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
@@ -180,6 +197,94 @@ def _archive_findings(path: Path, outcome: Outcome) -> list[FindingData]:
     return findings
 
 
+def _archive_member_findings(path: Path, outcome: Outcome) -> list[FindingData]:
+    """Look inside each archive member: fingerprint, disguised programs, the test
+    signature and YARA rules. Members are read into memory with a hard cap."""
+    findings: list[FindingData] = []
+    hashes: list[dict[str, str]] = []
+    total = scanned = 0
+    try:
+        rules = load_rules().rules
+    except Exception:  # noqa: BLE001 - YARA is optional for members
+        rules = None
+    try:
+        archive = zipfile.ZipFile(path)
+    except (zipfile.BadZipFile, OSError):
+        return []
+    with archive:
+        for entry in archive.infolist()[:_MAX_ARCHIVE_ENTRIES]:
+            if entry.is_dir() or entry.flag_bits & 0x1:
+                continue
+            if scanned >= _MAX_MEMBERS_SCANNED or total >= _MAX_MEMBERS_TOTAL_BYTES:
+                outcome.limitations.append(
+                    "Only part of the archive's contents was inspected because of size limits."
+                )
+                break
+            if entry.file_size > _MAX_MEMBER_BYTES:
+                continue
+            try:
+                with archive.open(entry) as member:
+                    data = member.read(_MAX_MEMBER_BYTES + 1)
+            except (zipfile.BadZipFile, NotImplementedError, OSError, RuntimeError, zlib.error):
+                continue
+            if len(data) > _MAX_MEMBER_BYTES:
+                continue  # the directory lied about the size
+            scanned += 1
+            total += len(data)
+            name = entry.filename[:200]
+            digest = hashlib.sha256(data).hexdigest()
+            hashes.append({"name": name, "sha256": digest})
+
+            if _EICAR in data:
+                findings.append(
+                    FindingData(
+                        "critical",
+                        "known_signature",
+                        f"EICAR antivirus test file inside the archive ({name})",
+                        "The standard antivirus test pattern is inside this archive. It is "
+                        "harmless, and it is reported the same way real malware would be.",
+                        SOURCE,
+                        {"entry": name},
+                    )
+                )
+            ext = extension_of(entry.filename)
+            for magic, label in _EXECUTABLE_MAGIC:
+                if data.startswith(magic) and ext in _DOCUMENT_EXTENSIONS:
+                    findings.append(
+                        FindingData(
+                            "high",
+                            "disguised_file",
+                            f"“{name}” is a {label.lower()} disguised as a .{ext} file",
+                            "The archive contains a program whose name makes it look like a "
+                            "document or picture. This is a classic way to trick people into "
+                            "running malware.",
+                            SOURCE,
+                            {"entry": name, "actual_type": label},
+                        )
+                    )
+            if rules is not None:
+                try:
+                    matches = rules.match(data=data, timeout=SCAN_TIMEOUT_SECONDS, fast=True)
+                except Exception:  # noqa: BLE001 - a rule failure must not stop the scan
+                    matches = []
+                for match in matches:
+                    findings.append(
+                        FindingData(
+                            "medium",
+                            "yara_match",
+                            f"{match.meta.get('title', match.rule)} (inside {name})",
+                            str(match.meta.get("explanation", "A member matches a signature.")),
+                            "SENTINEL YARA rules",
+                            {"rule": match.rule, "entry": name},
+                        )
+                    )
+    if hashes:
+        outcome.details["archive_members"] = hashes[:_MAX_LISTED_NAMES]
+        outcome.details["archive_members_scanned"] = scanned
+    outcome.details.setdefault("_member_hashes", [h["sha256"] for h in hashes])
+    return findings
+
+
 def _office_findings(path: Path) -> list[FindingData]:
     try:
         with zipfile.ZipFile(path) as archive:
@@ -201,6 +306,32 @@ def _office_findings(path: Path) -> list[FindingData]:
             {"macro_parts": macro_parts[:5]},
         )
     ]
+
+
+def inflate_pdf_streams(content: bytes) -> tuple[bytes, int]:
+    """Decompress FlateDecode streams so names hidden inside them (often in object
+    streams) can be seen. Bounded per stream and in total against zip bombs."""
+    inflated: list[bytes] = []
+    total = 0
+    count = 0
+    for match in _PDF_STREAM.finditer(content):
+        if count >= _MAX_PDF_STREAMS or total >= _MAX_PDF_INFLATED_BYTES:
+            break
+        start = match.end()
+        end = content.find(b"endstream", start)
+        if end == -1:
+            break
+        decoder = zlib.decompressobj()
+        try:
+            data = decoder.decompress(
+                content[start:end], min(_MAX_PDF_STREAM_BYTES, _MAX_PDF_INFLATED_BYTES - total)
+            )
+        except zlib.error:
+            continue
+        count += 1
+        total += len(data)
+        inflated.append(data)
+    return b"\n".join(inflated), count
 
 
 def _pdf_findings(content: bytes) -> list[FindingData]:
@@ -272,11 +403,21 @@ def _content_findings(path: Path, filename: str, detected: FileType, outcome: Ou
         )
 
     if detected is file_types.PDF:
-        outcome.findings += _pdf_findings(content)
-        outcome.limitations.append(
-            "PDF content stored in compressed streams was not unpacked, so active content "
-            "hidden there would not be seen."
-        )
+        inflated, streams = inflate_pdf_streams(content)
+        outcome.findings += _pdf_findings(content + b"\n" + inflated)
+        if streams:
+            outcome.details["pdf_streams_unpacked"] = streams
+        if _EICAR in inflated:
+            outcome.findings.append(
+                FindingData(
+                    "critical",
+                    "known_signature",
+                    "EICAR antivirus test file (inside a compressed PDF stream)",
+                    "The standard antivirus test pattern is hidden in this PDF. It is harmless, "
+                    "and it is reported the same way real malware would be.",
+                    SOURCE,
+                )
+            )
     elif detected in (file_types.DOCX, file_types.XLSX, file_types.PPTX, file_types.OLE):
         findings, details = macro_findings(path)
         # olevba is authoritative when it can parse the file; the structural check
@@ -287,6 +428,8 @@ def _content_findings(path: Path, filename: str, detected: FileType, outcome: Ou
         outcome.details.update(details)
     elif detected in (file_types.ZIP, file_types.JAR, file_types.APK):
         outcome.findings += _archive_findings(path, outcome)
+        if detected is file_types.ZIP:
+            outcome.findings += _archive_member_findings(path, outcome)
     elif detected is file_types.PE:
         findings, details = pe_findings(path)
         outcome.findings += findings
@@ -320,6 +463,20 @@ def hash_reputation_check(db: Session, sha256: str, outcome: Outcome) -> None:
                 match.evidence(),
             )
         )
+    member_hashes: list[str] = outcome.details.pop("_member_hashes", [])
+    for member_hash in dict.fromkeys(member_hashes):
+        for match in find_indicators(db, "sha256", member_hash):
+            outcome.findings.append(
+                FindingData(
+                    "critical",
+                    "threat_intelligence",
+                    f"A file inside this archive is listed as malware by {match.source_name}",
+                    "One of the archive's files matches a catalogued malware sample. Delete "
+                    "the archive and do not open anything inside it.",
+                    match.source_name,
+                    match.evidence(),
+                )
+            )
     sources = fresh_sources(db, (MALWAREBAZAAR, THREATFOX))
     if not sources:
         outcome.checks.append(
@@ -380,6 +537,70 @@ def antivirus_check(path: Path, outcome: Outcome) -> None:
     )
 
 
+def virustotal_check(sha256: str, outcome: Outcome) -> None:
+    """Only with the user's consent, and only the fingerprint: the file is never uploaded."""
+    label, provider = "VirusTotal fingerprint lookup", "VirusTotal"
+    try:
+        result = providers.virustotal_hash(sha256)
+    except providers.ProviderUnavailableError as exc:
+        outcome.checks.append(Check("virustotal", label, provider, "unavailable", f"{exc}."))
+        return
+    if not result.known:
+        outcome.checks.append(
+            Check(
+                "virustotal",
+                label,
+                provider,
+                "completed",
+                "VirusTotal has never seen this file. That is common for personal documents and "
+                "new files; it says nothing about safety.",
+            )
+        )
+        return
+    outcome.details["virustotal"] = {
+        "malicious": result.malicious,
+        "suspicious": result.suspicious,
+        "engines": result.engines,
+        "label": result.label,
+    }
+    if result.malicious >= 3:
+        outcome.findings.append(
+            FindingData(
+                "critical",
+                "known_signature",
+                f"{result.malicious} of {result.engines} antivirus engines flag this file",
+                "VirusTotal has scanned this exact file before and several independent "
+                "antivirus engines identified it as malicious"
+                + (f" ({result.label})" if result.label else "")
+                + ". Delete it.",
+                provider,
+                {"malicious": result.malicious, "engines": result.engines, "label": result.label},
+            )
+        )
+    elif result.malicious or result.suspicious:
+        outcome.findings.append(
+            FindingData(
+                "medium",
+                "known_signature",
+                f"{result.malicious + result.suspicious} of {result.engines} antivirus engines "
+                "flag this file",
+                "A small number of engines flagged it. Single detections are sometimes false "
+                "alarms, but treat the file with caution.",
+                provider,
+                {"malicious": result.malicious, "suspicious": result.suspicious},
+            )
+        )
+    outcome.checks.append(
+        Check(
+            "virustotal",
+            label,
+            provider,
+            "completed",
+            f"Known to VirusTotal: {result.malicious} of {result.engines} engines flag it.",
+        )
+    )
+
+
 def analyze_file(payload: dict[str, Any], db: Session) -> Outcome:
     path = get_settings().upload_dir / payload["storage_name"]
     filename: str = payload["file_name"]
@@ -420,6 +641,8 @@ def analyze_file(payload: dict[str, Any], db: Session) -> Outcome:
     yara_check(path, outcome)
     hash_reputation_check(db, sha256, outcome)
     antivirus_check(path, outcome)
+    if payload.get("virustotal_consent"):
+        virustotal_check(sha256, outcome)
 
     outcome.limitations.append(
         "This is static analysis: the file was inspected, never opened or run. Behaviour that "

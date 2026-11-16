@@ -75,6 +75,16 @@ class Settings(BaseSettings):
     max_apk_bytes: int = 100 * 1024 * 1024
     max_image_bytes: int = 10 * 1024 * 1024
 
+    # Render pages in an isolated headless browser during website analysis. Every
+    # request the browser makes is fulfilled by the SSRF-protected fetcher.
+    browser_rendering: bool = False
+    browser_executable: str | None = None
+
+    # Optional reputation services. Each is reported as unavailable until configured.
+    web_risk_api_key: str | None = None
+    virustotal_api_key: str | None = None
+    crtsh_base_url: str = "https://crt.sh"
+
     # MobSF (Mobile Security Framework) for deeper APK static analysis. Optional.
     mobsf_url: str | None = None
     mobsf_api_key: str | None = None

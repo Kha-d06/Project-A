@@ -51,11 +51,18 @@ def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
     def unreachable(url: str, read_final_body: bool = False) -> RedirectTrace:
         return RedirectTrace(stopped="connection_error", stopped_detail="network disabled in tests")
 
-    def no_rdap(domain: str) -> None:
+    def no_rdap(*args: object, **kwargs: object) -> None:
         raise providers.ProviderUnavailableError("network disabled in tests")
 
     monkeypatch.setattr("app.analyzers.url_scan.trace_redirects", unreachable)
-    monkeypatch.setattr(providers, "domain_registration_date", no_rdap)
+    for name in (
+        "domain_registration_date",
+        "first_certificate_seen",
+        "web_risk_lookup",
+        "virustotal_hash",
+    ):
+        monkeypatch.setattr(providers, name, no_rdap, raising=False)
+    monkeypatch.setattr("app.analyzers.website_scan._mail_policy_check", lambda *a: None)
 
 
 @pytest.fixture

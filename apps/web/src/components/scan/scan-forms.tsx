@@ -2,7 +2,7 @@
 
 import { FileUp, Globe, Link2, MessageSquareText, QrCode, Smartphone, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useId, useRef, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -112,6 +112,7 @@ export function MessageScanForm({ reportBase, initialText = "" }: { reportBase: 
   const { t } = useI18n();
   // Prefilled (never auto-submitted) when text is shared to SENTINEL from another app.
   const [content, setContent] = useState(initialText);
+  const [aiConsent, setAiConsent] = useState(false);
   const [localError, setLocalError] = useState<string>();
 
   const onSubmit = (event: FormEvent) => {
@@ -121,7 +122,7 @@ export function MessageScanForm({ reportBase, initialText = "" }: { reportBase: 
       return;
     }
     setLocalError(undefined);
-    void submit(() => api.scans.message(content));
+    void submit(() => api.scans.message(content, { aiConsent }));
   };
 
   return (
@@ -147,11 +148,52 @@ export function MessageScanForm({ reportBase, initialText = "" }: { reportBase: 
           />
         )}
       </Field>
+      <ConsentCheckbox
+        checked={aiConsent}
+        onChange={setAiConsent}
+        label={t.scan.message.aiConsent}
+        hint={t.scan.message.aiConsentHint}
+      />
       <SubmissionError error={error} />
       <Button type="submit" size="lg" pending={pending} className="w-full sm:w-auto">
         {pending ? t.scan.message.starting : t.scan.message.submit}
       </Button>
     </form>
+  );
+}
+
+/** An opt-in that is off by default and explains exactly what leaves the server. */
+function ConsentCheckbox({
+  checked,
+  onChange,
+  label,
+  hint,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  label: string;
+  hint: string;
+}) {
+  const id = useId();
+  return (
+    <div className="flex items-start gap-3 rounded-control border border-line bg-surface-sunken/40 p-3">
+      <input
+        id={id}
+        type="checkbox"
+        aria-describedby={`${id}-hint`}
+        className="mt-1 size-4 accent-[var(--accent)]"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <div className="space-y-0.5">
+        <label htmlFor={id} className="text-sm font-medium text-ink">
+          {label}
+        </label>
+        <p id={`${id}-hint`} className="text-xs text-ink-muted">
+          {hint}
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -165,9 +207,11 @@ interface UploadFormProps {
   /** On phones, offer the rear camera directly (used for QR codes). */
   capture?: boolean;
   start: (file: File) => Promise<Scan>;
+  /** Extra controls shown above the submit button. */
+  extra?: ReactNode;
 }
 
-function UploadScanForm({ reportBase, label, hint, submitLabel, accept, maxBytes, capture, start }: UploadFormProps) {
+function UploadScanForm({ reportBase, label, hint, submitLabel, accept, maxBytes, capture, start, extra }: UploadFormProps) {
   const { pending, error, submit } = useScanSubmission(reportBase);
   const { t } = useI18n();
   const [file, setFile] = useState<File | null>(null);
@@ -283,6 +327,7 @@ function UploadScanForm({ reportBase, label, hint, submitLabel, accept, maxBytes
           </p>
         )}
       </div>
+      {extra}
       <SubmissionError error={error?.code === "validation_error" ? null : error} />
       <Button type="submit" size="lg" pending={pending} className="w-full sm:w-auto">
         {pending ? t.scan.upload.uploading : submitLabel}
@@ -296,6 +341,7 @@ export const MAX_APK_BYTES = 100 * 1024 * 1024;
 
 export function FileScanForm({ reportBase }: { reportBase: string }) {
   const { t } = useI18n();
+  const [virustotalConsent, setVirustotalConsent] = useState(false);
   return (
     <UploadScanForm
       reportBase={reportBase}
@@ -303,7 +349,15 @@ export function FileScanForm({ reportBase }: { reportBase: string }) {
       submitLabel={t.scan.file.submit}
       maxBytes={MAX_FILE_BYTES}
       hint={t.scan.file.hint(formatBytes(MAX_FILE_BYTES))}
-      start={api.scans.file}
+      start={(file) => api.scans.file(file, { virustotalConsent })}
+      extra={
+        <ConsentCheckbox
+          checked={virustotalConsent}
+          onChange={setVirustotalConsent}
+          label={t.scan.file.vtConsent}
+          hint={t.scan.file.vtConsentHint}
+        />
+      }
     />
   );
 }

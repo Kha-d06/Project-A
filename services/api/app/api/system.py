@@ -96,6 +96,53 @@ def provider_status(db: Db) -> list[ProviderStatus]:
     )
     statuses.append(
         ProviderStatus(
+            key="web_risk",
+            name="Google Web Risk",
+            purpose="Google's list of phishing, malware and unwanted-software links",
+            status="active" if settings.web_risk_api_key else "not_configured",
+            detail="Configured."
+            if settings.web_risk_api_key
+            else "Needs a Google Cloud API key (SENTINEL_WEB_RISK_API_KEY).",
+            shares_data="The submitted link is sent to Google.",
+        )
+    )
+    statuses.append(
+        ProviderStatus(
+            key="crtsh",
+            name="Certificate Transparency (crt.sh)",
+            purpose="When a domain first started using HTTPS",
+            status="active",
+            detail="Queried per link scan; crt.sh is sometimes slow or unavailable.",
+            shares_data="The domain name is sent to crt.sh.",
+        )
+    )
+    statuses.append(
+        ProviderStatus(
+            key="virustotal",
+            name="VirusTotal fingerprint lookup",
+            purpose="Results from about 70 antivirus engines for files VirusTotal has seen",
+            status="active" if settings.virustotal_api_key else "not_configured",
+            detail="Configured; used only when the person scanning ticks the box."
+            if settings.virustotal_api_key
+            else "Needs a VirusTotal API key (SENTINEL_VIRUSTOTAL_API_KEY).",
+            shares_data="With consent only: the file's SHA-256 fingerprint, never the file.",
+        )
+    )
+    statuses.append(
+        ProviderStatus(
+            key="browser",
+            name="Isolated page rendering",
+            purpose="Seeing pages as a browser shows them, after scripts run",
+            status="active" if settings.browser_rendering else "not_configured",
+            detail="A sealed headless browser on this server; all its traffic passes the same "
+            "private-network checks as the fetcher."
+            if settings.browser_rendering
+            else "Not enabled (SENTINEL_BROWSER_RENDERING, image built with WITH_BROWSER=true).",
+            shares_data="The website being analysed sees a visit from this server.",
+        )
+    )
+    statuses.append(
+        ProviderStatus(
             key="clamav",
             name="ClamAV",
             purpose="Antivirus signatures for uploaded files",

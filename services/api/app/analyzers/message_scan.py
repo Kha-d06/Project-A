@@ -3,6 +3,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.ai.classify import ClassificationUnavailableError, classify_message
 from app.analyzers.message_patterns import (
     EMAIL_PATTERN,
     PHONE_PATTERN,
@@ -75,6 +76,38 @@ def _extract_phones(text: str) -> list[str]:
         if len(digits) >= _MIN_PHONE_DIGITS:
             phones.append(match.group().strip())
     return list(dict.fromkeys(phones))
+
+
+def _ai_check(text: str, outcome: Outcome) -> None:
+    label, provider = "AI second opinion", "Language model (with your consent)"
+    try:
+        result = classify_message(text)
+    except ClassificationUnavailableError as exc:
+        outcome.checks.append(Check("ai_classification", label, provider, "unavailable", f"{exc}."))
+        return
+    outcome.details["ai_opinion"] = {"label": result.label, "reason": result.reason}
+    if result.label == "likely_scam":
+        outcome.findings.append(
+            FindingData(
+                "low",
+                "ai_opinion",
+                "An AI model thinks this reads like a scam",
+                (result.reason or "The wording resembles known scam messages.")
+                + " This is an automated opinion and does not change the verdict on its own.",
+                provider,
+                {"model": result.model},
+            )
+        )
+    readable = result.label.replace("_", " ")
+    outcome.checks.append(
+        Check(
+            "ai_classification",
+            label,
+            provider,
+            "completed",
+            f"The model's view: {readable}. Links, emails and numbers were masked before sending.",
+        )
+    )
 
 
 def analyze_message(payload: dict[str, Any], db: Session) -> Outcome:
@@ -150,6 +183,8 @@ def analyze_message(payload: dict[str, Any], db: Session) -> Outcome:
         "phone_numbers": phones,
     }
     outcome.details["character_count"] = len(text)
+    if payload.get("ai_consent"):
+        _ai_check(text, outcome)
     outcome.limitations.append(
         "This analysis recognises common scam wording. A well-written or unusual scam may "
         "not match any pattern, and a genuine message can occasionally match one."

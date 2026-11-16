@@ -14,7 +14,15 @@ RUN useradd --system --uid 10001 --home-dir /app --shell /usr/sbin/nologin senti
 WORKDIR /app
 COPY pyproject.toml ./
 COPY app ./app
-RUN pip install .
+# Build with --build-arg WITH_BROWSER=true to include the isolated headless browser
+# used by the website analyzer. It adds about 400 MB to the image.
+ARG WITH_BROWSER=false
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
+RUN if [ "$WITH_BROWSER" = "true" ]; then \
+        pip install ".[browser]" && python -m playwright install --with-deps chromium; \
+    else \
+        pip install .; \
+    fi
 
 COPY alembic.ini ./
 COPY alembic ./alembic

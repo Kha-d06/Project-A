@@ -8,6 +8,7 @@ import dns.resolver
 from sqlalchemy.orm import Session
 
 from app.analyzers.page_content import PageFacts, charset_of, inspect_html
+from app.analyzers.page_render import RenderingUnavailableError, render_page, rendering_enabled
 from app.analyzers.safe_fetch import Hop
 from app.analyzers.types import Check, FindingData, Outcome
 from app.analyzers.url_heuristics import BRAND_DOMAINS
@@ -269,13 +270,112 @@ def _page_summary(facts: PageFacts, page: Hop) -> dict[str, Any]:
     }
 
 
+def _mail_policy_check(domain: str, outcome: Outcome) -> None:
+    """SPF and DMARC say whether a domain protects itself against forged email.
+    Their absence is context for messages "from" this domain, not a threat."""
+    resolver = dns.resolver.Resolver()
+    resolver.lifetime = _DNS_TIMEOUT_SECONDS
+    found: dict[str, str | None] = {}
+    try:
+        for label, name, prefix in (
+            ("spf", domain, "v=spf1"),
+            ("dmarc", f"_dmarc.{domain}", "v=dmarc1"),
+        ):
+            try:
+                texts = [
+                    b"".join(item.strings).decode("utf-8", "replace")
+                    for item in resolver.resolve(name, "TXT")
+                ]
+            except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
+                texts = []
+            found[label] = next((t[:300] for t in texts if t.lower().startswith(prefix)), None)
+    except (dns.exception.DNSException, OSError):
+        outcome.checks.append(
+            Check(
+                "mail_policy",
+                "Email protection (SPF and DMARC)",
+                DNS_SOURCE,
+                "unavailable",
+                "The DNS lookup did not answer.",
+            )
+        )
+        return
+    outcome.details["mail_policy"] = found
+    dmarc = (found.get("dmarc") or "").lower().replace(" ", "")
+    enforced = "p=reject" in dmarc or "p=quarantine" in dmarc
+    if not found.get("spf") and not found.get("dmarc"):
+        detail = "This domain publishes no SPF or DMARC policy."
+        outcome.findings.append(
+            FindingData(
+                "info",
+                "email_security",
+                "Anyone can send email that claims to come from this domain",
+                "The domain does not publish SPF or DMARC records, so mail providers cannot "
+                "tell forged messages from real ones. Be careful with emails claiming to be "
+                "from it.",
+                DNS_SOURCE,
+                {"domain": domain},
+            )
+        )
+    elif not enforced:
+        detail = "SPF or DMARC is published, but forged mail is not rejected."
+    else:
+        detail = "SPF and an enforcing DMARC policy are published."
+    outcome.checks.append(
+        Check("mail_policy", "Email protection (SPF and DMARC)", DNS_SOURCE, "completed", detail)
+    )
+
+
+def _rendered_check(final: ParsedUrl, outcome: Outcome) -> bool:
+    """Load the page in the isolated browser and inspect what scripts built.
+    Returns True when the rendered page was inspected."""
+    label, provider = "Page as a browser shows it", "SENTINEL isolated browser"
+    if not rendering_enabled():
+        return False
+    try:
+        result = render_page(final.normalized)
+    except RenderingUnavailableError as exc:
+        outcome.checks.append(Check("rendered_page", label, provider, "unavailable", f"{exc}."))
+        return False
+    facts = inspect_html(result.html.encode("utf-8"), result.final_url, "utf-8")
+    known = {(f.category, f.title) for f in outcome.findings}
+    for finding in _page_findings(final, facts):
+        if (finding.category, finding.title) not in known:
+            outcome.findings.append(finding)
+    rendered = outcome.details.setdefault("page", {})
+    rendered["rendered"] = {
+        "title": result.title,
+        "final_url": result.final_url,
+        "resources_loaded": result.requests,
+        "requests_refused": result.refused[:10],
+        "forms_after_scripts": len(facts.forms),
+    }
+    detail = (
+        f"Opened the page in an isolated browser with no access to private networks and "
+        f"inspected it after scripts ran ({result.requests} resources loaded"
+        + (f", {len(result.refused)} requests refused" if result.refused else "")
+        + ")."
+    )
+    outcome.checks.append(Check("rendered_page", label, provider, "completed", detail))
+    if result.truncated:
+        outcome.limitations.append(
+            "The page loaded more resources than the isolated browser allows, so it was only "
+            "partly rendered."
+        )
+    return True
+
+
 def analyze_website(payload: dict[str, Any], db: Session) -> Outcome:
     outcome, final, page = analyze_url_target(parse_url(payload["url"]), db, read_page=True)
     _page_check(final, page, outcome)
+    rendered = page is not None and _rendered_check(final, outcome)
     if not final.is_ip_address:
         _dns_records(final.host, outcome)
-    outcome.limitations.append(
-        "The page was read as text; scripts were not run, so content that a script would load "
-        "or change was not seen. Isolated browser-based inspection is not available."
-    )
+        _mail_policy_check(final.registrable_domain, outcome)
+    if not rendered:
+        outcome.limitations.append(
+            "The page was read as text; scripts were not run, so content that a script would "
+            "load or change was not seen."
+            + ("" if rendering_enabled() else " Isolated browser inspection is not enabled.")
+        )
     return outcome

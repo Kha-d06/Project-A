@@ -39,12 +39,16 @@ export default function PrivacyPage() {
         <ul>
           <li><strong>Redirect tracing</strong> requests the link you submitted from our server, so the website you are checking will see a request from SENTINEL (not from you).</li>
           <li><strong>Domain age</strong> sends the domain name (not the full link) to rdap.org and the domain’s registry.</li>
-          <li><strong>Website analysis</strong> downloads the page (up to 2 MB of HTML) from our server and looks up the domain’s DNS records. Scripts on the page are never run.</li>
+          <li><strong>Website analysis</strong> downloads the page (up to 2 MB of HTML) from our server and looks up the domain’s DNS and email-protection (SPF, DMARC) records. If the operator has turned on isolated rendering, the page is also opened in a sealed browser on our server, which cannot reach private networks and is not allowed to send form data anywhere.</li>
+          <li><strong>Certificate history</strong> sends the domain name to crt.sh, a public log of security certificates.</li>
+          <li>If the operator has configured Google Web Risk, the link is also sent to Google.</li>
           <li>If the operator has configured a live URLhaus key, the link is also sent to abuse.ch. The <Link href="/#integrations">integrations list</Link> shows whether that is the case.</li>
           <li><strong>AI explanations</strong> are only created when you ask for one. Then the verdict and the summaries of the findings are sent to the AI provider (OpenAI). Your message text, files and full addresses are not.</li>
+          <li><strong>AI second opinion on a message</strong> is off unless you tick the box for that scan. The message is then sent to the AI provider with links, email addresses and numbers masked.</li>
+          <li><strong>VirusTotal</strong> is off unless you tick the box for that scan. Only the file’s SHA-256 fingerprint is sent, never the file.</li>
           <li>If the operator runs MobSF for deeper app analysis, uploaded apps are sent to that server, which belongs to the operator.</li>
         </ul>
-        <p>Uploaded files are never sent to any third party.</p>
+        <p>Uploaded files themselves are never sent to any third party.</p>
       </section>
       <section>
         <h2>The browser extension</h2>

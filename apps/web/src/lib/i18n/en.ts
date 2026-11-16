@@ -136,6 +136,8 @@ export const en = {
       tooShort: "Paste the full message so there is enough text to analyse.",
       submit: "Analyse message",
       starting: "Starting analysis",
+      aiConsent: "Also ask an AI model for a second opinion",
+      aiConsentHint: "Links, email addresses and numbers are masked first, then the text is sent to the AI provider. Its opinion is shown separately and never decides the verdict.",
     },
     upload: {
       drop: "Drop a file here, or",
@@ -151,7 +153,9 @@ export const en = {
       label: "File to scan",
       submit: "Scan file",
       hint: (size: string) =>
-        `Up to ${size}. The file is inspected without being opened or run, kept in isolated storage only while the scan runs, and then deleted. It is never sent to a third-party service.`,
+        `Up to ${size}. The file is inspected without being opened or run, kept in isolated storage only while the scan runs, and then deleted. The file itself is never sent to a third-party service.`,
+      vtConsent: "Also look up the file's fingerprint on VirusTotal",
+      vtConsentHint: "Only the SHA-256 fingerprint is sent, never the file. VirusTotal may keep a record of the lookup.",
     },
     qr: {
       label: "Photo or screenshot of the QR code",

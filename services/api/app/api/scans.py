@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, File, Query, Request, UploadFile
+from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 
 from app.ai.explain import ExplanationUnavailableError, explain
 from app.api.deps import Db, OptionalUser, RequiredUser
@@ -90,7 +90,7 @@ def scan_message(body: MessageScanRequest, request: Request, db: Db, user: Optio
         db,
         scan_type="message",
         target=excerpt,
-        payload={"content": body.content},
+        payload={"content": body.content, "ai_consent": body.ai_consent},
         user=user,
         locale=request_locale(request),
     )
@@ -104,6 +104,7 @@ def _upload_scan(
     upload: UploadFile,
     scan_type: str,
     max_bytes: int,
+    extra: dict[str, bool] | None = None,
 ) -> ScanOut:
     # The client's name is kept for display and extension checks only. It is never
     # used as a path: samples are stored under a random name.
@@ -114,7 +115,7 @@ def _upload_scan(
             db,
             scan_type=scan_type,
             target=file_name,
-            payload={"storage_name": storage_name, "file_name": file_name},
+            payload={"storage_name": storage_name, "file_name": file_name, **(extra or {})},
             user=user,
             locale=request_locale(request),
         )
@@ -126,10 +127,23 @@ def _upload_scan(
 
 @router.post("/file", response_model=ScanOut, status_code=202)
 def scan_file(
-    request: Request, db: Db, user: OptionalUser, file: Annotated[UploadFile, File()]
+    request: Request,
+    db: Db,
+    user: OptionalUser,
+    file: Annotated[UploadFile, File()],
+    virustotal_consent: Annotated[bool, Form()] = False,
 ) -> ScanOut:
     rate_limit.enforce(FILE_SCAN_LIMIT, _limit_subject(request, user))
-    return _upload_scan(request, db, user, file, "file", get_settings().max_upload_bytes)
+    # With consent, only the SHA-256 fingerprint is sent to VirusTotal, never the file.
+    return _upload_scan(
+        request,
+        db,
+        user,
+        file,
+        "file",
+        get_settings().max_upload_bytes,
+        {"virustotal_consent": virustotal_consent},
+    )
 
 
 @router.post("/qr", response_model=ScanOut, status_code=202)

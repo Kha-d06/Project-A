@@ -29,16 +29,30 @@ and what is still missing. This is not a substitute for an independent review.
   - IPv6 addresses that embed IPv4 (mapped, 6to4 and Teredo), which are unwrapped and checked.
 - **DNS rebinding.** The connection goes to the exact address that was validated, so a second DNS answer cannot redirect it. TLS still verifies the original hostname.
 - **Redirects.** Followed manually, at most 6, with loop detection and a 20-second overall budget. Every hop is validated again.
-- **No body reads.** Only the status line and headers are read; page bodies are never downloaded.
+- **Body reads.** Link scans read only the status line and headers. Website scans read the final page, capped at 2 MB and time-limited.
 
 ## File handling
 
 - **Upload limits.** Uploads are streamed to disk with the 25 MB limit enforced while streaming. Empty and oversized files are refused, and partial files are removed.
 - **Storage.** Samples are stored under random names in a `0700` directory with `0600` permissions, outside anything web-served. The client's file name is kept for display only.
-- **No execution.** Nothing is extracted from archives. Entries are listed from the ZIP directory to detect bombs, traversal, executables and encryption.
+- **No execution.** Nothing is extracted to disk. Entries are listed from the ZIP directory to detect bombs, traversal, executables and encryption. Up to 200 members (10 MB each, 50 MB in total) are read into memory one at a time to be fingerprinted and matched against YARA rules; a member whose real size exceeds its declared size is dropped.
+- **PDF streams.** Compressed (FlateDecode) streams are inflated with a 2 MB per-stream and 16 MB total limit, so decompression bombs stop early.
 - **Deletion.** Samples are deleted when the scan finishes, fails or is deleted. A retention sweep also fails any scan stuck for 15 minutes and removes its sample.
 - **Worker containment.** The worker runs as an unprivileged user on a read-only filesystem, with all capabilities dropped, `no-new-privileges`, and memory and CPU caps. Tasks have hard time limits.
-- **No third parties.** Files are never sent to a third party. VirusTotal is not integrated; if it is added, it must ask for consent first.
+- **No third parties.** Files are never sent to a third party. A VirusTotal lookup happens only when the user ticks the box for that scan, and sends the SHA-256 fingerprint only.
+
+## Isolated page rendering (`app/analyzers/page_render.py`)
+
+Off by default. When enabled, website scans also load the page in headless Chromium, because scripts run there:
+
+- **No network of its own.** Every request the page makes is intercepted and fetched by `safe_fetch.fetch_resource`, which applies the full address, port and rebinding checks to each one. Redirects come back to the browser and are checked again as new requests.
+- **Read-only.** Only GET and HEAD are allowed, so forms, beacons and uploads never leave the browser. WebSockets are closed, service workers blocked, downloads refused, permissions denied and WebRTC limited to proxied UDP.
+- **Bounded.** 20 seconds, 150 resources and 15 MB per page, with a fresh browser for each scan.
+- **Sandbox.** Chromium's own sandbox is turned off (`--no-sandbox`) because the worker container has no user namespaces. Containment rests on the container: unprivileged user, read-only filesystem, no capabilities and the restricted `sentinel_worker` database role. A browser exploit would land in that container. Run rendering workers on a separate host if your threat model needs more.
+
+## AI message opinion
+
+Off unless the user ticks the box for that scan. Links, email addresses and long numbers are masked before the text is sent. The model must answer with one of three fixed labels; anything else is discarded. Its answer can add at most a low-severity finding and never changes the verdict on its own.
 
 ## Output handling
 
@@ -69,6 +83,6 @@ See also [security-review.md](security-review.md) for the latest self-review.
 
 ## Known gaps
 
-- There is no admin area, and the `role` column is not used for authorization yet.
+- Admin and moderator actions are not yet protected by a second confirmation step.
 - There is no encryption at rest beyond what the database volume provides.
 - There has been no independent penetration test.

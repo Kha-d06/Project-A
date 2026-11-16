@@ -181,7 +181,7 @@ def _read_capped(response: http.client.HTTPResponse) -> tuple[bytes, bool]:
     return b"".join(chunks)[:MAX_BODY_BYTES], True
 
 
-def _request_hop(url: str, read_body: bool = False) -> Hop:
+def _request_hop(url: str, read_body: bool = False, any_type: bool = False) -> Hop:
     parts = urlsplit(url)
     host = parts.hostname or ""
     hop = Hop(url=url, host=host)
@@ -213,7 +213,7 @@ def _request_hop(url: str, read_body: bool = False) -> Hop:
         hop.headers = {name.lower(): value[:500] for name, value in response.getheaders()[:60]}
         content_type = hop.headers.get("content-type", "").lower()
         is_redirect = hop.status in (301, 302, 303, 307, 308)
-        if read_body and not is_redirect and content_type.startswith(_HTML_TYPES):
+        if read_body and not is_redirect and (any_type or content_type.startswith(_HTML_TYPES)):
             hop.body, hop.body_truncated = _read_capped(response)
         if isinstance(connection.sock, ssl.SSLSocket):
             certificate = connection.sock.getpeercert()
@@ -222,6 +222,15 @@ def _request_hop(url: str, read_body: bool = False) -> Hop:
     finally:
         connection.close()
     return hop
+
+
+def fetch_resource(url: str) -> Hop:
+    """One GET request, any content type, body capped. Redirects are returned, not
+    followed, so the caller (the isolated browser) requests the next hop through
+    this same function and it is validated again."""
+    if urlsplit(url).scheme not in ("http", "https"):
+        raise UnsafeDestinationError("Only web addresses can be fetched")
+    return _request_hop(url, read_body=True, any_type=True)
 
 
 def trace_redirects(url: str, read_final_body: bool = False) -> RedirectTrace:

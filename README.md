@@ -217,7 +217,10 @@ All settings use the `SENTINEL_` prefix. See [`.env.example`](.env.example) and
 | `SENTINEL_URLHAUS_AUTH_KEY` | no | Live URLhaus lookups (free key from abuse.ch). Sends submitted links to abuse.ch. |
 | `SENTINEL_CLAMAV_HOST` | no | clamd host for antivirus signatures. |
 | `SENTINEL_MOBSF_URL`, `SENTINEL_MOBSF_API_KEY` | no | Self-hosted MobSF for deeper APK analysis. |
-| `SENTINEL_OPENAI_API_KEY`, `SENTINEL_OPENAI_MODEL` | no | Optional AI explanations (both required). |
+| `SENTINEL_OPENAI_API_KEY`, `SENTINEL_OPENAI_MODEL` | no | Optional AI explanations and the opt-in AI message opinion (both required). |
+| `SENTINEL_WEB_RISK_API_KEY` | no | Google Web Risk link reputation. Sends submitted links to Google. |
+| `SENTINEL_VIRUSTOTAL_API_KEY` | no | VirusTotal fingerprint lookups, only when the user ticks the consent box. |
+| `SENTINEL_BROWSER_RENDERING` | no | `true` to render pages in the isolated headless browser (image built with `WITH_BROWSER=true`). |
 | `SENTINEL_YARA_RULES_DIR` | no | Extra YARA rule files, subject to their licences. |
 | `SENTINEL_METRICS_TOKEN` | no | Enables the Prometheus metrics endpoint. |
 | `NEXT_PUBLIC_CONTACT_URL` | no | Operator contact shown on the About page. |

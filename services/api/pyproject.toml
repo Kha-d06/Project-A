@@ -30,6 +30,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Isolated page rendering for the website analyzer (SENTINEL_BROWSER_RENDERING=true).
+browser = ["playwright>=1.48"]
 dev = [
     "pytest>=8.3",
     "ruff>=0.7",
@@ -58,6 +60,7 @@ ignore = [
 "alembic/versions/*" = ["E501"]
 # Model prompt text: hard-wrapping would change what the model receives.
 "app/ai/explain.py" = ["E501"]
+"app/ai/classify.py" = ["E501"]
 # Bilingual rule text: wrapping Arabic sentences mid-phrase hurts readability for reviewers.
 "app/analyzers/message_patterns.py" = ["E501"]
 

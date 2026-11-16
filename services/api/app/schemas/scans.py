@@ -28,6 +28,9 @@ class UrlScanRequest(BaseModel):
 
 class MessageScanRequest(BaseModel):
     content: str = Field(max_length=MAX_MESSAGE_LENGTH)
+    # Opt-in: send the text (with links, emails and numbers masked) to the AI model
+    # for a second opinion. The verdict never depends on it.
+    ai_consent: bool = False
 
     @field_validator("content")
     @classmethod

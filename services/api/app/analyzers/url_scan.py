@@ -14,6 +14,12 @@ from app.intel.lookup import IndicatorMatch, find_indicators, fresh_sources
 from app.models.base import utcnow
 
 _NEW_DOMAIN_DAYS = 30
+_NEW_CERTIFICATE_DAYS = 14
+_WEB_RISK_LABELS = {
+    "MALWARE": "malware",
+    "SOCIAL_ENGINEERING": "phishing or another deceptive site",
+    "UNWANTED_SOFTWARE": "unwanted software",
+}
 _STOP_MESSAGES = {
     "unresolved": "The domain does not exist or has no address.",
     "tls_error": "The site's security certificate could not be verified.",
@@ -140,6 +146,79 @@ def _urlhaus_live_check(url: ParsedUrl, outcome: Outcome) -> None:
         )
     detail = "Listed as a malware distribution address." if result.listed else "Not listed."
     outcome.checks.append(Check("urlhaus_api", label, provider, "completed", detail, core=True))
+
+
+def _web_risk_check(url: ParsedUrl, outcome: Outcome) -> None:
+    label, provider = "Google Web Risk", "Google Web Risk API"
+    try:
+        threats = providers.web_risk_lookup(url.normalized)
+    except providers.ProviderUnavailableError as exc:
+        outcome.checks.append(Check("web_risk", label, provider, "unavailable", f"{exc}."))
+        return
+    if threats:
+        kinds = ", ".join(_WEB_RISK_LABELS.get(t, t.lower()) for t in threats)
+        outcome.findings.append(
+            FindingData(
+                "critical",
+                "threat_intelligence",
+                "Google lists this link as dangerous",
+                f"Google Web Risk lists this address for {kinds}. Browsers using Google Safe "
+                "Browsing show a red warning page for it.",
+                provider,
+                {"threat_types": ", ".join(threats)},
+            )
+        )
+    detail = "Listed as dangerous." if threats else "Not listed."
+    outcome.checks.append(Check("web_risk", label, provider, "completed", detail))
+
+
+def _certificate_history_check(url: ParsedUrl, outcome: Outcome) -> None:
+    label, provider = "Certificate history", "Certificate Transparency logs (crt.sh)"
+    if url.is_ip_address:
+        outcome.checks.append(
+            Check("certificates", label, provider, "skipped", "IP addresses have no history.")
+        )
+        return
+    try:
+        first = providers.first_certificate_seen(url.registrable_domain)
+    except providers.ProviderUnavailableError as exc:
+        outcome.checks.append(Check("certificates", label, provider, "unavailable", f"{exc}."))
+        return
+    if first is None:
+        outcome.checks.append(
+            Check(
+                "certificates",
+                label,
+                provider,
+                "completed",
+                "No publicly logged certificates were found for this domain.",
+            )
+        )
+        return
+    outcome.details["first_certificate_at"] = first.isoformat()
+    age = utcnow() - first
+    if age < timedelta(days=_NEW_CERTIFICATE_DAYS):
+        outcome.findings.append(
+            FindingData(
+                "medium",
+                "domain_age",
+                f"The site's first security certificate was issued {max(age.days, 0)} days ago",
+                "Public certificate logs show this domain only started using HTTPS very "
+                "recently. Phishing sites are usually set up days before they are used.",
+                provider,
+                {"domain": url.registrable_domain, "first_certificate": first.date().isoformat()},
+            )
+        )
+    outcome.checks.append(
+        Check(
+            "certificates",
+            label,
+            provider,
+            "completed",
+            f"The first logged certificate for {url.registrable_domain} was issued on "
+            f"{first:%Y-%m-%d}.",
+        )
+    )
 
 
 def _hop_summary(trace: RedirectTrace) -> list[dict[str, Any]]:
@@ -307,8 +386,10 @@ def analyze_url_target(
     )
     _local_feed_check(db, url, outcome)
     _urlhaus_live_check(url, outcome)
+    _web_risk_check(url, outcome)
     final, trace = _redirect_check(db, url, outcome, read_page=read_page)
     _domain_age_check(final, outcome)
+    _certificate_history_check(final, outcome)
 
     outcome.details["final_url"] = final.normalized
     outcome.details["registrable_domain"] = final.registrable_domain

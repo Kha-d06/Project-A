@@ -185,6 +185,70 @@ RULES: tuple[MessageRule, ...] = (
         title_ar="تنقل المحادثة إلى تطبيق دردشة خاص",
         explanation_ar="طلب متابعة المحادثة على واتساب أو تيليجرام يُبعدك عن أي منصة يمكنها مراقبة المحادثة أو تتبّعها.",
     ),
+    # --- Regional patterns (Gulf and wider Arab region) ---------------------------
+    MessageRule(
+        "government_impersonation",
+        "medium",
+        "Claims to come from a government service and asks you to act through a link",
+        "Scammers copy the names of government platforms such as Absher, UAE Pass, Nafath, "
+        "Sahel or Tawakkalna. Government services do not send links asking you to update "
+        "details or pay; open the official app yourself instead.",
+        _compile(
+            r"\b(absher|uae ?pass|nafath|sahel|tawakkalna|mygov|dubai police|abu dhabi police|"
+            r"ministry of interior|moi|amer|tasheel|qatar digital|metrash)\b.{0,80}"
+            r"\b(update|verify|link|click|confirm|renew|activate)\b",
+            r"(أبشر|ابشر|الهوية الرقمية|نفاذ|سهل|توكلنا|مطراش|وزارة الداخلية|شرطة دبي|"
+            r"شرطة أبوظبي|تم تحديث بياناتك).{0,80}(تحديث|تفعيل|الرابط|اضغط|اضغط هنا|توثيق)",
+        ),
+        title_ar="تدّعي أنها من جهة حكومية وتطلب التصرف عبر رابط",
+        explanation_ar="ينتحل المحتالون أسماء منصات حكومية مثل أبشر والهوية الرقمية ونفاذ وسهل وتوكلنا. لا ترسل الجهات الحكومية روابط لتحديث البيانات أو الدفع؛ افتح التطبيق الرسمي بنفسك.",
+    ),
+    MessageRule(
+        "fine_scam",
+        "medium",
+        "Says you have a traffic fine or penalty to pay through a link",
+        "Fake fine notices are one of the most common text scams in the Gulf. Check fines "
+        "only in the official police or government app, never through a link in a message.",
+        _compile(
+            r"\b(traffic|parking|speed(ing)?|saher|radar)\b.{0,40}\b(fine|violation|penalty|"
+            r"ticket)s?\b",
+            r"\b(unpaid|outstanding|overdue)\b.{0,20}\b(fines?|violations?|penalt(y|ies)|tolls?|"
+            r"salik|darb)\b",
+            r"(مخالفة|مخالفات|غرامة|غرامات).{0,40}(مرورية|ساهر|رادار|سداد|غير مسددة|متأخرة)",
+            r"(سالك|درب).{0,30}(رصيد|سداد|متأخر)",
+        ),
+        title_ar="تقول إن عليك مخالفة مرورية أو غرامة تُدفع عبر رابط",
+        explanation_ar="إشعارات المخالفات المزيفة من أكثر رسائل الاحتيال انتشارًا في الخليج. تحقق من المخالفات فقط في تطبيق الشرطة أو الجهة الحكومية الرسمي، وليس عبر رابط في رسالة.",
+    ),
+    MessageRule(
+        "pilgrimage_scam",
+        "medium",
+        "Offers cheap or guaranteed Hajj or Umrah packages or permits",
+        "Fake pilgrimage offers ask for payment up front for visas, permits or packages that "
+        "never arrive. Hajj permits are issued only through the official Nusuk platform and "
+        "licensed agencies.",
+        _compile(
+            r"\b(hajj|umrah)\b.{0,60}\b(package|offer|visa|permit|discount|cheap|guaranteed|"
+            r"book now|limited seats)\b",
+            r"(حج|عمرة|العمرة|الحج).{0,60}(باقة|عرض|عروض|تأشيرة|تصريح|خصم|مضمون|بسعر|مقاعد محدودة)",
+        ),
+        title_ar="تعرض باقات أو تصاريح حج أو عمرة رخيصة أو مضمونة",
+        explanation_ar="تطلب عروض الحج والعمرة المزيفة الدفع مقدمًا مقابل تأشيرات أو تصاريح أو باقات لا تصل أبدًا. تصاريح الحج تصدر فقط عبر منصة نسك الرسمية والوكالات المرخصة.",
+    ),
+    MessageRule(
+        "utility_scam",
+        "medium",
+        "Warns that electricity, water or a phone line will be cut off unless you pay",
+        "Threatening to disconnect a utility is a pressure tactic. Utility companies give "
+        "notice through their own app or bill, and do not ask for payment through a link.",
+        _compile(
+            r"\b(electricity|water|power|sim|line|mobile number)\b.{0,40}\b(will be )?"
+            r"(disconnect(ed)?|cut off|terminated|suspended)\b",
+            r"(الكهرباء|المياه|الماء|الشريحة|الخط|رقمك).{0,40}(فصل|قطع|إيقاف|ايقاف)",
+        ),
+        title_ar="تحذّر من قطع الكهرباء أو الماء أو الخط ما لم تدفع",
+        explanation_ar="التهديد بقطع خدمة أساسية أسلوب ضغط. شركات الخدمات ترسل إشعاراتها عبر تطبيقها أو فاتورتها، ولا تطلب الدفع عبر رابط.",
+    ),
 )
 
 URL_PATTERN = re.compile(

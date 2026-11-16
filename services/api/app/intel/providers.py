@@ -7,7 +7,7 @@ reason that is shown to the user. Nothing here ever substitutes a made-up answer
 import socket
 import struct
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -182,3 +182,96 @@ def mobsf_scan(path: Path) -> dict[str, Any]:
         "warning": len(body.get("warning", []) or []),
         "trackers": body.get("trackers"),
     }
+
+
+# --- Google Web Risk ----------------------------------------------------------------
+
+_WEB_RISK_THREATS = ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE"]
+
+
+def web_risk_lookup(url: str) -> list[str]:
+    """Threat types Google Web Risk lists for this exact URL (empty if none)."""
+    key = get_settings().web_risk_api_key
+    if not key:
+        raise ProviderUnavailableError("Google Web Risk needs an API key, which is not configured")
+    try:
+        response = httpx.get(
+            "https://webrisk.googleapis.com/v1/uris:search",
+            params={"uri": url, "key": key, "threatTypes": _WEB_RISK_THREATS},
+            timeout=_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        body: dict[str, Any] = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise ProviderUnavailableError(
+            f"Google Web Risk did not answer ({type(exc).__name__})"
+        ) from exc
+    return list((body.get("threat") or {}).get("threatTypes") or [])
+
+
+# --- Certificate transparency (crt.sh) ----------------------------------------------
+
+
+def first_certificate_seen(domain: str) -> datetime | None:
+    """Earliest issuance date of any publicly logged certificate for the domain."""
+    try:
+        response = httpx.get(
+            f"{get_settings().crtsh_base_url}/",
+            params={"q": domain, "output": "json"},
+            timeout=15,
+        )
+        response.raise_for_status()
+        entries = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise ProviderUnavailableError(f"crt.sh did not answer ({type(exc).__name__})") from exc
+    dates = []
+    for entry in entries[:5000] if isinstance(entries, list) else []:
+        try:
+            dates.append(datetime.fromisoformat(str(entry["not_before"])).replace(tzinfo=UTC))
+        except (KeyError, ValueError):
+            continue
+    return min(dates) if dates else None
+
+
+# --- VirusTotal (hash lookups only, with the user's consent) ------------------------
+
+
+@dataclass(frozen=True)
+class VirusTotalResult:
+    known: bool
+    malicious: int = 0
+    suspicious: int = 0
+    engines: int = 0
+    label: str | None = None
+
+
+def virustotal_hash(sha256: str) -> VirusTotalResult:
+    """Looks up a fingerprint only. The file itself is never uploaded."""
+    key = get_settings().virustotal_api_key
+    if not key:
+        raise ProviderUnavailableError("VirusTotal needs an API key, which is not configured")
+    try:
+        response = httpx.get(
+            f"https://www.virustotal.com/api/v3/files/{sha256}",
+            headers={"x-apikey": key},
+            timeout=_TIMEOUT_SECONDS,
+        )
+    except httpx.HTTPError as exc:
+        raise ProviderUnavailableError(f"VirusTotal did not answer ({type(exc).__name__})") from exc
+    if response.status_code == httpx.codes.NOT_FOUND:
+        return VirusTotalResult(known=False)
+    if response.status_code == httpx.codes.TOO_MANY_REQUESTS:
+        raise ProviderUnavailableError("The VirusTotal quota for this server is used up")
+    try:
+        response.raise_for_status()
+        attributes = response.json()["data"]["attributes"]
+    except (httpx.HTTPError, KeyError, ValueError) as exc:
+        raise ProviderUnavailableError("VirusTotal returned an unreadable answer") from exc
+    stats = attributes.get("last_analysis_stats") or {}
+    return VirusTotalResult(
+        known=True,
+        malicious=int(stats.get("malicious", 0)),
+        suspicious=int(stats.get("suspicious", 0)),
+        engines=sum(int(v) for v in stats.values() if isinstance(v, int)),
+        label=(attributes.get("popular_threat_classification") or {}).get("suggested_threat_label"),
+    )

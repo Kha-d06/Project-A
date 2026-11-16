@@ -144,9 +144,10 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   return (await response.json()) as T;
 }
 
-function uploadScan(path: string, file: File): Promise<Scan> {
+function uploadScan(path: string, file: File, fields: Record<string, string> = {}): Promise<Scan> {
   const form = new FormData();
   form.append("file", file);
+  for (const [key, value] of Object.entries(fields)) form.append(key, value);
   return request<Scan>(path, { method: "POST", form });
 }
 
@@ -179,9 +180,10 @@ export const api = {
   },
   scans: {
     url: (url: string) => request<Scan>("/scans/url", { method: "POST", json: { url } }),
-    message: (content: string) =>
-      request<Scan>("/scans/message", { method: "POST", json: { content } }),
-    file: (file: File) => uploadScan("/scans/file", file),
+    message: (content: string, options: { aiConsent?: boolean } = {}) =>
+      request<Scan>("/scans/message", { method: "POST", json: { content, ai_consent: options.aiConsent ?? false } }),
+    file: (file: File, options: { virustotalConsent?: boolean } = {}) =>
+      uploadScan("/scans/file", file, options.virustotalConsent ? { virustotal_consent: "true" } : {}),
     qr: (image: File) => uploadScan("/scans/qr", image),
     apk: (file: File) => uploadScan("/scans/apk", file),
     website: (url: string) => request<Scan>("/scans/website", { method: "POST", json: { url } }),

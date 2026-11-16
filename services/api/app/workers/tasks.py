@@ -1,6 +1,6 @@
 import uuid
 
-from app.core.db import get_session_factory
+from app.core.db import get_session_factory, get_worker_session_factory
 from app.intel.feeds import sync_all_feeds
 from app.scans.runner import run_scan
 from app.scans.service import purge_expired_data
@@ -9,7 +9,7 @@ from app.workers.celery_app import celery_app
 
 @celery_app.task(name="sentinel.run_scan")  # type: ignore[untyped-decorator]
 def run_scan_task(scan_id: str) -> None:
-    with get_session_factory()() as db:
+    with get_worker_session_factory()() as db:
         run_scan(db, uuid.UUID(scan_id))
 
 

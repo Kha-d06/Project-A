@@ -8,6 +8,7 @@ from app.core.config import get_settings
 from app.intel.feeds import FEEDS, TEST_FIXTURES
 from app.models import ThreatSource
 from app.models.base import utcnow
+from app.notify.email import email_enabled
 from app.schemas.scans import ProviderStatus
 
 router = APIRouter(prefix="/system", tags=["System"])
@@ -131,6 +132,16 @@ def provider_status(db: Db) -> list[ProviderStatus]:
             if settings.mobsf_url and settings.mobsf_api_key
             else "No MobSF server is configured (SENTINEL_MOBSF_URL, SENTINEL_MOBSF_API_KEY).",
             shares_data="Uploaded apps are sent to the operator's own MobSF server only.",
+        )
+    )
+    statuses.append(
+        ProviderStatus(
+            key="email",
+            name="Email delivery",
+            purpose="Address verification and password reset",
+            status="active" if email_enabled() else "not_configured",
+            detail="Configured." if email_enabled() else "Not configured (SENTINEL_EMAIL_BACKEND).",
+            shares_data="Your address goes to the operator's mail provider when a message is sent.",
         )
     )
     ai_ready = bool(settings.openai_api_key and settings.openai_model)

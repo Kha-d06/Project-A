@@ -16,6 +16,9 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://sentinel:sentinel@localhost:5432/sentinel"
     redis_url: str = "redis://localhost:6379/0"
+    # Connection used by scan workers. Point it at a restricted role (see
+    # infrastructure/database/worker-role.sql); defaults to database_url.
+    worker_database_url: str | None = None
 
     # Browser origins allowed to call the API directly. The web app normally proxies
     # API calls through its own origin, so this list can stay empty.
@@ -51,6 +54,18 @@ class Settings(BaseSettings):
 
     clamav_host: str | None = None
     clamav_port: int = 3310
+
+    # Outgoing email. "smtp" sends for real; "outbox" stores messages in the database
+    # (development and tests); "disabled" turns off every feature that needs email.
+    email_backend: Literal["smtp", "outbox", "disabled"] = "disabled"
+    email_from: str = "SENTINEL <no-reply@localhost>"
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_starttls: bool = True
+    # Public address of the web app, used to build links in emails.
+    public_url: str = "http://localhost:8080"
 
     # Bearer token Prometheus uses to read /api/v1/system/metrics. Unset: no metrics.
     metrics_token: str | None = None

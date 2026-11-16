@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
-import { ApiError } from "@/lib/api/client";
+import { ApiError, api } from "@/lib/api/client";
 import { type Dictionary } from "@/lib/i18n/en";
 import { useI18n } from "@/lib/i18n/client";
 import { useSession } from "@/lib/session";
@@ -34,8 +34,19 @@ function validate(t: Dictionary, mode: Mode, email: string, password: string): E
 }
 
 export function AuthForm({ mode }: { mode: Mode }) {
-  const { signIn, register } = useSession();
+  const { signIn, register, completeTwoFactor } = useSession();
   const { t } = useI18n();
+  const [challenge, setChallenge] = useState<string | null>(null);
+  const [code, setCode] = useState("");
+  const [emailEnabled, setEmailEnabled] = useState(false);
+
+  useEffect(() => {
+    if (mode !== "sign-in") return;
+    api.system.providers().then(
+      (providers) => setEmailEnabled(providers.some((p) => p.key === "email" && p.status === "active")),
+      () => setEmailEnabled(false),
+    );
+  }, [mode]);
   const router = useRouter();
   const params = useSearchParams();
   const [email, setEmail] = useState("");
@@ -52,8 +63,14 @@ export function AuthForm({ mode }: { mode: Mode }) {
 
     setPending(true);
     try {
-      if (mode === "sign-in") await signIn(email.trim(), password);
-      else await register(email.trim(), password, displayName.trim() || undefined);
+      if (mode === "sign-in") {
+        const pending = await signIn(email.trim(), password);
+        if (pending) {
+          setChallenge(pending.challenge);
+          setPending(false);
+          return;
+        }
+      } else await register(email.trim(), password, displayName.trim() || undefined);
       router.push(safeNextPath(params.get("next")));
     } catch (error) {
       setPending(false);
@@ -65,6 +82,53 @@ export function AuthForm({ mode }: { mode: Mode }) {
       }
     }
   };
+
+  const submitCode = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!challenge) return;
+    if (!code.trim()) {
+      setErrors({ form: t.account.codeMissing });
+      return;
+    }
+    setPending(true);
+    try {
+      await completeTwoFactor(challenge, code.trim());
+      router.push(safeNextPath(params.get("next")));
+    } catch (error) {
+      setPending(false);
+      if (error instanceof ApiError && error.code === "challenge_expired") setChallenge(null);
+      setErrors({ form: error instanceof ApiError ? error.message : t.auth.generic });
+    }
+  };
+
+  if (challenge) {
+    return (
+      <form onSubmit={submitCode} noValidate className="space-y-5">
+        <div className="space-y-1">
+          <h2 className="font-display text-lg font-semibold text-ink">{t.account.codeTitle}</h2>
+          <p className="text-sm text-ink-muted">{t.account.codeIntro}</p>
+        </div>
+        {errors.form && <Alert tone="danger">{errors.form}</Alert>}
+        <Field label={t.account.code}>
+          {(props) => (
+            <Input
+              {...props}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              autoFocus
+              value={code}
+              maxLength={20}
+              onChange={(event) => setCode(event.target.value)}
+              className="font-mono tracking-widest"
+            />
+          )}
+        </Field>
+        <Button type="submit" size="lg" pending={pending} className="w-full">
+          {t.account.verify}
+        </Button>
+      </form>
+    );
+  }
 
   const isSignUp = mode === "sign-up";
   return (
@@ -113,6 +177,13 @@ export function AuthForm({ mode }: { mode: Mode }) {
       <Button type="submit" size="lg" pending={pending} className="w-full">
         {isSignUp ? t.auth.createAccount : t.auth.signIn}
       </Button>
+      {!isSignUp && emailEnabled && (
+        <p className="text-center text-sm">
+          <Link href="/forgot-password" className="text-ink-muted underline-offset-4 hover:text-ink hover:underline">
+            {t.account.forgot}
+          </Link>
+        </p>
+      )}
       <p className="text-center text-sm text-ink-muted">
         {isSignUp ? (
           <>

@@ -25,6 +25,16 @@ def get_session_factory() -> sessionmaker[Session]:
     return sessionmaker(bind=get_engine(), expire_on_commit=False)
 
 
+@lru_cache
+def get_worker_session_factory() -> sessionmaker[Session]:
+    """Sessions for scan workers, which handle untrusted samples. With a restricted
+    role configured, a compromised parser cannot read accounts, sessions or keys."""
+    url = get_settings().worker_database_url
+    if not url:
+        return get_session_factory()
+    return sessionmaker(bind=create_engine(url, pool_pre_ping=True), expire_on_commit=False)
+
+
 def get_db() -> Iterator[Session]:
     with get_session_factory()() as session:
         yield session

@@ -36,6 +36,7 @@ class UserOut(BaseModel):
     display_name: str | None
     role: str
     created_at: datetime
+    email_verified_at: datetime | None = None
 
 
 class SessionOut(BaseModel):

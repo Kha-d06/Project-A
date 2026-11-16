@@ -19,6 +19,7 @@ from app.core.security import (
 )
 from app.models import AuditEvent, User, UserSession, UserSettings
 from app.models.base import utcnow
+from app.schemas.account import LoginChallenge
 from app.schemas.auth import LoginRequest, RegisterRequest, SessionOut, SessionStatus, UserOut
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -86,11 +87,29 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Db
             409, "email_taken", "An account with this email already exists. Try signing in."
         ) from exc
     record_event(db, request, user, "account_created")
-    return start_session(db, response, user)
+    session = start_session(db, response, user)
+    _send_welcome_verification(db, user)
+    return session
 
 
-@router.post("/login", response_model=SessionOut)
-def login(body: LoginRequest, request: Request, response: Response, db: Db) -> SessionOut:
+def _send_welcome_verification(db: Session, user: User) -> None:
+    """Best effort: an account works without verification, and a mail outage must not
+    block registration."""
+    from app.api.account import send_verification
+    from app.notify.email import EmailUnavailableError, email_enabled
+
+    if not email_enabled():
+        return
+    try:
+        send_verification(db, user)
+    except EmailUnavailableError:
+        db.rollback()
+
+
+@router.post("/login", response_model=SessionOut | LoginChallenge)
+def login(
+    body: LoginRequest, request: Request, response: Response, db: Db
+) -> SessionOut | LoginChallenge:
     email = body.email.lower()
     rate_limit.enforce(LOGIN_IP_LIMIT, client_address(request))
     rate_limit.enforce(LOGIN_ACCOUNT_LIMIT, email)
@@ -108,6 +127,12 @@ def login(body: LoginRequest, request: Request, response: Response, db: Db) -> S
         )
     if needs_rehash(user.password_hash):
         user.password_hash = hash_password(body.password)
+    if user.totp_enabled_at:
+        # Password was right; a session is only issued after the second step.
+        from app.api.account import issue_challenge
+
+        db.commit()
+        return issue_challenge(user)
     record_event(db, request, user, "signed_in")
     return start_session(db, response, user)
 

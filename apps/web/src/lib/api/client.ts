@@ -14,6 +14,8 @@ import type {
   ReportStatus,
   SourceFreshness,
   Explanation,
+  LoginChallenge,
+  SecurityStatus,
   ExtensionEvent,
   Installation,
   Overview,
@@ -164,7 +166,15 @@ export const api = {
     register: (body: { email: string; password: string; display_name?: string }) =>
       request<SessionInfo>("/auth/register", { method: "POST", json: body }),
     login: (body: { email: string; password: string }) =>
-      request<SessionInfo>("/auth/login", { method: "POST", json: body }),
+      request<SessionInfo | LoginChallenge>("/auth/login", { method: "POST", json: body }),
+    completeTwoFactor: (challenge: string, code: string) =>
+      request<SessionInfo>("/auth/login/two-factor", { method: "POST", json: { challenge, code } }),
+    requestReset: (email: string) =>
+      request<{ status: string }>("/auth/password-reset", { method: "POST", json: { email } }),
+    confirmReset: (token: string, newPassword: string) =>
+      request<void>("/auth/password-reset/confirm", { method: "POST", json: { token, new_password: newPassword } }),
+    verifyEmail: (token: string) => request<void>("/auth/verify-email", { method: "POST", json: { token } }),
+    resendVerification: () => request<{ status: string }>("/auth/verify-email/send", { method: "POST" }),
     logout: () => request<void>("/auth/logout", { method: "POST" }),
   },
   scans: {
@@ -208,6 +218,13 @@ export const api = {
     overview: () => request<Overview>("/user/overview"),
     activity: () => request<Activity[]>("/user/activity"),
     exportData: () => request<Record<string, unknown>>("/user/export"),
+    security: () => request<SecurityStatus>("/user/security"),
+    setupTwoFactor: () =>
+      request<{ secret: string; otpauth_uri: string; qr_code: string }>("/user/2fa/setup", { method: "POST" }),
+    enableTwoFactor: (code: string) =>
+      request<{ backup_codes: string[] }>("/user/2fa/enable", { method: "POST", json: { code } }),
+    disableTwoFactor: (password: string, code: string) =>
+      request<void>("/user/2fa/disable", { method: "POST", json: { password, code } }),
     apiKeys: () => request<ApiKey[]>("/user/api-keys"),
     createApiKey: (name: string) =>
       request<ApiKey & { key: string }>("/user/api-keys", { method: "POST", json: { name } }),

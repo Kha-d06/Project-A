@@ -60,3 +60,29 @@ describe("AuthForm", () => {
     await vi.waitFor(() => expect(router.push).toHaveBeenCalledWith("/dashboard/settings"));
   });
 });
+
+describe("two-step sign-in", () => {
+  it("asks for the code after a correct password and only then signs in", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        calls.push(url);
+        if (url.endsWith("/auth/session")) return jsonResponse({ user: null, csrf_token: null });
+        if (url.endsWith("/system/providers")) return jsonResponse([]);
+        if (url.endsWith("/auth/login")) return jsonResponse({ two_factor_required: true, challenge: "c.1.2.sig" });
+        return jsonResponse({ user, csrf_token: "t" });
+      }),
+    );
+    render(<SessionProvider><AuthForm mode="sign-in" /></SessionProvider>);
+    await userEvent.type(screen.getByLabelText("Email"), "a@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "whatever-password");
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByText("Two-step sign-in")).toBeInTheDocument();
+    expect(router.push).not.toHaveBeenCalled();
+    await userEvent.type(screen.getByLabelText("Code"), "123456");
+    await userEvent.click(screen.getByRole("button", { name: "Verify" }));
+    await vi.waitFor(() => expect(router.push).toHaveBeenCalledWith("/dashboard"));
+    expect(calls).toContain("/api/v1/auth/login/two-factor");
+  });
+});

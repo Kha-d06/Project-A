@@ -11,7 +11,7 @@ import { Field, Input } from "@/components/ui/field";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { useToast } from "@/components/ui/toast";
 import { ApiError, api } from "@/lib/api/client";
-import type { ApiKey, Profile } from "@/lib/api/types";
+import type { ApiKey, Profile, SecurityStatus } from "@/lib/api/types";
 import { formatRelative } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 import { useSession } from "@/lib/session";
@@ -173,6 +173,161 @@ function PasswordSection() {
           </Button>
         </div>
       </form>
+    </Panel>
+  );
+}
+
+function SecuritySection() {
+  const notify = useToast();
+  const { t } = useI18n();
+  const a = t.account;
+  const [status, setStatus] = useState<SecurityStatus | null>(null);
+  const [setup, setSetup] = useState<{ secret: string; qr_code: string } | null>(null);
+  const [code, setCode] = useState("");
+  const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
+  const [disableOpen, setDisableOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [pending, setPending] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    api.user.security().then(setStatus, () => setStatus(null));
+  }, [reloadKey]);
+
+  const run = async (action: () => Promise<void>) => {
+    setPending(true);
+    try {
+      await action();
+    } catch (error) {
+      notify("error", message(error, a.failed));
+    } finally {
+      setPending(false);
+    }
+  };
+
+  if (!status) return null;
+  return (
+    <Panel>
+      <PanelHeader title={a.security} />
+      <div className="divide-y divide-line">
+        <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4 text-sm">
+          {status.email_enabled ? (
+            <>
+              <p className="font-medium text-ink">{status.email_verified ? a.emailVerified : a.emailNotVerified}</p>
+              {!status.email_verified && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  pending={pending}
+                  onClick={() => run(async () => {
+                    await api.auth.resendVerification();
+                    notify("success", a.resent);
+                  })}
+                >
+                  {a.resend}
+                </Button>
+              )}
+            </>
+          ) : (
+            <p className="text-ink-muted">{a.emailUnavailable}</p>
+          )}
+        </div>
+        <div className="space-y-4 px-5 py-4 text-sm">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-lg space-y-1">
+              <p className="font-medium text-ink">{status.two_factor_enabled ? a.twoFactorOn : a.twoFactorOff}</p>
+              <p className="text-ink-muted">{a.twoFactorExplain}</p>
+              {status.two_factor_enabled && <p className="text-ink-faint">{a.backupLeft(status.backup_codes_remaining)}</p>}
+            </div>
+            {status.two_factor_enabled ? (
+              <Button variant="danger" size="sm" onClick={() => setDisableOpen(true)}>
+                {a.turnOff}
+              </Button>
+            ) : (
+              !setup && (
+                <Button size="sm" pending={pending} onClick={() => run(async () => setSetup(await api.user.setupTwoFactor()))}>
+                  {a.turnOn}
+                </Button>
+              )
+            )}
+          </div>
+          {setup && !status.two_factor_enabled && (
+            <form
+              className="flex animate-fade-up flex-col gap-4 rounded-control border border-line p-4 sm:flex-row"
+              onSubmit={(event: FormEvent) => {
+                event.preventDefault();
+                void run(async () => {
+                  const enabled = await api.user.enableTwoFactor(code.trim());
+                  setBackupCodes(enabled.backup_codes);
+                  setSetup(null);
+                  setCode("");
+                  setReloadKey((key) => key + 1);
+                });
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element -- server-rendered data URL, not a remote image */}
+              <img src={setup.qr_code} alt="QR code for your authenticator app" width={180} height={180} className="rounded-control bg-white" />
+              <div className="flex-1 space-y-3">
+                <p className="text-ink-muted">{a.scanQr}</p>
+                <p className="text-xs text-ink-faint">
+                  {a.manualKey} <code className="font-mono break-all text-ink">{setup.secret}</code>
+                </p>
+                <Field label={a.code}>
+                  {(props) => (
+                    <Input {...props} inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value)} className="w-40 font-mono tracking-widest" />
+                  )}
+                </Field>
+                <Button type="submit" size="sm" pending={pending} disabled={code.trim().length < 6}>
+                  {a.confirm}
+                </Button>
+              </div>
+            </form>
+          )}
+          {backupCodes && (
+            <Alert tone="warning" title={a.backupTitle}>
+              <span className="block">{a.backupBody}</span>
+              <ul className="mt-2 grid grid-cols-2 gap-1 font-mono text-sm text-ink sm:grid-cols-5">
+                {backupCodes.map((backup) => (
+                  <li key={backup}>{backup}</li>
+                ))}
+              </ul>
+              <Button size="sm" variant="secondary" className="mt-3" onClick={() => setBackupCodes(null)}>
+                {a.done}
+              </Button>
+            </Alert>
+          )}
+        </div>
+      </div>
+      <Dialog open={disableOpen} onClose={() => setDisableOpen(false)} title={a.turnOffTitle} description={a.turnOffBody}>
+        <form
+          className="space-y-4"
+          onSubmit={(event: FormEvent) => {
+            event.preventDefault();
+            void run(async () => {
+              await api.user.disableTwoFactor(password, code.trim());
+              setDisableOpen(false);
+              setPassword("");
+              setCode("");
+              setReloadKey((key) => key + 1);
+            });
+          }}
+        >
+          <Field label={t.auth.password}>
+            {(props) => <Input {...props} type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />}
+          </Field>
+          <Field label={a.code}>
+            {(props) => <Input {...props} inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(event) => setCode(event.target.value)} />}
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setDisableOpen(false)}>
+              {t.common.cancel}
+            </Button>
+            <Button type="submit" variant="danger" pending={pending} disabled={!password || !code}>
+              {a.turnOff}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
     </Panel>
   );
 }
@@ -346,8 +501,8 @@ export function Settings() {
           <ProfileSection profile={profile} onSaved={setProfile} />
           <PrivacySection profile={profile} onSaved={setProfile} />
           <PasswordSection />
+          <SecuritySection />
           <ApiKeysSection />
-          <Alert title={s.emailTitle}>{s.emailBody}</Alert>
           <DeleteAccountSection />
         </div>
       )}

@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import { api, setCsrfToken } from "./api/client";
-import type { SessionInfo, User } from "./api/types";
+import type { LoginChallenge, SessionInfo, User } from "./api/types";
 
 type SessionState =
   | { status: "loading"; user: null }
@@ -12,7 +12,9 @@ type SessionState =
 
 interface SessionContextValue {
   session: SessionState;
-  signIn: (email: string, password: string) => Promise<void>;
+  /** Resolves to a challenge when the account needs a second sign-in step. */
+  signIn: (email: string, password: string) => Promise<LoginChallenge | null>;
+  completeTwoFactor: (challenge: string, code: string) => Promise<void>;
   register: (email: string, password: string, displayName?: string) => Promise<void>;
   signOut: () => Promise<void>;
   updateUser: (user: User) => void;
@@ -57,7 +59,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<SessionContextValue>(
     () => ({
       session,
-      signIn: async (email, password) => adopt(await api.auth.login({ email, password })),
+      signIn: async (email, password) => {
+        const result = await api.auth.login({ email, password });
+        if ("two_factor_required" in result) return result;
+        adopt(result);
+        return null;
+      },
+      completeTwoFactor: async (challenge, code) => adopt(await api.auth.completeTwoFactor(challenge, code)),
       register: async (email, password, displayName) =>
         adopt(await api.auth.register({ email, password, display_name: displayName })),
       signOut: async () => {

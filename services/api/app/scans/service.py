@@ -6,7 +6,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.models import ScanJob, User, UserSession
+from app.models import AccountToken, AuditEvent, ScanJob, User, UserSession
 from app.models.base import utcnow
 from app.scans.runner import run_scan
 from app.scans.storage import delete_sample
@@ -15,6 +15,8 @@ from app.scans.storage import delete_sample
 # and are removed after this period.
 ANONYMOUS_SCAN_RETENTION = timedelta(days=30)
 _STUCK_SCAN_AGE = timedelta(minutes=15)
+# Audit events hold IP addresses; they are kept long enough to investigate abuse.
+AUDIT_RETENTION = timedelta(days=180)
 _TARGET_MAX_LENGTH = 300
 
 
@@ -114,4 +116,6 @@ def purge_expired_data(db: Session) -> None:
         job.completed_at = now
 
     db.execute(delete(UserSession).where(UserSession.expires_at < now))
+    db.execute(delete(AccountToken).where(AccountToken.expires_at < now))
+    db.execute(delete(AuditEvent).where(AuditEvent.created_at < now - AUDIT_RETENTION))
     db.commit()

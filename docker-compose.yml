@@ -22,6 +22,13 @@ x-api-environment: &api-environment
   SENTINEL_OPENAI_MODEL: ${SENTINEL_OPENAI_MODEL:-}
   SENTINEL_YARA_RULES_DIR: ${SENTINEL_YARA_RULES_DIR:-}
   SENTINEL_METRICS_TOKEN: ${SENTINEL_METRICS_TOKEN:-}
+  SENTINEL_EMAIL_BACKEND: ${SENTINEL_EMAIL_BACKEND:-disabled}
+  SENTINEL_EMAIL_FROM: ${SENTINEL_EMAIL_FROM:-SENTINEL <no-reply@localhost>}
+  SENTINEL_SMTP_HOST: ${SENTINEL_SMTP_HOST:-}
+  SENTINEL_SMTP_PORT: ${SENTINEL_SMTP_PORT:-587}
+  SENTINEL_SMTP_USERNAME: ${SENTINEL_SMTP_USERNAME:-}
+  SENTINEL_SMTP_PASSWORD: ${SENTINEL_SMTP_PASSWORD:-}
+  SENTINEL_PUBLIC_URL: ${SENTINEL_PUBLIC_URL:-http://localhost:8080}
 
 services:
   postgres:
@@ -53,6 +60,22 @@ services:
       postgres: { condition: service_healthy }
     restart: "no"
 
+  # Creates the restricted database role the scan worker uses.
+  worker-role:
+    image: postgres:16-alpine
+    command:
+      - sh
+      - -c
+      - psql "postgresql://sentinel:$$POSTGRES_PASSWORD@postgres:5432/sentinel" -v ON_ERROR_STOP=1 -v worker_password="'$$WORKER_DB_PASSWORD'" -f /sql/worker-role.sql
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      WORKER_DB_PASSWORD: ${WORKER_DB_PASSWORD:?Set WORKER_DB_PASSWORD in .env}
+    volumes:
+      - ./infrastructure/database/worker-role.sql:/sql/worker-role.sql:ro
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: "no"
+
   api:
     build: ./services/api
     environment: *api-environment
@@ -73,7 +96,9 @@ services:
   worker:
     build: ./services/api
     command: ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=INFO", "--concurrency=4", "--max-tasks-per-child=200"]
-    environment: *api-environment
+    environment:
+      <<: *api-environment
+      SENTINEL_WORKER_DATABASE_URL: postgresql+psycopg://sentinel_worker:${WORKER_DB_PASSWORD}@postgres:5432/sentinel
     volumes:
       - uploads:/var/lib/sentinel/uploads
     read_only: true
@@ -83,7 +108,7 @@ services:
     mem_limit: 1g
     cpus: 2
     depends_on:
-      migrate: { condition: service_completed_successfully }
+      worker-role: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
 
   # Hourly feed refresh and retention sweep.

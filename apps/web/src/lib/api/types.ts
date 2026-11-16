@@ -17,6 +17,7 @@ export interface User {
   display_name: string | null;
   role: string;
   created_at: string;
+  email_verified_at?: string | null;
 }
 
 export interface SessionInfo {
@@ -251,6 +252,18 @@ export interface ApiKey {
   prefix: string;
   created_at: string;
   last_used_at: string | null;
+}
+
+export interface LoginChallenge {
+  two_factor_required: true;
+  challenge: string;
+}
+
+export interface SecurityStatus {
+  email_enabled: boolean;
+  email_verified: boolean;
+  two_factor_enabled: boolean;
+  backup_codes_remaining: number;
 }
 
 export interface FieldError {

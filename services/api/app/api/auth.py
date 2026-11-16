@@ -28,10 +28,15 @@ LOGIN_IP_LIMIT = RateLimit("login-ip", max_requests=20, window_seconds=300)
 LOGIN_ACCOUNT_LIMIT = RateLimit("login-account", max_requests=8, window_seconds=900)
 
 
-def record_event(db: Session, request: Request, user: User | None, action: str) -> None:
+def record_event(
+    db: Session, request: Request, user: User | None, action: str, detail: str | None = None
+) -> None:
     db.add(
         AuditEvent(
-            user_id=user.id if user else None, action=action, ip_address=client_address(request)
+            user_id=user.id if user else None,
+            action=action,
+            detail=detail[:300] if detail else None,
+            ip_address=client_address(request),
         )
     )
 
@@ -97,6 +102,10 @@ def login(body: LoginRequest, request: Request, response: Response, db: Db) -> S
             db.commit()
         raise ApiError(401, "invalid_credentials", "The email or password is incorrect.")
 
+    if user.disabled_at is not None:
+        raise ApiError(
+            403, "account_disabled", "This account has been disabled. Contact the site operator."
+        )
     if needs_rehash(user.password_hash):
         user.password_hash = hash_password(body.password)
     record_event(db, request, user, "signed_in")

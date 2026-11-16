@@ -11,6 +11,7 @@ from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from itertools import batched
+from urllib.parse import urlsplit
 
 import httpx
 from sqlalchemy import delete, func, insert, select, update
@@ -23,6 +24,7 @@ from app.models.base import utcnow
 
 logger = logging.getLogger(__name__)
 
+COMMUNITY = "community"
 URLHAUS = "urlhaus"
 MALWAREBAZAAR = "malwarebazaar"
 # Development-only indicators on reserved domains; see app.cli load-test-fixtures.
@@ -116,6 +118,15 @@ def get_or_create_source(db: Session, key: str, name: str) -> ThreatSource:
     return source
 
 
+def indicator_host(kind: str, value: str) -> str | None:
+    if kind == "host":
+        return value[:255]
+    if kind == "url":
+        host = urlsplit(value).hostname
+        return host[:255] if host else None
+    return None
+
+
 def store_indicators(db: Session, source: ThreatSource, indicators: Iterable[FeedIndicator]) -> int:
     """Insert new indicators and refresh last-seen on ones already known."""
     now = utcnow()
@@ -139,6 +150,7 @@ def store_indicators(db: Session, source: ThreatSource, indicators: Iterable[Fee
                     "kind": indicator.kind,
                     "value": indicator.value,
                     "value_digest": identity[1],
+                    "host": indicator_host(indicator.kind, indicator.value),
                     "threat": indicator.threat,
                     "tags": indicator.tags,
                     "reference_url": indicator.reference_url,

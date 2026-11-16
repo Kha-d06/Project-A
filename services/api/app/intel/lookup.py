@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -12,6 +13,7 @@ from app.models.base import utcnow
 
 @dataclass(frozen=True)
 class IndicatorMatch:
+    source_key: str
     source_name: str
     kind: str
     value: str
@@ -34,15 +36,28 @@ class IndicatorMatch:
 
 
 def find_indicators(db: Session, kind: str, value: str) -> list[IndicatorMatch]:
+    return _matches(
+        db,
+        (ThreatIndicator.kind == kind, ThreatIndicator.value_digest == indicator_digest(value)),
+    )
+
+
+def find_by_host(db: Session, host: str, limit: int = 50) -> list[IndicatorMatch]:
+    """Every listed URL or host indicator on a host, newest first."""
+    return _matches(db, (ThreatIndicator.host == host.lower(),), limit)
+
+
+def _matches(db: Session, conditions: tuple[Any, ...], limit: int = 50) -> list[IndicatorMatch]:
     rows = db.execute(
-        select(ThreatIndicator, ThreatSource.name)
+        select(ThreatIndicator, ThreatSource.key, ThreatSource.name)
         .join(ThreatSource)
-        .where(
-            ThreatIndicator.kind == kind, ThreatIndicator.value_digest == indicator_digest(value)
-        )
+        .where(*conditions)
+        .order_by(ThreatIndicator.last_seen_at.desc())
+        .limit(limit)
     ).all()
     return [
         IndicatorMatch(
+            source_key=source_key,
             source_name=source_name,
             kind=indicator.kind,
             value=indicator.value,
@@ -52,7 +67,7 @@ def find_indicators(db: Session, kind: str, value: str) -> list[IndicatorMatch]:
             first_seen_at=indicator.first_seen_at,
             last_seen_at=indicator.last_seen_at,
         )
-        for indicator, source_name in rows
+        for indicator, source_key, source_name in rows
     ]
 
 

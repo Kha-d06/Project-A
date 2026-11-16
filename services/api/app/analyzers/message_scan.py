@@ -12,10 +12,10 @@ from app.analyzers.message_patterns import (
 )
 from app.analyzers.types import Check, FindingData, Outcome
 from app.analyzers.url_heuristics import analyze_url_text
-from app.analyzers.url_scan import indicator_findings
+from app.analyzers.url_scan import community_finding, indicator_findings
 from app.analyzers.urls import InvalidUrlError, ParsedUrl, parse_url
-from app.intel.feeds import URLHAUS
-from app.intel.lookup import fresh_sources
+from app.intel.feeds import COMMUNITY, URLHAUS
+from app.intel.lookup import find_indicators, fresh_sources
 
 SOURCE = "SENTINEL message pattern analysis"
 MAX_MESSAGE_LENGTH = 10_000
@@ -56,6 +56,16 @@ def extract_urls(text: str) -> list[ParsedUrl]:
             continue
         urls.setdefault(parsed.normalized, parsed)
     return list(urls.values())
+
+
+def normalize_phone(raw: str) -> str:
+    """Digits only. International numbers, written with + or 00, become +<digits>."""
+    digits = re.sub(r"\D", "", raw)
+    if raw.strip().startswith("+"):
+        return f"+{digits}"
+    if digits.startswith("00"):
+        return f"+{digits[2:]}"
+    return digits
 
 
 def _extract_phones(text: str) -> list[str]:
@@ -127,10 +137,16 @@ def analyze_message(payload: dict[str, Any], db: Session) -> Outcome:
             "were inspected."
         )
 
+    phones = _extract_phones(text)
+    for phone in phones:
+        for match in find_indicators(db, "phone", normalize_phone(phone)):
+            if match.source_key == COMMUNITY:
+                outcome.findings.append(community_finding(match, f"The number {phone}"))
+
     outcome.details["indicators"] = {
         "urls": [url.normalized for url in urls],
         "emails": list(dict.fromkeys(EMAIL_PATTERN.findall(text))),
-        "phone_numbers": _extract_phones(text),
+        "phone_numbers": phones,
     }
     outcome.details["character_count"] = len(text)
     outcome.limitations.append(

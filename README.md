@@ -82,6 +82,22 @@ The app is never installed or run.
 - The output is labelled as AI-written, has links stripped, and is cached on the scan.
 - Without configuration the option is not shown, and everything else works as before.
 
+**Threat intelligence lookup.** A public lookup for domains, IP addresses and SHA-256 fingerprints, at `/intelligence` and `GET /api/v1/intelligence/{domain|ip|hash}/…`. Each match shows its source, threat type and first and last seen dates. A miss counts only if the feed is fresh; otherwise the answer is "unavailable".
+
+**Community reports and moderation.** Anyone can report a scam website, message, job offer, app, phone number or social account at `/report`.
+- **Anonymous by choice.** Anonymous reports get a private tracking link, and reporters are never shown publicly.
+- **Duplicates are counted** across all reports.
+- **Moderated before use.** Moderators review the queue. Only verified reports are published, and then only the category and subject, with phone numbers masked.
+- **Fed back into scans.** Verified websites and phone numbers feed into link, message and extension checks as strong warnings ("Suspicious"), never as "Known threat", because they rest on reports rather than catalogued malware evidence.
+
+**Administration** (admin role, enforced by the API):
+- **Health:** service health, scan workers and queue depth, stuck and failed jobs, and feed health with a manual sync.
+- **Accounts:** role changes and disabling an account (which signs it out everywhere).
+- **Monitoring:** rate-limit rejections per limit, and the audit log.
+- **Privacy:** job monitoring never shows what people scanned.
+
+The first administrator is created with `python -m app.cli set-role you@example.com admin`.
+
 **SENTINEL Protect browser extension** (`apps/extension`, Chrome and Edge, Manifest V3):
 - warns before known dangerous sites and convincing imitations load, with evidence and a way back;
 - pauses risky downloads, adds a right-click "Scan link with SENTINEL", and offers optional hover checks;

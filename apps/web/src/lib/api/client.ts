@@ -1,5 +1,17 @@
 import type {
   Activity,
+  AdminOverview,
+  AdminScan,
+  AdminUser,
+  AuditEntry,
+  CommunityReport,
+  LookupResult,
+  ModerationItem,
+  PublicReport,
+  ReportCategory,
+  ReportCreated,
+  ReportStatus,
+  SourceFreshness,
   Explanation,
   ExtensionEvent,
   Installation,
@@ -199,6 +211,42 @@ export const api = {
       request<void>(`/extension/installations/${encodeURIComponent(id)}`, { method: "DELETE" }),
     events: () => request<ExtensionEvent[]>("/extension/events"),
     clearEvents: () => request<void>("/extension/events", { method: "DELETE" }),
+  },
+  intelligence: {
+    lookup: (kind: "domain" | "ip" | "hash", value: string) =>
+      request<LookupResult>(`/intelligence/${kind}/${encodeURIComponent(value)}`),
+    sources: () => request<SourceFreshness[]>("/intelligence/sources"),
+  },
+  reports: {
+    create: (body: {
+      category: ReportCategory;
+      subject: string;
+      description: string;
+      evidence?: string;
+      anonymous?: boolean;
+    }) => request<ReportCreated>("/reports", { method: "POST", json: body }),
+    publicList: (category?: ReportCategory) =>
+      request<PublicReport[]>("/reports", { query: { category } }),
+    mine: () => request<CommunityReport[]>("/reports/mine"),
+    get: (id: string, token?: string | null) =>
+      request<CommunityReport>(`/reports/${encodeURIComponent(id)}`, { query: { token } }),
+  },
+  moderation: {
+    queue: (status: ReportStatus = "pending") =>
+      request<ModerationItem[]>("/admin/reports", { query: { status } }),
+    review: (id: string, body: { status: "verified" | "rejected" | "duplicate"; note?: string; duplicate_of?: string }) =>
+      request<CommunityReport>(`/admin/reports/${encodeURIComponent(id)}/review`, { method: "POST", json: body }),
+  },
+  admin: {
+    overview: () => request<AdminOverview>("/admin/overview"),
+    users: (query?: string, page = 1) =>
+      request<{ items: AdminUser[]; total: number }>("/admin/users", { query: { query, page } }),
+    updateUser: (id: string, body: { role?: AdminUser["role"]; disabled?: boolean }) =>
+      request<AdminUser>(`/admin/users/${encodeURIComponent(id)}`, { method: "PATCH", json: body }),
+    scans: (status?: string) => request<AdminScan[]>("/admin/scans", { query: { status } }),
+    audit: (page = 1) =>
+      request<{ items: AuditEntry[]; total: number; page: number }>("/admin/audit", { query: { page } }),
+    syncFeeds: () => request<{ status: string }>("/admin/feeds/sync", { method: "POST" }),
   },
   system: {
     providers: () => request<ProviderStatus[]>("/system/providers"),

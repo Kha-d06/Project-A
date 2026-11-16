@@ -1,4 +1,5 @@
 import hmac
+from collections.abc import Callable
 from typing import Annotated
 
 from fastapi import Depends, Request
@@ -26,7 +27,7 @@ def get_current_session(request: Request, db: Db) -> UserSession | None:
             UserSession.token_digest == token_digest(token), UserSession.expires_at > utcnow()
         )
     )
-    if session is None:
+    if session is None or session.user.disabled_at is not None:
         return None
 
     # The session cookie is sent automatically by the browser, so state-changing
@@ -55,3 +56,20 @@ def get_required_user(session: CurrentSession) -> User:
 
 OptionalUser = Annotated[User | None, Depends(get_optional_user)]
 RequiredUser = Annotated[User, Depends(get_required_user)]
+
+# Admins can do everything moderators can. Checked on every request, on the server;
+# hiding links in the interface is a convenience, not a control.
+_ROLE_LEVEL = {"user": 0, "moderator": 1, "admin": 2}
+
+
+def _require(level: str) -> Callable[[User], User]:
+    def check(user: RequiredUser) -> User:
+        if _ROLE_LEVEL.get(user.role, 0) < _ROLE_LEVEL[level]:
+            raise ApiError(403, "forbidden", "You do not have permission to do this.")
+        return user
+
+    return check
+
+
+ModeratorUser = Annotated[User, Depends(_require("moderator"))]
+AdminUser = Annotated[User, Depends(_require("admin"))]

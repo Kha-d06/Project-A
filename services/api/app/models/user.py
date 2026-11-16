@@ -16,6 +16,8 @@ class User(Base):
     display_name: Mapped[str | None] = mapped_column(String(80))
     role: Mapped[str] = mapped_column(String(20), default="user")
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    # Set by an administrator; a disabled account cannot sign in.
+    disabled_at: Mapped[datetime | None]
 
     settings: Mapped["UserSettings"] = relationship(
         back_populates="user", cascade="all, delete-orphan", uselist=False

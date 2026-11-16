@@ -14,5 +14,7 @@ class AuditEvent(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     action: Mapped[str] = mapped_column(String(60))
+    # Human-readable context for administrative actions, e.g. which account changed.
+    detail: Mapped[str | None] = mapped_column(String(300))
     ip_address: Mapped[str | None] = mapped_column(String(45))
     created_at: Mapped[datetime] = mapped_column(default=utcnow)

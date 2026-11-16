@@ -14,6 +14,8 @@ const COLUMNS = [
       { href: "/scan?type=website", label: "Website analyzer" },
       { href: "/scan?type=apk", label: "Android app analyzer" },
       { href: "/browser-protection", label: "Browser protection" },
+      { href: "/intelligence", label: "Threat intelligence" },
+      { href: "/report", label: "Report a scam" },
     ],
   },
   {

@@ -132,6 +132,119 @@ export interface ExtensionEvent {
   created_at: string;
 }
 
+export type ReportCategory =
+  | "website"
+  | "scam_message"
+  | "job_offer"
+  | "fraudulent_app"
+  | "phone_number"
+  | "social_account";
+export type ReportStatus = "pending" | "verified" | "rejected" | "duplicate";
+
+export interface CommunityReport {
+  id: string;
+  category: ReportCategory;
+  subject: string;
+  description: string;
+  evidence: string | null;
+  status: ReportStatus;
+  moderator_note: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+}
+
+export interface ReportCreated {
+  report: CommunityReport;
+  tracking_token: string | null;
+  similar_reports: number;
+}
+
+export interface PublicReport {
+  category: ReportCategory;
+  subject: string;
+  reports: number;
+  verified_at: string;
+}
+
+export interface ModerationItem extends CommunityReport {
+  similar_reports: number;
+  anonymous: boolean;
+}
+
+export interface IntelIndicator {
+  source: string;
+  kind: string;
+  value: string;
+  threat: string | null;
+  tags: string | null;
+  first_seen: string | null;
+  last_seen: string;
+  reference: string | null;
+}
+
+export interface SourceFreshness {
+  name: string;
+  indicators: number;
+  last_updated: string | null;
+  fresh: boolean;
+}
+
+export interface LookupResult {
+  query: string;
+  kind: "domain" | "ip" | "hash";
+  verdict: "listed" | "community_verified" | "not_listed" | "unavailable";
+  indicators: IntelIndicator[];
+  sources: SourceFreshness[];
+  notes: string[];
+}
+
+export interface AdminOverview {
+  users_total: number;
+  users_new_7d: number;
+  scans_24h: Partial<Record<ScanStatus, number>>;
+  failed_24h: number;
+  stuck: number;
+  reports_pending: number;
+  workers: { reachable: boolean; workers: string[]; queued_tasks: number | null; detail: string };
+  feeds: {
+    name: string;
+    indicators: number;
+    last_success_at: string | null;
+    last_attempt_at: string | null;
+    last_error: string | null;
+    fresh: boolean;
+  }[];
+  rate_limit_rejections_24h: Record<string, number>;
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  display_name: string | null;
+  role: "user" | "moderator" | "admin";
+  created_at: string;
+  disabled: boolean;
+  scans: number;
+}
+
+export interface AdminScan {
+  id: string;
+  scan_type: ScanType;
+  status: ScanStatus;
+  error: string | null;
+  created_at: string;
+  completed_at: string | null;
+  duration_seconds: number | null;
+}
+
+export interface AuditEntry {
+  action: string;
+  detail: string | null;
+  user_email: string | null;
+  ip_address: string | null;
+  created_at: string;
+}
+
 export interface FieldError {
   field: string;
   message: string;

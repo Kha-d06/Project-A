@@ -9,8 +9,8 @@ from app.analyzers.types import Check, FindingData, Outcome
 from app.analyzers.url_heuristics import analyze_url_text
 from app.analyzers.urls import InvalidUrlError, ParsedUrl, parse_url
 from app.intel import providers
-from app.intel.feeds import URLHAUS
-from app.intel.lookup import find_indicators, fresh_sources
+from app.intel.feeds import COMMUNITY, URLHAUS
+from app.intel.lookup import IndicatorMatch, find_indicators, fresh_sources
 from app.models.base import utcnow
 
 _NEW_DOMAIN_DAYS = 30
@@ -26,11 +26,28 @@ _STOP_MESSAGES = {
 }
 
 
+def community_finding(match: IndicatorMatch, subject: str) -> FindingData:
+    """Moderator-verified community reports are strong warnings, not confirmed threats:
+    they rest on people's reports rather than on catalogued malware evidence."""
+    return FindingData(
+        "high",
+        "community_report",
+        f"{subject} was reported by SENTINEL users as a scam",
+        "People reported it to SENTINEL and a moderator reviewed and confirmed the reports. "
+        "Treat it as a likely scam.",
+        match.source_name,
+        {"matched": match.value, "first_reported": match.evidence()["first_seen"]},
+    )
+
+
 def indicator_findings(db: Session, url: ParsedUrl) -> list[FindingData]:
-    """Compare a URL against the locally stored threat feeds."""
+    """Compare a URL against the locally stored threat feeds and verified reports."""
     findings = []
     url_matches = find_indicators(db, "url", url.normalized)
     for match in url_matches:
+        if match.source_key == COMMUNITY:
+            findings.append(community_finding(match, "This link"))
+            continue
         findings.append(
             FindingData(
                 "critical",
@@ -43,8 +60,11 @@ def indicator_findings(db: Session, url: ParsedUrl) -> list[FindingData]:
                 match.evidence(),
             )
         )
-    if not url_matches:
-        for match in find_indicators(db, "host", url.host):
+    for match in find_indicators(db, "host", url.host):
+        if match.source_key == COMMUNITY:
+            if not any(f.category == "community_report" for f in findings):
+                findings.append(community_finding(match, "This website"))
+        elif not url_matches:
             findings.append(
                 FindingData(
                     "low",

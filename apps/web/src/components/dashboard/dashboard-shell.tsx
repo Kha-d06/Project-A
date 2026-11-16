@@ -1,6 +1,19 @@
 "use client";
 
-import { History, LayoutDashboard, LogOut, Menu, Puzzle, ScanSearch, Settings, X } from "lucide-react";
+import {
+  Flag,
+  Gavel,
+  History,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  Puzzle,
+  Radar,
+  ScanSearch,
+  Settings,
+  ShieldCheck,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
@@ -15,7 +28,15 @@ const NAV = [
   { href: "/dashboard/scan", label: "Scan center", icon: ScanSearch },
   { href: "/dashboard/history", label: "Scan history", icon: History },
   { href: "/dashboard/browser-protection", label: "Browser protection", icon: Puzzle },
+  { href: "/dashboard/intelligence", label: "Threat intelligence", icon: Radar },
+  { href: "/dashboard/reports", label: "My reports", icon: Flag },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
+];
+
+// Shown only to these roles. The API enforces the same rule on every request.
+const STAFF_NAV = [
+  { href: "/dashboard/moderation", label: "Moderation", icon: Gavel, roles: ["moderator", "admin"] },
+  { href: "/dashboard/admin", label: "Administration", icon: ShieldCheck, roles: ["admin"] },
 ];
 
 const SCANNERS = [
@@ -40,7 +61,10 @@ function SidebarNav() {
     <div className="flex h-full flex-col gap-6">
       <nav aria-label="Dashboard" className="space-y-6">
         <ul className="space-y-0.5">
-          {NAV.map((item) => {
+          {[
+            ...NAV,
+            ...STAFF_NAV.filter((item) => session.status === "signed-in" && item.roles.includes(session.user.role)),
+          ].map((item) => {
             const current = isCurrent(pathname, item.href);
             return (
               <li key={item.href}>

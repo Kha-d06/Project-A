@@ -6,7 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, utcnow
 
-INDICATOR_KINDS = ("url", "host", "sha256")
+INDICATOR_KINDS = ("url", "host", "sha256", "phone")
 
 
 class ThreatSource(Base):
@@ -42,6 +42,9 @@ class ThreatIndicator(Base):
     value: Mapped[str] = mapped_column(Text)
     # URLs can exceed index size limits, so lookups go through a fixed-length digest.
     value_digest: Mapped[str] = mapped_column(String(64))
+    # Host part of url and host indicators, so a domain lookup finds every listed
+    # address on it.
+    host: Mapped[str | None] = mapped_column(String(255), index=True)
     threat: Mapped[str | None] = mapped_column(String(80))
     tags: Mapped[str | None] = mapped_column(String(300))
     reference_url: Mapped[str | None] = mapped_column(Text)

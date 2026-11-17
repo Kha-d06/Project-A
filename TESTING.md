@@ -65,6 +65,28 @@ The admin account already has the **site assessment** feature enabled. To turn
 it on for another account, open **Admin → Accounts** and use the **Site
 assessment** toggle in that account's row.
 
+## Run the desktop app on your laptop
+
+You need Node.js 22 or newer from <https://nodejs.org>. With the website running
+(step 3):
+
+```bash
+cd apps/desktop
+npm ci
+npm start
+```
+
+In the app:
+1. Open **Settings** and set **SENTINEL server** to `http://localhost:8080`, then click **Save**.
+2. On the website, open **Devices → Add a device** and copy the code.
+3. Back in the app, under **SENTINEL account**, enter the code and click **Link**.
+4. To start scans from the website, tick **Allow scans from my SENTINEL account**.
+
+The laptop now appears on the website's **Devices** page, where you can start a
+quick, full or folder scan and quarantine anything found. To try the detection
+safely, save the EICAR antivirus test file (a harmless standard test string,
+from <https://www.eicar.org>) into your Downloads folder.
+
 ## What works out of the box, and what needs a key
 
 Everything runs with no external accounts. These optional integrations stay off

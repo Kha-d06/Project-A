@@ -20,6 +20,8 @@ interface Status {
   watching: string[];
   quarantineCount: number;
   locale: string;
+  account: { email: string; server: string } | null;
+  remote: { lastContact: string | null; lastError: string | null };
 }
 
 type Entry = ScanResult & { quarantined?: string };
@@ -375,7 +377,66 @@ function settingsView() {
         ...[["auto", st.auto], ["en", "English"], ["ar", "العربية"]].map(([value, label]) => h("option", { value, selected: s.language === value }, label!)),
       ),
     ),
+    accountPanel(),
   ];
+}
+
+function accountPanel() {
+  const a = t.account;
+  const s = status.settings;
+  if (!status.account) {
+    const code = h("input", { id: "link-code", dir: "ltr", autocomplete: "off", maxlength: 32, spellcheck: false });
+    return h(
+      "section",
+      { class: "panel", id: "account" },
+      h("h2", {}, a.heading),
+      h("p", { class: "muted" }, a.intro),
+      h("label", { for: "link-code" }, a.codeLabel),
+      h(
+        "div",
+        { class: "row" },
+        code,
+        h("button", {
+          type: "button",
+          id: "link-button",
+          onclick: async () => {
+            const next = await guard(() => api.accountLink(code.value));
+            if (next) {
+              status = next as Status;
+              flash(a.linked);
+              void render();
+            }
+          },
+        }, a.link),
+      ),
+      h("p", { class: "muted" }, a.codeHint),
+    );
+  }
+  const name = h("input", { id: "device-name", value: s.deviceName, maxlength: 80 });
+  return h(
+    "section",
+    { class: "panel", id: "account" },
+    h("h2", {}, a.heading),
+    h("p", { id: "linked-as" }, a.linkedAs(status.account.email)),
+    h("label", { for: "device-name" }, a.name),
+    h("div", { class: "row" }, name, h("button", { type: "button", onclick: () => change({ deviceName: name.value }).then(() => flash(t.settings.saved)) }, t.settings.save)),
+    toggle(a.allowRemote, s.allowRemote, (value) => change({ allowRemote: value }), a.allowRemoteHint, "allow-remote"),
+    status.remote.lastContact ? h("p", { class: "muted" }, a.lastContact(date(status.remote.lastContact))) : null,
+    status.remote.lastError ? h("p", { class: "error", role: "status" }, status.remote.lastError) : null,
+    h("button", {
+      type: "button",
+      class: "secondary",
+      id: "unlink-button",
+      onclick: async () => {
+        if (!window.confirm(a.confirmUnlink)) return;
+        const next = await guard(() => api.accountUnlink());
+        if (next) {
+          status = next as Status;
+          void render();
+        }
+      },
+    }, a.unlink),
+  );
 }
 
 let renderToken = 0;
@@ -432,6 +493,13 @@ api.on("ransomware-alert", (payload) => {
   ransomwareAlert = payload as Status["ransomwareAlert"];
   tab = "protection";
   void render();
+});
+api.on("remote-activity", (payload) => {
+  flash(`${t.account.remoteActivity} ${String(payload)}`);
+  void api.status().then((next) => {
+    status = next as Status;
+    if (tab === "settings") void render();
+  });
 });
 api.on("scan-progress", (payload) => {
   const { scanned, malicious, suspicious } = payload as { scanned: number; malicious: number; suspicious: number };

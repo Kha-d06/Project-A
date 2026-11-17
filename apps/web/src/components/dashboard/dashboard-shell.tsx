@@ -3,6 +3,7 @@
 import {
   Flag,
   KeyRound,
+  Laptop,
   Users,
   Gavel,
   History,
@@ -38,6 +39,7 @@ const NAV: { href: string; key: NavKey; icon: typeof History }[] = [
   { href: "/dashboard/browser-protection", key: "browserProtection", icon: Puzzle },
   { href: "/dashboard/intelligence", key: "intelligence", icon: Radar },
   { href: "/dashboard/reports", key: "myReports", icon: Flag },
+  { href: "/dashboard/devices", key: "extra.devices", icon: Laptop },
   { href: "/dashboard/groups", key: "extra.groups", icon: Users },
   { href: "/dashboard/breach", key: "extra.breach", icon: KeyRound },
   { href: "/dashboard/settings", key: "settings", icon: Settings },

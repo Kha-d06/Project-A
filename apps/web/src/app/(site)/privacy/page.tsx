@@ -67,6 +67,15 @@ export default async function PrivacyPage() {
         </ul>
       </section>
       <section>
+        <h2>Linked devices</h2>
+        <ul>
+          <li>When you link SENTINEL Desktop or the Android app to your account, the device sends a heartbeat about every 30 seconds while it runs: its name, platform, app version, whether remote scans are allowed, the names of the folders it offers (for example “Downloads”, never their full paths) and a short protection summary (for example whether real-time protection is on).</li>
+          <li><strong>Remote scans are off until you turn them on in the app on that device.</strong> When they are on, anyone signed in to your account can start a scan, quarantine a file a scan found, or update the fingerprint list there. Nobody can open, upload, copy or delete your files from the website.</li>
+          <li>Scan results sent back contain file names, the label of the folder they were in, verdicts and SHA-256 fingerprints. File contents and full paths stay on the device.</li>
+          <li>Only the last 50 commands per device are kept. Removing a device from your account deletes its records and signs the app out.</li>
+        </ul>
+      </section>
+      <section>
         <h2>Sharing, groups, bots and email</h2>
         <ul>
           <li><strong>Share links</strong> show a read-only copy of one result. What was scanned is hidden unless you choose to include it. Links expire (30 days by default) and you can withdraw them at any time.</li>

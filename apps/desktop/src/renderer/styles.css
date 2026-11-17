@@ -57,3 +57,4 @@ code { font: 12px ui-monospace, Menlo, Consolas, monospace; overflow-wrap: anywh
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 .panel.alert { border-color: var(--danger); background: var(--danger-soft); }
 .warning-text { color: var(--warning); font-weight: 600; }
+p.error { color: var(--danger); }

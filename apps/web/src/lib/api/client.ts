@@ -30,6 +30,9 @@ import type {
   SessionStatus,
   AdminStats,
   BreachResult,
+  Device,
+  DeviceCommand,
+  DeviceCommandKind,
   Trends,
   Group,
   GroupSharedScan,
@@ -211,6 +214,14 @@ export const api = {
   trends: (days = 30) => request<Trends>("/trends", { query: { days } }),
   breach: {
     email: () => request<BreachResult>("/breach/email"),
+  },
+  devices: {
+    list: () => request<Device[]>("/user/devices"),
+    command: (deviceId: string, body: { kind: DeviceCommandKind; folder_id?: string; sha256?: string[] }) =>
+      request<DeviceCommand>(`/user/devices/${encodeURIComponent(deviceId)}/commands`, { method: "POST", json: body }),
+    rename: (deviceId: string, name: string) =>
+      request<Device>(`/user/devices/${encodeURIComponent(deviceId)}`, { method: "PATCH", json: { name } }),
+    remove: (deviceId: string) => request<void>(`/user/devices/${encodeURIComponent(deviceId)}`, { method: "DELETE" }),
   },
   auth: {
     session: () => request<SessionStatus>("/auth/session"),

@@ -18,8 +18,10 @@ const api = {
   addProtectedFolder: () => ipcRenderer.invoke("add-protected-folder"),
   wifi: () => ipcRenderer.invoke("wifi"),
   updates: () => ipcRenderer.invoke("updates"),
+  accountLink: (code: string) => ipcRenderer.invoke("account-link", code),
+  accountUnlink: () => ipcRenderer.invoke("account-unlink"),
   pathOf: (file: File) => webUtils.getPathForFile(file),
-  on: (channel: "scan-result" | "scan-progress" | "ransomware-alert", listener: (payload: unknown) => void) => {
+  on: (channel: "scan-result" | "scan-progress" | "ransomware-alert" | "remote-activity", listener: (payload: unknown) => void) => {
     const wrapped = (_event: unknown, payload: unknown) => listener(payload);
     ipcRenderer.on(channel, wrapped);
     return () => ipcRenderer.removeListener(channel, wrapped);

@@ -6,16 +6,21 @@
  * no permission grants. The page talks to this process through a fixed set of
  * IPC calls (see preload.ts), and every argument is validated here.
  */
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { homedir, hostname } from "node:os";
+import { basename, join } from "node:path";
 
 import { BrowserWindow, Menu, Notification, Tray, app, dialog, ipcMain, nativeImage, session, shell } from "electron";
 
+import { type LinkedAccount, loadAccount, register, saveAccount, unlinkSelf } from "./engine/account";
 import { findClam } from "./engine/clamav";
 import { findSevenZip } from "./engine/formats";
 import { type RansomwareAlert, RansomwareMonitor } from "./engine/ransomware";
 import { pendingUpdates, wifiStatus } from "./engine/system";
 import { Quarantine } from "./engine/quarantine";
+import { type Detection, type OfferedFolder, type ScanOutcome, RemoteAgent } from "./engine/remote";
 import { type ScanContext, scanFile } from "./engine/scanner";
 import { fetchSignatures, lookupHash, uploadForFullScan } from "./engine/server";
 import { type DesktopSettings, defaultSettings, loadSettings, sanitizeChanges, saveSettings } from "./engine/settings";
@@ -43,6 +48,10 @@ let watcher: FolderWatcher;
 let lastSignatureError: string | null = null;
 let ransomware: RansomwareMonitor;
 let lastRansomwareAlert: (RansomwareAlert & { at: string }) | null = null;
+let account: LinkedAccount | null = null;
+let remote: RemoteAgent;
+let personalFolders: string[] = [];
+const accountFile = () => join(dataDir(), "account.json");
 
 function send(channel: string, payload: unknown) {
   window?.webContents.send(channel, payload);
@@ -88,24 +97,83 @@ async function record(result: ScanResult, automatic: boolean): Promise<ScanResul
   return entry;
 }
 
-async function scanPaths(paths: string[]): Promise<{ scanned: number; malicious: number; suspicious: number }> {
-  const totals = { scanned: 0, malicious: 0, suspicious: 0 };
-  const scanOne = async (path: string) => {
+async function scanLabelled(targets: { path: string; label: string | null }[]): Promise<ScanOutcome> {
+  const totals = { scanned: 0, malicious: 0, suspicious: 0, quarantined: 0 };
+  const detections: Detection[] = [];
+  const scanOne = async (path: string, label: string | null) => {
     const result = await scanFile(path, context());
     await record(result, false);
     totals.scanned += 1;
     if (result.verdict === "malicious") totals.malicious += 1;
     if (result.verdict === "suspicious") totals.suspicious += 1;
+    if (result.verdict === "malicious" || result.verdict === "suspicious") {
+      detections.push({
+        name: result.name,
+        folder: label,
+        verdict: result.verdict,
+        title: result.findings[0]?.title ?? "",
+        sha256: result.sha256,
+        quarantined: false,
+      });
+    }
     send("scan-progress", { ...totals, current: path });
   };
-  for (const path of paths) {
+  for (const { path, label } of targets) {
     if (await isDirectory(path)) {
-      for await (const file of walk(path)) await scanOne(file);
+      for await (const file of walk(path)) await scanOne(file, label);
     } else {
-      await scanOne(path);
+      await scanOne(path, label);
     }
   }
-  return totals;
+  return { ...totals, detections };
+}
+
+async function scanPaths(paths: string[]): Promise<{ scanned: number; malicious: number; suspicious: number }> {
+  const { scanned, malicious, suspicious } = await scanLabelled(paths.map((path) => ({ path, label: null })));
+  return { scanned, malicious, suspicious };
+}
+
+function sha256File(path: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = createHash("sha256");
+    createReadStream(path)
+      .on("data", (chunk) => hash.update(chunk))
+      .on("error", reject)
+      .on("end", () => resolve(hash.digest("hex")));
+  });
+}
+
+/** Quarantine files from scan history by hash, checking that each file still has that hash. */
+async function quarantineByHash(hashes: string[]): Promise<number> {
+  const wanted = new Set(hashes);
+  const already = new Set((await quarantine.list()).map((item) => item.originalPath));
+  let moved = 0;
+  const seen = new Set<string>();
+  for (const entry of history) {
+    if (!entry.sha256 || !wanted.has(entry.sha256) || seen.has(entry.path) || already.has(entry.path)) continue;
+    seen.add(entry.path);
+    try {
+      if ((await sha256File(entry.path)) !== entry.sha256) continue;
+      await quarantine.add(entry.path, { sha256: entry.sha256, verdict: entry.verdict, reason: entry.findings[0]?.title ?? "" });
+      moved += 1;
+    } catch {
+      // gone or locked; nothing to move
+    }
+  }
+  return moved;
+}
+
+function offeredFolders(): OfferedFolder[] {
+  const folders: OfferedFolder[] = settings.watchFolders.map((path, index) => ({ id: `watch-${index}`, label: basename(path) || path, path }));
+  const names = ["documents", "desktop", "pictures"] as const;
+  personalFolders.forEach((path, index) => {
+    if (!settings.watchFolders.includes(path)) folders.push({ id: names[index] ?? `folder-${index}`, label: basename(path) || path, path });
+  });
+  return folders;
+}
+
+function platformName(): "windows" | "macos" | "linux" {
+  return process.platform === "win32" ? "windows" : process.platform === "darwin" ? "macos" : "linux";
 }
 
 async function updateSignatures(): Promise<void> {
@@ -144,6 +212,8 @@ async function status() {
     watching: watcher.folders,
     ransomwareAlert: lastRansomwareAlert,
     quarantineCount: (await quarantine.list()).length,
+    account: account ? { email: account.email, server: account.server } : null,
+    remote: { lastContact: remote?.lastContact ?? null, lastError: remote?.lastError ?? null },
     platform: process.platform,
     version: app.getVersion(),
     locale: app.getLocale(),
@@ -193,6 +263,23 @@ function registerIpc() {
     settings = { ...settings, ...sanitizeChanges(changes) };
     await saveSettings(join(dataDir(), "settings.json"), settings);
     applyWatching();
+    void remote.tick();
+    return status();
+  });
+  ipcMain.handle("account-link", async (_event, code: unknown) => {
+    if (typeof code !== "string" || !/^[A-Za-z0-9-]{4,32}$/.test(code.trim())) throw new Error("Enter the code shown on the website.");
+    account = await register(settings.serverUrl, code, settings.deviceName, platformName(), app.getVersion());
+    await saveAccount(accountFile(), account);
+    remote.start();
+    return status();
+  });
+  ipcMain.handle("account-unlink", async () => {
+    if (account) await unlinkSelf(account);
+    account = null;
+    remote.stop();
+    settings = { ...settings, allowRemote: false };
+    await saveSettings(join(dataDir(), "settings.json"), settings);
+    await saveAccount(accountFile(), null);
     return status();
   });
   ipcMain.handle("wifi", () => wifiStatus());
@@ -261,7 +348,8 @@ function createTray() {
 async function start() {
   const dir = dataDir();
   const personal = (["documents", "desktop", "pictures"] as const).map((name) => app.getPath(name));
-  settings = await loadSettings(join(dir, "settings.json"), defaultSettings(app.getPath("downloads"), personal));
+  personalFolders = personal;
+  settings = await loadSettings(join(dir, "settings.json"), defaultSettings(app.getPath("downloads"), personal, hostname().slice(0, 80) || "This computer"));
   if (process.env.SENTINEL_SERVER) settings.serverUrl = new URL(process.env.SENTINEL_SERVER).origin;
   signatures = new SignatureStore(join(dir, "signatures.json"));
   await signatures.open();
@@ -286,6 +374,37 @@ async function start() {
   applyWatching();
   void updateSignatures();
   setInterval(() => void updateSignatures(), SIGNATURE_REFRESH_MS).unref();
+
+  account = await loadAccount(accountFile());
+  remote = new RemoteAgent({
+    account: () => account,
+    allowRemote: () => settings.allowRemote,
+    folders: offeredFolders,
+    homeFolder: () => process.env.SENTINEL_DESKTOP_HOME ?? homedir(),
+    status: () => ({
+      protection: settings.watchEnabled ? "watching" : "paused",
+      signatures: signatures.size,
+      signatures_updated: signatures.meta?.updatedAt ?? null,
+      ransomware_watch: settings.ransomwareWatch,
+      clamav: Boolean(clamBinary),
+      os: process.platform,
+    }),
+    version: () => app.getVersion(),
+    scan: scanLabelled,
+    quarantineByHash,
+    updateSignatures,
+    unlinked: () => {
+      account = null;
+      remote.stop();
+      void saveAccount(accountFile(), null);
+      send("remote-activity", "This computer was removed from your SENTINEL account.");
+    },
+    activity: (message) => {
+      if (Notification.isSupported()) new Notification({ title: "SENTINEL Desktop", body: message }).show();
+      send("remote-activity", message);
+    },
+  });
+  if (account) remote.start();
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -304,5 +423,6 @@ if (!app.requestSingleInstanceLock()) {
   app.on("before-quit", () => {
     watcher?.close();
     ransomware?.close();
+    remote?.stop();
   });
 }

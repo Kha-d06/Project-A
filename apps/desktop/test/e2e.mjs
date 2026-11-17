@@ -23,8 +23,55 @@ const EICAR = "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$
 const SAMPLE = Buffer.from("this stands in for a sample listed on MalwareBazaar");
 const sampleHash = createHash("sha256").update(SAMPLE).digest("hex");
 
-const server = createServer((request, response) => {
-  if (request.url === "/api/v1/intelligence/hash-list") {
+// Stand-in for the account side: queues a full scan and a quarantine once the
+// person allows remote scans, and records what the app reports back.
+const device = { linked: false, heartbeats: [], queued: [], results: {}, started: [] };
+const readBody = (request) =>
+  new Promise((resolve) => {
+    let data = "";
+    request.on("data", (chunk) => (data += chunk));
+    request.on("end", () => resolve(data ? JSON.parse(data) : null));
+  });
+const json = (response, status, body) => {
+  response.writeHead(status, { "Content-Type": "application/json" });
+  response.end(JSON.stringify(body));
+};
+
+const server = createServer(async (request, response) => {
+  const url = request.url ?? "";
+  if (url.startsWith("/api/v1/devices/")) {
+    const body = await readBody(request);
+    if (url === "/api/v1/devices/register") {
+      if (body.link_code !== "ABCD2345") return json(response, 400, { error: { message: "That code is not valid." } });
+      device.linked = true;
+      return json(response, 201, { device_id: "dev-1", token: "sdv_e2e", account_email: "owner@example.com" });
+    }
+    if (request.headers.authorization !== "Bearer sdv_e2e") return json(response, 401, { error: { message: "Unknown device" } });
+    if (url === "/api/v1/devices/heartbeat") {
+      device.heartbeats.push(body);
+      if (body.allow_remote && !device.queuedOnce) {
+        device.queuedOnce = true;
+        device.queued.push({ id: "cmd-scan", kind: "full_scan", args: {} }, { id: "cmd-q", kind: "quarantine", args: { sha256: [sampleHash] } });
+      }
+      return json(response, 200, { pending_commands: device.queued.length });
+    }
+    if (url === "/api/v1/devices/commands") return json(response, 200, device.queued.splice(0));
+    const started = url.match(/^\/api\/v1\/devices\/commands\/([\w-]+)\/started$/);
+    if (started) {
+      device.started.push(started[1]);
+      return response.writeHead(204).end();
+    }
+    const result = url.match(/^\/api\/v1\/devices\/commands\/([\w-]+)\/result$/);
+    if (result) {
+      device.results[result[1]] = body;
+      return response.writeHead(204).end();
+    }
+    if (url === "/api/v1/devices/self") {
+      device.linked = false;
+      return response.writeHead(204).end();
+    }
+  }
+  if (url === "/api/v1/intelligence/hash-list") {
     response.writeHead(200, { "Content-Type": "application/json" });
     response.end(JSON.stringify({ version: "1-test", generated_at: new Date().toISOString(), sources: ["MalwareBazaar (test)"], sha256: [sampleHash] }));
     return;
@@ -51,7 +98,7 @@ await writeFile(join(files, "invoice.pdf"), Buffer.concat([Buffer.from("MZ"), Bu
 const app = await electron.launch({
   executablePath: require("electron"),
   args: [join(root, "dist", "main.js"), "--no-sandbox"],
-  env: { ...process.env, SENTINEL_DESKTOP_PROFILE: profile },
+  env: { ...process.env, SENTINEL_DESKTOP_PROFILE: profile, SENTINEL_DESKTOP_HOME: files },
 });
 const page = await app.firstWindow();
 await page.waitForSelector("nav button");
@@ -105,7 +152,40 @@ await page.waitForSelector("#wifi-status");
 await shot(page, "desktop-ransomware");
 step("ransomware watch alerts on mass renames with a ransomware extension");
 
+// Account link and a scan started from the website.
 await page.click('[data-tab="settings"]');
+await page.fill("#link-code", "WRONG123");
+await page.click("#link-button");
+await page.waitForSelector("text=That code is not valid.");
+await page.fill("#link-code", "ABCD2345");
+await page.click("#link-button");
+await page.waitForSelector("#linked-as");
+assert.ok(device.linked);
+await page.waitForFunction(() => document.querySelector("#allow-remote") && !document.querySelector("#allow-remote").checked);
+assert.ok(device.heartbeats.length >= 1 && device.heartbeats.every((beat) => beat.allow_remote === false));
+assert.ok(!JSON.stringify(device.heartbeats).includes(work), "heartbeats must not contain folder paths");
+step("linked to an account with a code; remote scans stay off until allowed; no paths sent");
+
+await page.check("#allow-remote");
+const deadline = Date.now() + 20000;
+while (!device.results["cmd-q"] && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 200));
+const scanReport = device.results["cmd-scan"];
+assert.ok(scanReport?.ok, `full scan report: ${JSON.stringify(scanReport)}`);
+assert.ok(scanReport.scanned >= 2);
+assert.ok(scanReport.detections.some((d) => d.name === "sample.bin" && d.sha256 === sampleHash && d.verdict === "malicious"));
+assert.ok(!JSON.stringify(scanReport).includes(work), "results must not contain paths");
+assert.deepEqual(device.started, ["cmd-scan", "cmd-q"]);
+assert.equal(device.results["cmd-q"].quarantined, 1);
+await assert.rejects(stat(join(files, "sample.bin")));
+await shot(page, "desktop-account");
+step("scan started from the account ran here, reported detections, then quarantined the file it found");
+
+page.once("dialog", (dialog) => dialog.accept());
+await page.click("#unlink-button");
+await page.waitForSelector("#link-code");
+assert.equal(device.linked, false);
+step("removing the computer from the account unlinks it on the server");
+
 await page.selectOption("#language", "ar");
 await page.waitForSelector("text=الحماية");
 assert.equal(await page.evaluate(() => document.documentElement.dir), "rtl");

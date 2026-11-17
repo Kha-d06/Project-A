@@ -9,6 +9,7 @@ from app.api import (
     auth,
     breach,
     channels,
+    devices,
     extension,
     groups,
     intelligence,
@@ -90,6 +91,7 @@ def create_app() -> FastAPI:
         breach.router,
         push.router,
         trends.router,
+        devices.router,
     ):
         app.include_router(router, prefix=API_PREFIX)
     return app

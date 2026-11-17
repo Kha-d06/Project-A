@@ -27,6 +27,7 @@ Verdicts use the same words as the website: **Known malicious**, **Suspicious**,
 - **Wi-Fi check.** Warns when the current network is open or uses WEP. It reads `nmcli`, `netsh` or `system_profiler`.
 - **Software updates.** Lists pending updates from `winget`, `softwareupdate` or `apt`. Installing them is left to the system's own tools.
 - **Tray icon.** Watching continues after the window closes. Quit from the tray menu.
+- **SENTINEL account and remote scans.** In Settings, type the code from the website's Dashboard → Devices page to link this computer. The website then shows its protection status. If you also turn on **Allow scans from my SENTINEL account** (off by default), you can start a quick scan (watched folders), a full scan (your home folder) or a scan of one offered folder from another device, quarantine what a scan found, and update the fingerprint list. The app offers folders by name only, refuses any folder it did not offer, checks a file's fingerprint again before quarantining it, and reports names, verdicts and fingerprints, never contents or full paths. Removing the device on the website signs the app out.
 
 ## What it does not do
 
@@ -45,6 +46,7 @@ Keep your operating system's built-in protection on.
 - **Main process.** The page reaches it only through the functions in `src/preload.ts`, and every argument is validated there (settings through an allow-list).
 - **Files.** Files are only read: never opened with their own program, never executed, never extracted to disk. ZIP members are inflated in memory with size limits.
 - **ClamAV** runs through `execFile`, with no shell.
+- **Device token.** The account link stores a device token (`sdv_…`) in `account.json` in the app's data folder, readable only by you. The server keeps only a digest of it. It can heartbeat, fetch commands for this device and report their results; it cannot reach the rest of the account.
 
 ## Develop
 

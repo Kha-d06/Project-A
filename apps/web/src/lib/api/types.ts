@@ -385,3 +385,50 @@ export interface AdminStats {
   pending_by_age: { under_1_day: number; "1_to_3_days": number; over_3_days: number };
   reviews_by_moderator: { moderator: string; reviews: number }[];
 }
+
+export type DevicePlatform = "windows" | "macos" | "linux" | "android";
+export type DeviceCommandKind = "quick_scan" | "full_scan" | "folder_scan" | "quarantine" | "update_signatures";
+export type DeviceCommandStatus = "queued" | "sent" | "running" | "done" | "failed" | "expired";
+
+export interface DeviceDetection {
+  name: string;
+  folder: string | null;
+  verdict: "malicious" | "suspicious";
+  title: string;
+  sha256: string | null;
+  quarantined: boolean;
+}
+
+export interface DeviceCommand {
+  id: string;
+  kind: DeviceCommandKind;
+  args: { folder_id?: string; folder_label?: string; sha256?: string[] };
+  status: DeviceCommandStatus;
+  result: {
+    ok?: boolean;
+    scanned?: number;
+    malicious?: number;
+    suspicious?: number;
+    quarantined?: number;
+    detections?: DeviceDetection[];
+    duration_seconds?: number;
+  } | null;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface Device {
+  id: string;
+  name: string;
+  platform: DevicePlatform;
+  app_version: string;
+  online: boolean;
+  allow_remote: boolean;
+  status: Record<string, string | number | boolean | null>;
+  folders: { id: string; label: string }[];
+  last_seen_at: string | null;
+  created_at: string;
+  recent_commands: DeviceCommand[];
+}

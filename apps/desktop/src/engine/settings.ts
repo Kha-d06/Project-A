@@ -12,9 +12,12 @@ export interface DesktopSettings {
   /** Watch these folders for mass encryption (detection only). */
   ransomwareWatch: boolean;
   protectedFolders: string[];
+  /** Off until the person turns it on: scans may be started from their SENTINEL account. */
+  allowRemote: boolean;
+  deviceName: string;
 }
 
-export function defaultSettings(downloads: string, protectedFolders: string[] = []): DesktopSettings {
+export function defaultSettings(downloads: string, protectedFolders: string[] = [], deviceName = "This computer"): DesktopSettings {
   return {
     serverUrl: "http://localhost:8080",
     watchFolders: [downloads],
@@ -25,6 +28,8 @@ export function defaultSettings(downloads: string, protectedFolders: string[] = 
     language: "auto",
     ransomwareWatch: true,
     protectedFolders,
+    allowRemote: false,
+    deviceName,
   };
 }
 
@@ -58,7 +63,8 @@ export function sanitizeChanges(changes: unknown): Partial<DesktopSettings> {
   if (Array.isArray(input.protectedFolders)) {
     out.protectedFolders = input.protectedFolders.filter((f): f is string => typeof f === "string").slice(0, 20);
   }
-  for (const key of ["watchEnabled", "autoQuarantine", "useClamav", "cloudLookup", "ransomwareWatch"] as const) {
+  if (typeof input.deviceName === "string" && input.deviceName.trim()) out.deviceName = input.deviceName.trim().slice(0, 80);
+  for (const key of ["watchEnabled", "autoQuarantine", "useClamav", "cloudLookup", "ransomwareWatch", "allowRemote"] as const) {
     if (typeof input[key] === "boolean") out[key] = input[key];
   }
   if (input.language === "auto" || input.language === "en" || input.language === "ar") out.language = input.language;

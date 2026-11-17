@@ -30,6 +30,8 @@ function StatusValue({ name, value }: { name: string; value: string | number | b
   if (value === null || value === "") return <>—</>;
   if (typeof value === "boolean") return <>{value ? d.yes : d.no}</>;
   if (name === "protection") return <>{value === "watching" ? d.watching : d.paused}</>;
+  if (name === "firewall") return <span className={value === "off" ? "text-danger" : undefined}>{d.firewallStates[String(value)] ?? String(value)}</span>;
+  if (name === "exposed_risky_ports" && Number(value) > 0) return <span className="text-warning">{String(value)}</span>;
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) return <>{formatRelative(value)}</>;
   return <>{String(value)}</>;
 }

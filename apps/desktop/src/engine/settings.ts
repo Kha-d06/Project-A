@@ -1,5 +1,7 @@
 import { readFile, rename, writeFile } from "node:fs/promises";
 
+import { DEFAULT_SCHEDULE, type Schedule, sanitizeSchedule } from "./schedule";
+
 export interface DesktopSettings {
   serverUrl: string;
   watchFolders: string[];
@@ -15,6 +17,21 @@ export interface DesktopSettings {
   /** Off until the person turns it on: scans may be started from their SENTINEL account. */
   allowRemote: boolean;
   deviceName: string;
+  /** Scheduled scans. `lastScheduledScan` is written only by the app itself. */
+  scanSchedule: Schedule;
+  scheduledScanKind: "quick" | "full";
+  lastScheduledScan: string | null;
+  /** Notify when an app starts using the camera or microphone. */
+  privacyWatch: boolean;
+  /** Startup items already seen, so new ones can be pointed out. */
+  knownStartup: string[];
+  /** Encrypted backups. Folders and destination are chosen through system dialogs only. */
+  backupFolders: string[];
+  backupDestination: string | null;
+  backupSchedule: Schedule;
+  backupKeep: number;
+  lastBackup: { at: string; file: string; files: number; bytes: number } | null;
+  lastBackupError: string | null;
 }
 
 export function defaultSettings(downloads: string, protectedFolders: string[] = [], deviceName = "This computer"): DesktopSettings {
@@ -30,6 +47,17 @@ export function defaultSettings(downloads: string, protectedFolders: string[] = 
     protectedFolders,
     allowRemote: false,
     deviceName,
+    scanSchedule: { frequency: "weekly", day: 0, hour: 12 },
+    scheduledScanKind: "quick",
+    lastScheduledScan: null,
+    privacyWatch: true,
+    knownStartup: [],
+    backupFolders: [],
+    backupDestination: null,
+    backupSchedule: { ...DEFAULT_SCHEDULE },
+    backupKeep: 5,
+    lastBackup: null,
+    lastBackupError: null,
   };
 }
 
@@ -64,7 +92,13 @@ export function sanitizeChanges(changes: unknown): Partial<DesktopSettings> {
     out.protectedFolders = input.protectedFolders.filter((f): f is string => typeof f === "string").slice(0, 20);
   }
   if (typeof input.deviceName === "string" && input.deviceName.trim()) out.deviceName = input.deviceName.trim().slice(0, 80);
-  for (const key of ["watchEnabled", "autoQuarantine", "useClamav", "cloudLookup", "ransomwareWatch", "allowRemote"] as const) {
+  const scan = sanitizeSchedule(input.scanSchedule);
+  if (scan) out.scanSchedule = scan;
+  const backup = sanitizeSchedule(input.backupSchedule);
+  if (backup) out.backupSchedule = backup;
+  if (input.scheduledScanKind === "quick" || input.scheduledScanKind === "full") out.scheduledScanKind = input.scheduledScanKind;
+  if (Number.isInteger(input.backupKeep) && (input.backupKeep as number) >= 1 && (input.backupKeep as number) <= 50) out.backupKeep = input.backupKeep as number;
+  for (const key of ["watchEnabled", "autoQuarantine", "useClamav", "cloudLookup", "ransomwareWatch", "allowRemote", "privacyWatch"] as const) {
     if (typeof input[key] === "boolean") out[key] = input[key];
   }
   if (input.language === "auto" || input.language === "en" || input.language === "ar") out.language = input.language;

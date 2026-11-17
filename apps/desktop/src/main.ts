@@ -8,16 +8,29 @@
  */
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { basename, join } from "node:path";
 
-import { BrowserWindow, Menu, Notification, Tray, app, dialog, ipcMain, nativeImage, session, shell } from "electron";
+import { BrowserWindow, Menu, Notification, Tray, app, dialog, ipcMain, nativeImage, safeStorage, session, shell } from "electron";
 
 import { type LinkedAccount, loadAccount, register, saveAccount, unlinkSelf } from "./engine/account";
+import { BackupError, MIN_PASSWORD_LENGTH, createBackup, pruneBackups, readBackup } from "./engine/backup";
 import { findClam } from "./engine/clamav";
 import { findSevenZip } from "./engine/formats";
 import { type RansomwareAlert, RansomwareMonitor } from "./engine/ransomware";
+import { isDue, nextSlot } from "./engine/schedule";
+import {
+  type DeviceUse,
+  type FirewallStatus,
+  type ListeningPort,
+  type StartupItem,
+  cameraAndMicrophoneUse,
+  firewallStatus,
+  listeningPorts,
+  newUses,
+  startupItems,
+} from "./engine/security";
 import { pendingUpdates, wifiStatus } from "./engine/system";
 import { Quarantine } from "./engine/quarantine";
 import { type Detection, type OfferedFolder, type ScanOutcome, RemoteAgent } from "./engine/remote";
@@ -52,6 +65,17 @@ let account: LinkedAccount | null = null;
 let remote: RemoteAgent;
 let personalFolders: string[] = [];
 const accountFile = () => join(dataDir(), "account.json");
+const backupKeyFile = () => join(dataDir(), "backup-key.bin");
+let scanning = false;
+let backingUp = false;
+/** Used only when the system keychain is unavailable; lost when the app quits. */
+let sessionBackupPassword: string | null = null;
+let lastFirewall: FirewallStatus | null = null;
+let lastPorts: ListeningPort[] | null = null;
+let lastStartup: StartupItem[] = [];
+let deviceUses: DeviceUse[] = [];
+const deviceUseLog: { at: string; device: DeviceUse["device"]; app: string }[] = [];
+let privacyTimer: NodeJS.Timeout | null = null;
 
 function send(channel: string, payload: unknown) {
   window?.webContents.send(channel, payload);
@@ -131,6 +155,147 @@ async function scanLabelled(targets: { path: string; label: string | null }[]): 
 async function scanPaths(paths: string[]): Promise<{ scanned: number; malicious: number; suspicious: number }> {
   const { scanned, malicious, suspicious } = await scanLabelled(paths.map((path) => ({ path, label: null })));
   return { scanned, malicious, suspicious };
+}
+
+/** Runs one scan at a time; a scheduled scan waits for the next minute if another is running. */
+async function exclusive<T>(work: () => Promise<T>): Promise<T> {
+  scanning = true;
+  try {
+    return await work();
+  } finally {
+    scanning = false;
+  }
+}
+
+function notify(title: string, body: string) {
+  if (Notification.isSupported()) new Notification({ title, body }).show();
+}
+
+async function persistSettings() {
+  await saveSettings(join(dataDir(), "settings.json"), settings);
+}
+
+// --- Security centre -------------------------------------------------------------
+
+async function securityCheck() {
+  const [firewall, ports, startup, use] = await Promise.all([firewallStatus(), listeningPorts(), startupItems(), cameraAndMicrophoneUse()]);
+  lastFirewall = firewall;
+  lastPorts = ports;
+  lastStartup = startup;
+  // The first check sets the baseline; later checks point out what is new since.
+  const firstCheck = settings.knownStartup.length === 0;
+  if (firstCheck) {
+    settings = { ...settings, knownStartup: startup.map((item) => item.id).slice(0, 2000) };
+    await persistSettings();
+  }
+  const known = new Set(settings.knownStartup);
+  return {
+    firewall,
+    ports,
+    startup: startup.map((item) => ({ ...item, isNew: !known.has(item.id) })),
+    deviceUse: { ...use, log: deviceUseLog },
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+async function watchDeviceUse() {
+  const { uses } = await cameraAndMicrophoneUse();
+  const started = newUses(deviceUses, uses);
+  deviceUses = uses;
+  for (const use of started) {
+    deviceUseLog.unshift({ at: new Date().toISOString(), device: use.device, app: use.app });
+    notify(use.device === "camera" ? "Camera turned on" : "Microphone in use", `${use.app} is using your ${use.device}.`);
+  }
+  deviceUseLog.splice(50);
+  if (started.length) send("device-use", { uses, log: deviceUseLog });
+}
+
+function applyPrivacyWatch() {
+  if (privacyTimer) clearInterval(privacyTimer);
+  privacyTimer = null;
+  // macOS shows its own camera and microphone indicators and does not let other apps see who is recording.
+  if (!settings.privacyWatch || process.platform === "darwin") return;
+  void watchDeviceUse();
+  privacyTimer = setInterval(() => void watchDeviceUse(), 5000);
+  privacyTimer.unref();
+}
+
+// --- Backups ---------------------------------------------------------------------
+
+async function storedBackupPassword(): Promise<string | null> {
+  if (sessionBackupPassword) return sessionBackupPassword;
+  try {
+    if (!safeStorage.isEncryptionAvailable()) return null;
+    return safeStorage.decryptString(await readFile(backupKeyFile()));
+  } catch {
+    return null;
+  }
+}
+
+async function setBackupPassword(password: string | null): Promise<"keychain" | "session" | "cleared"> {
+  if (password === null) {
+    sessionBackupPassword = null;
+    await rm(backupKeyFile(), { force: true });
+    return "cleared";
+  }
+  if (password.length < MIN_PASSWORD_LENGTH) throw new BackupError(`Use a password of at least ${MIN_PASSWORD_LENGTH} characters.`);
+  if (safeStorage.isEncryptionAvailable()) {
+    await writeFile(backupKeyFile(), safeStorage.encryptString(password), { mode: 0o600 });
+    sessionBackupPassword = null;
+    return "keychain";
+  }
+  sessionBackupPassword = password;
+  return "session";
+}
+
+async function runBackup(passwordOverride?: string) {
+  if (backingUp) throw new BackupError("A backup is already running.");
+  if (!settings.backupDestination) throw new BackupError("Choose where to save backups first.");
+  const password = passwordOverride ?? (await storedBackupPassword());
+  if (!password) throw new BackupError("Set a backup password first.");
+  backingUp = true;
+  try {
+    const summary = await createBackup(settings.backupFolders, settings.backupDestination, password, (progress) => send("backup-progress", progress));
+    await pruneBackups(settings.backupDestination, settings.backupKeep);
+    settings = { ...settings, lastBackup: { at: summary.created, file: summary.file, files: summary.files, bytes: summary.bytes }, lastBackupError: null };
+    await persistSettings();
+    return summary;
+  } catch (error) {
+    settings = { ...settings, lastBackupError: error instanceof Error ? error.message : String(error) };
+    await persistSettings();
+    throw error;
+  } finally {
+    backingUp = false;
+    send("backup-progress", null);
+  }
+}
+
+// --- Schedules -------------------------------------------------------------------
+
+async function checkSchedules() {
+  const now = new Date();
+  // The schedule starts counting from the first time the app runs, rather than scanning right after installation.
+  if (settings.lastScheduledScan === null) {
+    settings = { ...settings, lastScheduledScan: now.toISOString() };
+    await persistSettings();
+  }
+  if (!scanning && isDue(settings.scanSchedule, settings.lastScheduledScan, now)) {
+    // Recorded first, so a crash or quit mid-scan does not repeat it in a loop.
+    settings = { ...settings, lastScheduledScan: now.toISOString() };
+    await persistSettings();
+    const targets = settings.scheduledScanKind === "full" ? [{ path: process.env.SENTINEL_DESKTOP_HOME ?? homedir(), label: "Home" }] : settings.watchFolders.map((path) => ({ path, label: basename(path) }));
+    void exclusive(() => scanLabelled(targets)).then((outcome) => {
+      const threats = outcome.malicious + outcome.suspicious;
+      notify("Scheduled scan finished", threats ? `${threats} file(s) need your attention. Open SENTINEL Desktop to review them.` : `${outcome.scanned} files checked. No known threats found.`);
+      send("schedule-ran", { kind: "scan", outcome });
+    });
+  }
+  if (!backingUp && settings.backupDestination && settings.backupFolders.length && isDue(settings.backupSchedule, settings.lastBackup?.at ?? null, now)) {
+    void runBackup().then(
+      (summary) => send("schedule-ran", { kind: "backup", summary }),
+      (error: unknown) => notify("Backup did not finish", error instanceof Error ? error.message : String(error)),
+    );
+  }
 }
 
 function sha256File(path: string): Promise<string> {
@@ -214,6 +379,9 @@ async function status() {
     quarantineCount: (await quarantine.list()).length,
     account: account ? { email: account.email, server: account.server } : null,
     remote: { lastContact: remote?.lastContact ?? null, lastError: remote?.lastError ?? null },
+    schedule: { nextScan: nextSlot(settings.scanSchedule)?.toISOString() ?? null, nextBackup: nextSlot(settings.backupSchedule)?.toISOString() ?? null },
+    backup: { running: backingUp, hasPassword: Boolean(await storedBackupPassword()), keychain: safeStorage.isEncryptionAvailable() },
+    privacyWatchSupported: process.platform !== "darwin",
     platform: process.platform,
     version: app.getVersion(),
     locale: app.getLocale(),
@@ -234,8 +402,8 @@ function registerIpc() {
     });
     return result.canceled ? [] : result.filePaths;
   });
-  ipcMain.handle("scan", (_event, paths: unknown) => scanPaths(stringArray(paths)));
-  ipcMain.handle("quick-scan", () => scanPaths(settings.watchFolders));
+  ipcMain.handle("scan", (_event, paths: unknown) => exclusive(() => scanPaths(stringArray(paths))));
+  ipcMain.handle("quick-scan", () => exclusive(() => scanPaths(settings.watchFolders)));
   ipcMain.handle("quarantine-list", () => quarantine.list());
   ipcMain.handle("quarantine-add", async (_event, path: unknown) => {
     if (typeof path !== "string") throw new Error("Expected a path.");
@@ -263,6 +431,7 @@ function registerIpc() {
     settings = { ...settings, ...sanitizeChanges(changes) };
     await saveSettings(join(dataDir(), "settings.json"), settings);
     applyWatching();
+    applyPrivacyWatch();
     void remote.tick();
     return status();
   });
@@ -281,6 +450,59 @@ function registerIpc() {
     await saveSettings(join(dataDir(), "settings.json"), settings);
     await saveAccount(accountFile(), null);
     return status();
+  });
+  ipcMain.handle("security-check", () => securityCheck());
+  ipcMain.handle("startup-acknowledge", async () => {
+    settings = { ...settings, knownStartup: lastStartup.map((item) => item.id).slice(0, 2000) };
+    await persistSettings();
+    return securityCheck();
+  });
+  ipcMain.handle("scan-program", async (_event, id: unknown) => {
+    // Only programs from the startup list just shown can be scanned this way.
+    const item = lastStartup.find((entry) => entry.id === id);
+    if (!item?.program) throw new Error("That program could not be found.");
+    return exclusive(() => scanPaths([item.program!]));
+  });
+  ipcMain.handle("backup-add-folder", async () => {
+    const result = await dialog.showOpenDialog(window!, { properties: ["openDirectory"] });
+    if (!result.canceled && result.filePaths[0]) {
+      settings = { ...settings, backupFolders: [...new Set([...settings.backupFolders, result.filePaths[0]])].slice(0, 20) };
+      await persistSettings();
+    }
+    return status();
+  });
+  ipcMain.handle("backup-remove-folder", async (_event, path: unknown) => {
+    settings = { ...settings, backupFolders: settings.backupFolders.filter((folder) => folder !== path) };
+    await persistSettings();
+    return status();
+  });
+  ipcMain.handle("backup-destination", async () => {
+    const result = await dialog.showOpenDialog(window!, { properties: ["openDirectory", "createDirectory"] });
+    if (!result.canceled && result.filePaths[0]) {
+      settings = { ...settings, backupDestination: result.filePaths[0] };
+      await persistSettings();
+    }
+    return status();
+  });
+  ipcMain.handle("backup-password", async (_event, password: unknown) => {
+    if (password !== null && typeof password !== "string") throw new Error("Expected a password.");
+    return setBackupPassword(password);
+  });
+  ipcMain.handle("backup-run", () => runBackup());
+  ipcMain.handle("backup-open", async (_event, mode: unknown, password: unknown) => {
+    if (typeof password !== "string") throw new Error("Enter the backup's password.");
+    const picked = await dialog.showOpenDialog(window!, { properties: ["openFile"], filters: [{ name: "SENTINEL backup", extensions: ["sbk"] }] });
+    if (picked.canceled || !picked.filePaths[0]) return null;
+    let target: string | null = null;
+    if (mode === "restore") {
+      const into = await dialog.showOpenDialog(window!, { title: "Choose an empty folder to restore into", properties: ["openDirectory", "createDirectory"] });
+      if (into.canceled || !into.filePaths[0]) return null;
+      target = into.filePaths[0];
+    }
+    const result = await readBackup(picked.filePaths[0], password, target, (progress) => send("backup-progress", progress));
+    send("backup-progress", null);
+    if (target) void shell.openPath(target);
+    return { ...result, file: basename(picked.filePaths[0]), restoredTo: target };
   });
   ipcMain.handle("wifi", () => wifiStatus());
   ipcMain.handle("updates", () => pendingUpdates());
@@ -388,9 +610,12 @@ async function start() {
       ransomware_watch: settings.ransomwareWatch,
       clamav: Boolean(clamBinary),
       os: process.platform,
+      firewall: lastFirewall?.state ?? null,
+      exposed_risky_ports: lastPorts ? lastPorts.filter((port) => port.risk).length : null,
+      last_backup: settings.lastBackup?.at ?? null,
     }),
     version: () => app.getVersion(),
-    scan: scanLabelled,
+    scan: (targets) => exclusive(() => scanLabelled(targets)),
     quarantineByHash,
     updateSignatures,
     unlinked: () => {
@@ -405,6 +630,11 @@ async function start() {
     },
   });
   if (account) remote.start();
+
+  applyPrivacyWatch();
+  void securityCheck().catch(() => undefined);
+  setInterval(() => void checkSchedules(), 60_000).unref();
+  setTimeout(() => void checkSchedules(), 15_000).unref();
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -424,5 +654,6 @@ if (!app.requestSingleInstanceLock()) {
     watcher?.close();
     ransomware?.close();
     remote?.stop();
+    if (privacyTimer) clearInterval(privacyTimer);
   });
 }

@@ -18,10 +18,19 @@ const api = {
   addProtectedFolder: () => ipcRenderer.invoke("add-protected-folder"),
   wifi: () => ipcRenderer.invoke("wifi"),
   updates: () => ipcRenderer.invoke("updates"),
+  securityCheck: () => ipcRenderer.invoke("security-check"),
+  startupAcknowledge: () => ipcRenderer.invoke("startup-acknowledge"),
+  scanProgram: (id: string) => ipcRenderer.invoke("scan-program", id),
+  backupAddFolder: () => ipcRenderer.invoke("backup-add-folder"),
+  backupRemoveFolder: (path: string) => ipcRenderer.invoke("backup-remove-folder", path),
+  backupDestination: () => ipcRenderer.invoke("backup-destination"),
+  backupPassword: (password: string | null) => ipcRenderer.invoke("backup-password", password),
+  backupRun: () => ipcRenderer.invoke("backup-run"),
+  backupOpen: (mode: "verify" | "restore", password: string) => ipcRenderer.invoke("backup-open", mode, password),
   accountLink: (code: string) => ipcRenderer.invoke("account-link", code),
   accountUnlink: () => ipcRenderer.invoke("account-unlink"),
   pathOf: (file: File) => webUtils.getPathForFile(file),
-  on: (channel: "scan-result" | "scan-progress" | "ransomware-alert" | "remote-activity", listener: (payload: unknown) => void) => {
+  on: (channel: "scan-result" | "scan-progress" | "ransomware-alert" | "remote-activity" | "device-use" | "backup-progress" | "schedule-ran", listener: (payload: unknown) => void) => {
     const wrapped = (_event: unknown, payload: unknown) => listener(payload);
     ipcRenderer.on(channel, wrapped);
     return () => ipcRenderer.removeListener(channel, wrapped);

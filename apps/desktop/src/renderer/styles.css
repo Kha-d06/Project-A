@@ -58,3 +58,17 @@ code { font: 12px ui-monospace, Menlo, Consolas, monospace; overflow-wrap: anywh
 .panel.alert { border-color: var(--danger); background: var(--danger-soft); }
 .warning-text { color: var(--warning); font-weight: 600; }
 p.error { color: var(--danger); }
+.good-text { color: var(--clear); font-weight: 600; }
+.item { padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; display: grid; gap: 2px; }
+.item.risky { border-color: var(--warning); background: var(--warning-soft); }
+.item .badge { margin-inline-start: 8px; }
+h3 { font-size: 13px; margin: 8px 0 0; }
+.field { display: grid; gap: 2px; }
+.field select { min-width: 140px; }
+input[type=password], input:not([type]) { font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-width: 220px; flex: 1; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+details summary { cursor: pointer; font-weight: 600; }
+.small-button { padding: 4px 10px; font-size: 12px; }
+.panel > h2:first-child { margin-top: 0; }
+.field { flex: 0 0 auto; }
+.field select { flex: none; }

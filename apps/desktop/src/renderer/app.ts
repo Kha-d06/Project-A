@@ -22,10 +22,22 @@ interface Status {
   locale: string;
   account: { email: string; server: string } | null;
   remote: { lastContact: string | null; lastError: string | null };
+  schedule: { nextScan: string | null; nextBackup: string | null };
+  backup: { running: boolean; hasPassword: boolean; keychain: boolean };
+  privacyWatchSupported: boolean;
+  platform: string;
+}
+
+interface SecurityResult {
+  firewall: { state: "on" | "off" | "partial" | "unknown"; detail: string | null; source: string | null };
+  ports: { port: number; address: string; process: string | null; pid: number | null; exposed: boolean; risk: string | null }[] | null;
+  startup: { id: string; name: string; command: string; location: string; program: string | null; warnings: string[]; isNew: boolean }[];
+  deviceUse: { uses: { device: "camera" | "microphone"; app: string }[]; unsupported: string[]; log: { at: string; device: "camera" | "microphone"; app: string }[] };
+  checkedAt: string;
 }
 
 type Entry = ScanResult & { quarantined?: string };
-type Tab = "scan" | "protection" | "quarantine" | "history" | "settings";
+type Tab = "scan" | "protection" | "security" | "quarantine" | "history" | "settings";
 
 const api = window.sentinel;
 let lang: Lang = "en";
@@ -35,6 +47,8 @@ let tab: Tab = "scan";
 const results: Entry[] = [];
 // Kept separately so a status refresh that started earlier cannot hide it.
 let ransomwareAlert: Status["ransomwareAlert"] = null;
+let security: SecurityResult | null = null;
+let backupProgress: { files: number; current: string | null } | null = null;
 
 type Child = Node | string | null | undefined | false;
 function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, unknown> = {}, ...children: Child[]): HTMLElementTagNameMap[K] {
@@ -439,6 +453,301 @@ function accountPanel() {
   );
 }
 
+async function loadSecurity(force = false) {
+  if (security && !force) return security;
+  security = (await guard(() => api.securityCheck() as Promise<SecurityResult>)) ?? security;
+  return security;
+}
+
+function securityPanels(sec: SecurityResult) {
+  const c = t.security;
+  const fw = sec.firewall;
+  const fwText = { on: c.firewallOn, off: c.firewallOff, partial: c.firewallPartial, unknown: c.firewallUnknown }[fw.state];
+  const firewall = h(
+    "section",
+    { class: "panel", id: "firewall" },
+    h("h2", {}, c.firewall),
+    h("p", { class: fw.state === "on" ? "good-text" : fw.state === "unknown" ? "muted" : "warning-text" }, fwText),
+    fw.detail ? h("p", { class: "muted small" }, fw.detail) : null,
+    fw.state !== "on" ? h("p", { class: "small" }, c.firewallHow[status.platform] ?? c.firewallHow.linux!) : null,
+    fw.source ? h("p", { class: "muted small" }, c.from(fw.source)) : null,
+  );
+
+  const exposed = (sec.ports ?? []).filter((port) => port.exposed);
+  const local = (sec.ports ?? []).length - exposed.length;
+  const ports = h(
+    "section",
+    { class: "panel", id: "ports" },
+    h("h2", {}, c.ports),
+    h("p", { class: "muted" }, c.portsHint),
+    sec.ports === null
+      ? h("p", { class: "muted" }, c.portsUnknown)
+      : exposed.length === 0
+        ? h("p", { class: "good-text" }, c.portsNone)
+        : h(
+            "ul",
+            { class: "folders" },
+            ...exposed.map((port) =>
+              h(
+                "li",
+                { class: port.risk ? "item risky" : "item" },
+                h("span", {}, h("strong", {}, c.port(port.port)), " · ", h("span", { dir: port.process ? "ltr" : "auto" }, port.process ?? c.unknownProgram)),
+                port.risk ? h("span", { class: "warning-text block small" }, port.risk) : null,
+              ),
+            ),
+          ),
+    local > 0 ? h("p", { class: "muted small" }, c.localOnly(local)) : null,
+  );
+
+  const anyNew = sec.startup.some((item) => item.isNew);
+  const startup = h(
+    "section",
+    { class: "panel", id: "startup" },
+    h("h2", {}, c.startup),
+    h("p", { class: "muted" }, c.startupHint),
+    sec.startup.length === 0
+      ? h("p", { class: "muted" }, c.startupNone)
+      : h(
+          "ul",
+          { class: "folders" },
+          ...sec.startup
+            .slice()
+            .sort((a, b) => Number(b.isNew) - Number(a.isNew) || b.warnings.length - a.warnings.length)
+            .map((item) =>
+              h(
+                "li",
+                { class: item.warnings.length ? "item risky" : "item" },
+                h(
+                  "div",
+                  { class: "row spread" },
+                  h("span", {}, h("strong", { dir: "auto" }, item.name), item.isNew ? h("span", { class: "badge suspicious" }, c.startupNew) : null),
+                  item.program
+                    ? h("button", {
+                        type: "button",
+                        class: "secondary small-button",
+                        onclick: async () => {
+                          const result = await guard(() => api.scanProgram(item.id) as Promise<{ scanned: number; malicious: number; suspicious: number }>);
+                          if (result) flash(t.scan.done(result.scanned, result.malicious + result.suspicious), result.malicious + result.suspicious ? "error" : "info");
+                        },
+                      }, c.scanProgram)
+                    : null,
+                ),
+                h("code", { class: "block muted", dir: "ltr" }, item.command),
+                h("span", { class: "muted small block", dir: "ltr" }, item.location),
+                ...item.warnings.map((warning) => h("span", { class: "warning-text block small" }, warning)),
+              ),
+            ),
+        ),
+    anyNew
+      ? h("button", {
+          type: "button",
+          class: "secondary",
+          onclick: async () => {
+            const next = await guard(() => api.startupAcknowledge() as Promise<SecurityResult>);
+            if (next) {
+              security = next;
+              void render();
+            }
+          },
+        }, c.startupReviewed)
+      : null,
+  );
+  return [firewall, ports, startup];
+}
+
+function privacyPanel(sec: SecurityResult | null) {
+  const c = t.security;
+  const s = status.settings;
+  if (!status.privacyWatchSupported) return h("section", { class: "panel", id: "privacy" }, h("h2", {}, c.privacy), h("p", { class: "muted" }, c.privacyMac));
+  const use = sec?.deviceUse;
+  const word = (device: "camera" | "microphone") => (device === "camera" ? c.camera : c.microphone);
+  return h(
+    "section",
+    { class: "panel", id: "privacy" },
+    h("h2", {}, c.privacy),
+    toggle(c.privacyToggle, s.privacyWatch, (value) => change({ privacyWatch: value }), c.privacyHint, "privacy-watch"),
+    use && use.unsupported.includes("microphone") ? h("p", { class: "muted small" }, c.privacyMicUnsupported) : null,
+    use
+      ? use.uses.length
+        ? h("ul", { class: "folders", id: "device-uses" }, ...use.uses.map((u) => h("li", { class: "warning-text" }, c.inUse(word(u.device), u.app))))
+        : h("p", { class: "muted" }, c.nothingInUse)
+      : null,
+    use && use.log.length
+      ? h("details", {}, h("summary", {}, c.recent), h("ul", { class: "folders small" }, ...use.log.map((entry) => h("li", {}, `${date(entry.at)} · ${c.inUse(word(entry.device), entry.app)}`))))
+      : null,
+  );
+}
+
+function select<T extends string | number>(id: string, label: string, value: T, options: [T, string][], onchange: (value: T) => void, disabled = false) {
+  return h(
+    "label",
+    { class: "field", for: id },
+    h("span", { class: "small muted block" }, label),
+    h(
+      "select",
+      {
+        id,
+        disabled,
+        onchange: (event: Event) => {
+          const raw = (event.target as HTMLSelectElement).value;
+          const match = options.find(([option]) => String(option) === raw);
+          if (match) onchange(match[0]);
+        },
+      },
+      ...options.map(([option, text]) => h("option", { value: String(option), selected: option === value }, text)),
+    ),
+  );
+}
+
+function scheduleFields(prefix: string, schedule: DesktopSettings["scanSchedule"], save: (next: DesktopSettings["scanSchedule"]) => void) {
+  const c = t.security;
+  const off = schedule.frequency === "off";
+  return h(
+    "div",
+    { class: "row" },
+    select(`${prefix}-frequency`, c.frequency, schedule.frequency, [["off", c.off], ["daily", c.daily], ["weekly", c.weekly]], (frequency) => save({ ...schedule, frequency })),
+    schedule.frequency === "weekly" ? select(`${prefix}-day`, c.day, schedule.day, c.days.map((name, index) => [index, name] as [number, string]), (day) => save({ ...schedule, day })) : null,
+    select(`${prefix}-hour`, c.hour, schedule.hour, Array.from({ length: 24 }, (_, hour) => [hour, `${String(hour).padStart(2, "0")}:00`] as [number, string]), (hour) => save({ ...schedule, hour }), off),
+  );
+}
+
+function schedulePanel() {
+  const c = t.security;
+  const s = status.settings;
+  return h(
+    "section",
+    { class: "panel", id: "schedule" },
+    h("h2", {}, c.schedule),
+    scheduleFields("scan", s.scanSchedule, (scanSchedule) => change({ scanSchedule })),
+    s.scanSchedule.frequency !== "off"
+      ? h("div", { class: "row" }, select("scan-kind", c.kind, s.scheduledScanKind, [["quick", c.quick], ["full", c.full]], (scheduledScanKind) => change({ scheduledScanKind })))
+      : null,
+    status.schedule.nextScan && s.scanSchedule.frequency !== "off" ? h("p", { class: "muted small" }, c.next(date(status.schedule.nextScan))) : null,
+  );
+}
+
+function backupPanel() {
+  const c = t.security;
+  const s = status.settings;
+  const refresh = (next: unknown) => {
+    if (next) {
+      status = next as Status;
+      void render();
+    }
+  };
+  const password = h("input", { type: "password", id: "backup-password", autocomplete: "new-password", minlength: 10 });
+  const openPassword = h("input", { type: "password", id: "open-password", autocomplete: "off" });
+  const progress = h("p", { id: "backup-progress", class: "muted small", "aria-live": "polite" }, backupProgress ? c.backingUp(backupProgress.files, backupProgress.current ?? "") : "");
+  const open = async (mode: "verify" | "restore") => {
+    const result = await guard(() => api.backupOpen(mode, openPassword.value) as Promise<{ files: number; created: string; restoredTo: string | null } | null>);
+    if (result) flash(mode === "restore" ? c.restored(result.files) : c.verified(result.files, date(result.created)));
+  };
+  return h(
+    "section",
+    { class: "panel", id: "backup" },
+    h("h2", {}, c.backup),
+    h("p", { class: "muted" }, c.backupHint),
+    h("h3", {}, c.backupFolders),
+    h(
+      "ul",
+      { class: "folders", id: "backup-folders" },
+      ...s.backupFolders.map((folder) =>
+        h("li", { class: "row spread" }, h("code", { dir: "ltr" }, folder), h("button", { type: "button", class: "link", onclick: async () => refresh(await guard(() => api.backupRemoveFolder(folder))) }, c.remove)),
+      ),
+    ),
+    h("div", {}, h("button", { type: "button", class: "secondary", id: "backup-add-folder", onclick: async () => refresh(await guard(() => api.backupAddFolder())) }, c.addFolder)),
+    h("h3", {}, c.destination),
+    h(
+      "div",
+      { class: "row" },
+      h("code", { dir: "ltr", id: "backup-destination" }, s.backupDestination ?? c.noDestination),
+      h("button", { type: "button", class: "secondary", onclick: async () => refresh(await guard(() => api.backupDestination())) }, c.chooseDestination),
+    ),
+    h("h3", {}, c.password),
+    status.backup.hasPassword ? h("p", { class: "good-text small" }, `${c.passwordSet} ${status.backup.keychain ? c.passwordKeychain : c.passwordSession}`) : null,
+    h(
+      "div",
+      { class: "row" },
+      password,
+      h("button", {
+        type: "button",
+        class: "secondary",
+        id: "backup-save-password",
+        onclick: async () => {
+          const saved = await guard(() => api.backupPassword(password.value));
+          if (saved) {
+            flash(c.passwordSaved);
+            refresh(await api.status());
+          }
+        },
+      }, c.savePassword),
+    ),
+    h("p", { class: "muted small" }, c.passwordHint),
+    scheduleFields("backup", s.backupSchedule, (backupSchedule) => change({ backupSchedule })),
+    h("div", { class: "row" }, select("backup-keep", c.keep, s.backupKeep, [1, 3, 5, 10, 20].map((n) => [n, String(n)] as [number, string]), (backupKeep) => change({ backupKeep }))),
+    status.schedule.nextBackup && s.backupSchedule.frequency !== "off" ? h("p", { class: "muted small" }, c.next(date(status.schedule.nextBackup))) : null,
+    h(
+      "div",
+      { class: "row" },
+      h("button", {
+        type: "button",
+        id: "backup-now",
+        disabled: status.backup.running || !s.backupFolders.length || !s.backupDestination || !status.backup.hasPassword,
+        onclick: async () => {
+          const summary = await guard(() => api.backupRun() as Promise<{ files: number; skipped: string[] }>);
+          if (summary) flash(`${c.backupDone(summary.files)}${summary.skipped.length ? ` ${c.skipped(summary.skipped.length)}` : ""}`);
+          refresh(await api.status());
+        },
+      }, c.backupNow),
+    ),
+    progress,
+    h("p", { id: "last-backup" }, s.lastBackup ? c.lastBackup(date(s.lastBackup.at), s.lastBackup.files, bytes(s.lastBackup.bytes)) : c.noBackup),
+    s.lastBackupError ? h("p", { class: "error" }, s.lastBackupError) : null,
+    h(
+      "details",
+      {},
+      h("summary", {}, c.open),
+      h("p", { class: "muted small" }, c.openHint),
+      h("label", { for: "open-password" }, c.openPassword),
+      h(
+        "div",
+        { class: "row" },
+        openPassword,
+        h("button", { type: "button", class: "secondary", onclick: () => open("verify") }, c.verify),
+        h("button", { type: "button", class: "secondary", onclick: () => open("restore") }, c.restore),
+      ),
+    ),
+  );
+}
+
+async function securityView() {
+  const c = t.security;
+  const sec = await loadSecurity();
+  return [
+    h("h1", {}, c.heading),
+    h("p", { class: "muted" }, c.intro),
+    h(
+      "div",
+      { class: "row" },
+      h("button", {
+        type: "button",
+        class: "secondary",
+        id: "security-recheck",
+        onclick: async (event: Event) => {
+          (event.target as HTMLButtonElement).textContent = c.checking;
+          await loadSecurity(true);
+          void render();
+        },
+      }, c.recheck),
+      sec ? h("span", { class: "muted small" }, c.checkedAt(date(sec.checkedAt))) : null,
+    ),
+    ...(sec ? securityPanels(sec) : []),
+    privacyPanel(sec),
+    schedulePanel(),
+    backupPanel(),
+  ];
+}
+
 let renderToken = 0;
 
 async function render() {
@@ -464,6 +773,7 @@ async function render() {
   const views: Record<Tab, () => (Node | null)[] | Promise<(Node | null)[]>> = {
     scan: scanView,
     protection: protectionView,
+    security: securityView,
     quarantine: quarantineView,
     history: historyView,
     settings: settingsView,
@@ -499,6 +809,21 @@ api.on("remote-activity", (payload) => {
   void api.status().then((next) => {
     status = next as Status;
     if (tab === "settings") void render();
+  });
+});
+api.on("device-use", (payload) => {
+  if (security) security = { ...security, deviceUse: { ...security.deviceUse, ...(payload as Partial<SecurityResult["deviceUse"]>) } };
+  if (tab === "security") void render();
+});
+api.on("backup-progress", (payload) => {
+  backupProgress = payload as typeof backupProgress;
+  const line = document.getElementById("backup-progress");
+  if (line) line.textContent = backupProgress ? t.security.backingUp(backupProgress.files, backupProgress.current ?? "") : "";
+});
+api.on("schedule-ran", () => {
+  void api.status().then((next) => {
+    status = next as Status;
+    if (tab === "security") void render();
   });
 });
 api.on("scan-progress", (payload) => {

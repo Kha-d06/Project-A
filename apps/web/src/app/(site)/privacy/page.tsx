@@ -72,6 +72,8 @@ export default async function PrivacyPage() {
           <li>When you link SENTINEL Desktop or the Android app to your account, the device sends a heartbeat about every 30 seconds while it runs: its name, platform, app version, whether remote scans are allowed, the names of the folders it offers (for example “Downloads”, never their full paths) and a short protection summary (for example whether real-time protection is on).</li>
           <li><strong>Remote scans are off until you turn them on in the app on that device.</strong> When they are on, anyone signed in to your account can start a scan, quarantine a file a scan found, or update the fingerprint list there. Nobody can open, upload, copy or delete your files from the website.</li>
           <li>Scan results sent back contain file names, the label of the folder they were in, verdicts and SHA-256 fingerprints. File contents and full paths stay on the device.</li>
+          <li>SENTINEL Desktop’s security centre (firewall, open ports, startup programs, camera and microphone use) runs entirely on the computer. A linked computer reports only whether its firewall is on, how many risky services are open to the network, and when it last made a backup.</li>
+          <li>Encrypted backups are written where you choose, never to SENTINEL. Their password never leaves the computer.</li>
           <li>Only the last 50 commands per device are kept. Removing a device from your account deletes its records and signs the app out.</li>
         </ul>
       </section>

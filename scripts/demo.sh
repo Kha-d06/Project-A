@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Bring SENTINEL up locally and create an administrator account, ready to test.
 #
-#   ./scripts/demo.sh                     # admin@sentinel.local / password printed at the end
+#   ./scripts/demo.sh                     # admin@example.com / password printed at the end
 #   ./scripts/demo.sh you@example.com     # choose the admin email (password is generated)
 #   ADMIN_PASSWORD='my-strong-pass' ./scripts/demo.sh you@example.com   # choose both
 #
@@ -9,7 +9,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-ADMIN_EMAIL="${1:-admin@sentinel.local}"
+ADMIN_EMAIL="${1:-admin@example.com}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(python3 -c 'import secrets; print("Sentinel-" + secrets.token_urlsafe(9))')}"
 
 echo "==> Building and starting SENTINEL (first run can take a few minutes)…"

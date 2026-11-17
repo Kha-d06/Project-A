@@ -11,6 +11,7 @@ API = "/api/v1"
 
 def test_create_admin_creates_promotes_and_can_sign_in(db: Session) -> None:
     assert create_admin(db, "Boss@Example.com", "short") == 1  # weak password refused
+    assert create_admin(db, "admin@sentinel.local", "first-admin-pass-1") == 1  # cannot sign in
     assert create_admin(db, "Boss@Example.com", "first-admin-pass-1") == 0
     user = db.scalar(select(User).where(User.email == "boss@example.com"))
     assert user is not None

@@ -3,6 +3,7 @@
 import argparse
 import sys
 
+from email_validator import EmailNotValidError, validate_email
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -75,7 +76,12 @@ def create_admin(db: Session, email: str, password: str) -> int:
     if len(password) < 10 or len(set(password)) < 4:  # noqa: PLR2004
         print("Use a password of at least 10 characters with some variety.", file=sys.stderr)
         return 1
-    email = email.lower().strip()
+    # Same rules as the sign-in form, so the account can actually sign in.
+    try:
+        email = validate_email(email.strip(), check_deliverability=False).normalized.lower()
+    except EmailNotValidError as exc:
+        print(f"That email cannot be used to sign in: {exc}", file=sys.stderr)
+        return 1
     user = db.scalar(select(User).where(User.email == email))
     if user is None:
         user = User(email=email, password_hash=hash_password(password), settings=UserSettings())

@@ -92,7 +92,7 @@ plugins = ["pydantic.mypy"]
 exclude = ["alembic/"]
 
 [[tool.mypy.overrides]]
-module = ["celery.*", "tldextract.*", "yara", "oletools.*", "pefile", "pyaxmlparser.*", "zxingcpp", "pyotp"]
+module = ["celery.*", "tldextract.*", "yara", "oletools.*", "pefile", "pyaxmlparser.*", "zxingcpp", "pyotp", "playwright.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

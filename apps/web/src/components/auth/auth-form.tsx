@@ -43,7 +43,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
   useEffect(() => {
     if (mode !== "sign-in") return;
     api.system.providers().then(
-      (providers) => setEmailEnabled(providers.some((p) => p.key === "email" && p.status === "active")),
+      (providers) => setEmailEnabled((Array.isArray(providers) ? providers : []).some((p) => p.key === "email" && p.status === "active")),
       () => setEmailEnabled(false),
     );
   }, [mode]);

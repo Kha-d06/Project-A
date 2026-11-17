@@ -25,7 +25,7 @@ export function AiExplanation({ scan }: { scan: Scan }) {
     if (scan.ai_explanation) return;
     let cancelled = false;
     api.system.providers().then(
-      (providers) => !cancelled && setAvailable(providers.some((p) => p.key === "ai" && p.status === "active")),
+      (providers) => !cancelled && setAvailable((Array.isArray(providers) ? providers : []).some((p) => p.key === "ai" && p.status === "active")),
       () => !cancelled && setAvailable(false),
     );
     return () => {

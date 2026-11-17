@@ -25,7 +25,6 @@ async function audit(context, path, label) {
   await page.waitForTimeout(300);
   await page.addScriptTag({ content: axeSource });
   const result = await page.evaluate(async () =>
-    // eslint-disable-next-line no-undef
     axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"] }, resultTypes: ["violations"] }),
   );
   checked += 1;

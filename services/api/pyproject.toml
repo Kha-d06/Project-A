@@ -75,6 +75,8 @@ ignore = [
 "app/models/device.py" = ["E501"]
 "app/api/devices.py" = ["E501"]
 "app/api/vpn.py" = ["E501"]
+# Load generator: random choice of test URLs, long report lines.
+"scripts/loadtest.py" = ["E501", "S311"]
 "app/analyzers/arabic.py" = ["E501"]
 "app/analyzers/visual.py" = ["E501"]
 "app/analyzers/screenshot_scan.py" = ["E501"]

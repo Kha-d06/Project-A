@@ -84,7 +84,7 @@ export function Moderation() {
     return () => {
       cancelled = true;
     };
-  }, [status, sort, reloadKey]);
+  }, [status, sort, reloadKey, s.queueFailed]);
 
   return (
     <>

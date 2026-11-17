@@ -4,6 +4,7 @@ import {
   Flag,
   KeyRound,
   Laptop,
+  LockKeyhole,
   Users,
   Gavel,
   History,
@@ -41,6 +42,7 @@ const NAV: { href: string; key: NavKey; icon: typeof History }[] = [
   { href: "/dashboard/reports", key: "myReports", icon: Flag },
   { href: "/dashboard/devices", key: "extra.devices", icon: Laptop },
   { href: "/dashboard/groups", key: "extra.groups", icon: Users },
+  { href: "/dashboard/passwords", key: "extra.vault", icon: LockKeyhole },
   { href: "/dashboard/breach", key: "extra.breach", icon: KeyRound },
   { href: "/dashboard/settings", key: "settings", icon: Settings },
 ];

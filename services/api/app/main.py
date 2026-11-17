@@ -21,6 +21,7 @@ from app.api import (
     system,
     trends,
     user,
+    vault,
     webhooks,
 )
 from app.core.config import get_settings
@@ -92,6 +93,7 @@ def create_app() -> FastAPI:
         push.router,
         trends.router,
         devices.router,
+        vault.router,
     ):
         app.include_router(router, prefix=API_PREFIX)
     return app

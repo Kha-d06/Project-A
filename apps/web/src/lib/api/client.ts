@@ -42,6 +42,7 @@ import type {
   Webhook,
   WebhookEvent,
 } from "./types";
+import type { StoredVault } from "@/lib/vault";
 
 const BASE = "/api/v1";
 
@@ -214,6 +215,12 @@ export const api = {
   trends: (days = 30) => request<Trends>("/trends", { query: { days } }),
   breach: {
     email: () => request<BreachResult>("/breach/email"),
+  },
+  vault: {
+    get: () => request<StoredVault & { updated_at: string }>("/vault"),
+    save: (body: Omit<StoredVault, "version"> & { expected_version: number | null }) =>
+      request<{ version: number; updated_at: string }>("/vault", { method: "PUT", json: body }),
+    remove: (password: string) => request<void>("/vault/delete", { method: "POST", json: { password } }),
   },
   devices: {
     list: () => request<Device[]>("/user/devices"),

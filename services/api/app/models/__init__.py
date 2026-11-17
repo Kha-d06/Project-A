@@ -10,6 +10,7 @@ from app.models.push import PushSubscription
 from app.models.scan import Finding, ScanJob
 from app.models.sharing import Group, GroupInvite, GroupMember, ScanShare, Webhook
 from app.models.user import User, UserSession, UserSettings
+from app.models.vault import Vault
 
 __all__ = [
     "AccountToken",
@@ -37,4 +38,5 @@ __all__ = [
     "User",
     "UserSession",
     "UserSettings",
+    "Vault",
 ]

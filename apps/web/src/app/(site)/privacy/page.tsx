@@ -78,6 +78,15 @@ export default async function PrivacyPage() {
         </ul>
       </section>
       <section>
+        <h2>Password manager</h2>
+        <ul>
+          <li>Your vault is encrypted in your browser with a key made from your master password before it is saved. SENTINEL stores only the encrypted result and cannot read your passwords, notes, the sites they belong to, or even how many you have (the size is rounded up).</li>
+          <li>Your master password is never sent to SENTINEL, so it cannot be reset or recovered.</li>
+          <li>The breach check sends only the first five characters of each password’s SHA-1 fingerprint to Have I Been Pwned, from your browser.</li>
+          <li>Deleting the vault, or your account, removes the encrypted copy from SENTINEL.</li>
+        </ul>
+      </section>
+      <section>
         <h2>Sharing, groups, bots and email</h2>
         <ul>
           <li><strong>Share links</strong> show a read-only copy of one result. What was scanned is hidden unless you choose to include it. Links expire (30 days by default) and you can withdraw them at any time.</li>

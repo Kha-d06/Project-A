@@ -66,6 +66,37 @@ Scope: the API (`services/api`), web app (`apps/web`), browser extension
 - **Android app.** It is a Trusted Web Activity with only the Internet permission. Asset links are served only when configured, and malformed fingerprints are dropped.
 - **Accessibility.** Not a security item, but audited the same way: axe-core finds no serious or critical WCAG 2.1 AA violations on 72 page views (English and Arabic, light and dark).
 
+## Round 4 additions, reviewed
+
+- **Linked devices.**
+  - Device tokens (`sdv_…`) are stored as digests.
+  - A device token can only send heartbeats, fetch its own commands and report results.
+  - Commands are refused unless the device itself allows remote scans and is online.
+  - A folder scan can only name a folder the device offered, by id. Paths never reach the server.
+  - Quarantine by hash checks the file's hash again before moving it.
+  - The command history is capped at 50 per device. Removing a device deletes it and its commands.
+- **Desktop security centre.**
+  - Everything runs locally through `execFile` (no shell) or by reading `/proc`.
+  - The "scan this program" action accepts only an id from the startup list just shown, never a path from the page.
+  - Backup and restore folders come only from system dialogs.
+- **Encrypted backups.**
+  - Format: AES-256-GCM per 1 MiB record, scrypt key (N=2¹⁵, r=8).
+  - Each record's sequence number is authenticated, and the closing record carries totals, so reordering, dropping, swapping or truncation is detected.
+  - Restore writes only into a new or empty folder, rejects `..`, absolute, drive-letter and control-character paths, and never creates links.
+  - Backups skip symbolic links.
+  - The password is kept in the OS keychain through `safeStorage`, or only in memory.
+- **Password vault.**
+  - The master password never leaves the browser. PBKDF2-SHA256 (600,000 iterations) wraps a random AES-256-GCM vault key, which then exists only as a non-extractable `CryptoKey`.
+  - Both encryptions bind the account id and their purpose as associated data.
+  - Plaintext is padded to 1 KiB.
+  - The API stores only base64 ciphertext, after checking sizes and a minimum of 310,000 iterations.
+  - Saves are versioned with a row lock, so a stale tab cannot overwrite newer data.
+  - Deleting needs the account password.
+  - Auto-lock happens after 10 minutes idle, and copied secrets are cleared from the clipboard after 30 seconds.
+  - Breach checks use the k-anonymity range API from the browser.
+  - CSV export is exact (no spreadsheet-formula mangling), behind a warning.
+  - Known limit: PBKDF2 is the strongest function WebCrypto offers. A memory-hard function (Argon2) would need a WebAssembly dependency.
+
 ## Open items
 
 | Risk | Item | Recommendation |

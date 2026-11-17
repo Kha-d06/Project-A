@@ -238,3 +238,76 @@ def test_phones_check_in_less_often_and_their_commands_wait_longer(db: Session) 
     stored.last_seen_at = utcnow() - timedelta(minutes=25)
     db.commit()
     assert owner.get(f"{API}/user/devices").json()[0]["online"] is False
+
+
+def test_live_progress_and_instant_wake(db: Session) -> None:
+    owner, _ = account(db, "progress@example.com")
+    device, auth = link_device(db, owner)
+    heartbeat(device, auth)
+    device_id = owner.get(f"{API}/user/devices").json()[0]["id"]
+
+    # Nothing queued: the long poll waits, then says so.
+    idle = device.get(f"{API}/devices/wait?seconds=1", headers=auth)
+    assert idle.status_code == 200 and idle.json() == {"pending": False}
+
+    # Queuing a command wakes the device straight away.
+    command = owner.post(f"{API}/user/devices/{device_id}/commands", json={"kind": "full_scan"})
+    assert device.get(f"{API}/devices/wait?seconds=25", headers=auth).json() == {"pending": True}
+    sent = device.get(f"{API}/devices/commands", headers=auth).json()
+    command_id = sent[0]["id"]
+    assert command_id == command.json()["id"]
+
+    # Progress is counts only, visible to the owner while it runs.
+    progress = device.post(
+        f"{API}/devices/commands/{command_id}/progress",
+        json={"scanned": 120, "found": 1, "total": 400, "folder": "Home"},
+        headers=auth,
+    )
+    assert progress.status_code == 204
+    running = owner.get(f"{API}/user/devices").json()[0]["recent_commands"][0]
+    assert running["status"] == "running"
+    assert running["progress"]["scanned"] == 120 and running["progress"]["total"] == 400
+    bad = device.post(
+        f"{API}/devices/commands/{command_id}/progress",
+        json={"scanned": -1},
+        headers=auth,
+    )
+    assert bad.status_code == 422
+
+    # Another device cannot report progress on it, and finished commands ignore it.
+    other_owner, _ = account(db, "progress-other@example.com")
+    other_device, other_auth = link_device(db, other_owner)
+    assert (
+        other_device.post(
+            f"{API}/devices/commands/{command_id}/progress",
+            json={"scanned": 1},
+            headers=other_auth,
+        ).status_code
+        == 404
+    )
+    device.post(
+        f"{API}/devices/commands/{command_id}/result",
+        json={"ok": True, "scanned": 400},
+        headers=auth,
+    )
+    device.post(f"{API}/devices/commands/{command_id}/progress", json={"scanned": 5}, headers=auth)
+    done = owner.get(f"{API}/user/devices").json()[0]["recent_commands"][0]
+    assert done["status"] == "done" and done["progress"]["scanned"] == 120
+
+
+def test_device_blocklist_includes_exact_urls_for_the_history_check(db: Session) -> None:
+    from app.intel.feeds import OPENPHISH, THREATFOX, FeedIndicator
+    from tests.conftest import seed_feed
+
+    seed_feed(db, THREATFOX, [FeedIndicator("host", "evil-c2.example.net", "botnet_cc")])
+    seed_feed(
+        db, OPENPHISH, [FeedIndicator("url", "https://shared.example.org/login/bank", "phishing")]
+    )
+    owner, _ = account(db, "history@example.com")
+    device, auth = link_device(db, owner)
+    assert device.get(f"{API}/devices/blocklist").status_code == 401
+    body = device.get(f"{API}/devices/blocklist", headers=auth).json()
+    assert body["hosts"] == ["evil-c2.example.net"]
+    assert body["urls"] == ["https://shared.example.org/login/bank"]
+    # The shared host itself is never blocked outright.
+    assert "shared.example.org" not in body["hosts"]

@@ -273,6 +273,14 @@ def blocklist(installation: CurrentInstallation, db: Db) -> Blocklist:
     """Most recently seen malicious domains, for blocking before a page loads.
     The extension downloads the whole list, so nothing about browsing is sent."""
     rate_limit.enforce(BLOCKLIST_LIMIT, f"install:{installation.id}")
+    return build_blocklist(db)
+
+
+def build_blocklist(
+    db: Session, *, url_sources: tuple[str, ...] = (), max_urls: int = 0
+) -> Blocklist:
+    """Recent malicious domains, and optionally exact malicious URLs (phishing
+    pages on shared hosts), from feeds that are currently fresh."""
     sources = fresh_sources(db, _BLOCKLIST_SOURCES)
     source_ids = [source.id for source in sources]
     hosts: list[str] = []
@@ -289,12 +297,30 @@ def blocklist(installation: CurrentInstallation, db: Db) -> Blocklist:
                 hosts.append(host)
             if len(hosts) >= BLOCKLIST_MAX_HOSTS:
                 break
-    newest = max((s.last_success_at for s in sources if s.last_success_at), default=None)
+    urls: list[str] = []
+    url_feeds = fresh_sources(db, url_sources) if url_sources and max_urls else []
+    if url_feeds:
+        urls = sorted(
+            set(
+                db.scalars(
+                    select(ThreatIndicator.value)
+                    .where(
+                        ThreatIndicator.kind == "url",
+                        ThreatIndicator.source_id.in_([f.id for f in url_feeds]),
+                    )
+                    .order_by(ThreatIndicator.last_seen_at.desc())
+                    .limit(max_urls)
+                )
+            )
+        )
+    every = [*sources, *url_feeds]
+    newest = max((s.last_success_at for s in every if s.last_success_at), default=None)
     return Blocklist(
-        version=f"{len(hosts)}-{newest.isoformat() if newest else 'none'}",
+        version=f"{len(hosts)}-{len(urls)}-{newest.isoformat() if newest else 'none'}",
         generated_at=utcnow(),
         hosts=sorted(hosts),
-        sources=[source.name for source in sources],
+        urls=urls,
+        sources=sorted({source.name for source in every}),
     )
 
 

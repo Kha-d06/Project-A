@@ -132,6 +132,8 @@ class Blocklist(BaseModel):
     version: str
     generated_at: datetime
     hosts: list[str]
+    # Exact URLs (desktop history check only; the extension gets an empty list).
+    urls: list[str] = []
     sources: list[str]
 
 

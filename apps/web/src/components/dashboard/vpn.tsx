@@ -1,12 +1,12 @@
 "use client";
 
-import { Check, Download, Plus, Trash2, X } from "lucide-react";
+import { Check, Download, Pause, Play, Plus, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { PageTitle } from "@/components/dashboard/dashboard-shell";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Field, Input } from "@/components/ui/field";
+import { Field, Input, Select } from "@/components/ui/field";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { useToast } from "@/components/ui/toast";
 import { ApiError, api } from "@/lib/api/client";
@@ -14,6 +14,8 @@ import type { VpnStatus } from "@/lib/api/types";
 import { formatBytes, formatRelative } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 import { buildConfig, generateKeyPair, qrModules, tunnelFileName } from "@/lib/wireguard";
+
+const LIMIT_CHOICES_GB = [0, 5, 10, 25, 50, 100, 250];
 
 function useVpnText() {
   return useI18n().t.extra.vpn;
@@ -200,7 +202,62 @@ export function Vpn() {
                       )}
                       {(device.received_bytes > 0 || device.sent_bytes > 0) && ` · ${v.traffic(formatBytes(device.sent_bytes), formatBytes(device.received_bytes))}`}
                     </p>
+                    <p className={`text-xs ${device.state === "active" ? "text-ink-faint" : "text-warning"}`}>
+                      {device.state === "paused"
+                        ? v.pausedNote
+                        : device.state === "limit_reached"
+                          ? v.limitReached
+                          : device.monthly_limit_bytes
+                            ? v.monthUsageOf(formatBytes(device.month_bytes), formatBytes(device.monthly_limit_bytes))
+                            : v.monthUsage(formatBytes(device.month_bytes))}
+                    </p>
+                    {device.monthly_limit_bytes ? (
+                      <div className="mt-1 h-1.5 w-48 max-w-full overflow-hidden rounded-full bg-surface-sunken">
+                        <div
+                          className={`h-full rounded-full ${device.state === "limit_reached" ? "bg-danger" : "bg-accent"}`}
+                          style={{ width: `${Math.min(100, Math.round((device.month_bytes / device.monthly_limit_bytes) * 100))}%` }}
+                        />
+                      </div>
+                    ) : null}
                   </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                  <label className="flex items-center gap-1.5 text-xs text-ink-muted">
+                    {v.limitLabel}
+                    <Select
+                      className="h-8 w-auto text-xs"
+                      value={String(device.monthly_limit_bytes ? Math.round(device.monthly_limit_bytes / 1e9) : 0)}
+                      onChange={async (event) => {
+                        try {
+                          await api.vpn.update(device.id, { monthly_limit_gb: Number(event.target.value) });
+                          load();
+                        } catch (error) {
+                          notify("error", errorText(error));
+                        }
+                      }}
+                    >
+                      {LIMIT_CHOICES_GB.map((gb) => (
+                        <option key={gb} value={gb}>
+                          {gb === 0 ? v.noLimit : `${gb} GB`}
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    aria-pressed={device.paused}
+                    onClick={async () => {
+                      try {
+                        await api.vpn.update(device.id, { paused: !device.paused });
+                        load();
+                      } catch (error) {
+                        notify("error", errorText(error));
+                      }
+                    }}
+                  >
+                    {device.paused ? <Play aria-hidden className="size-4" /> : <Pause aria-hidden className="size-4" />}
+                    {device.paused ? v.resume : v.pause}
+                  </Button>
                   <Button
                     size="sm"
                     variant="secondary"
@@ -218,6 +275,7 @@ export function Vpn() {
                     <Trash2 aria-hidden className="size-4" />
                     {v.remove}
                   </Button>
+                  </div>
                 </li>
               ))}
             </ul>

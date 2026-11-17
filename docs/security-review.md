@@ -118,6 +118,16 @@ Scope: the API (`services/api`), web app (`apps/web`), browser extension
   - Fixed: `sentinel.run_assessment` was not routed to the `scans` queue, so assessments ran in the full-access task worker. It is now routed to the isolated worker; the regression email runs afterwards as a separate `tasks`-queue job.
   - Scheduled re-assessments re-check ownership, entitlement and the monthly limit each time, and always advance `next_run_at` so a skipped domain is not retried every hour.
 
+- **Devices: instant commands and live progress.**
+  - `GET /devices/wait` holds a request for up to 25 seconds, waiting on a short-lived Redis flag set when a command is queued. The database connection is released before waiting; the endpoint is rate limited per device, and the desktop never polls it faster than every 5 seconds.
+  - Progress reports carry counts and the folder's label only (no file names or paths) and are accepted only for the device's own running commands.
+- **Desktop: running programs, browsing history, disk encryption.**
+  - All read-only. Running programs are listed with execFile/`/proc` (no shell) and scanned with the existing engine; nothing is stopped.
+  - The history check downloads the server's list (`GET /devices/blocklist`: domains plus exact URLs, never shared hosts as domains) and compares locally. History files are copied to a temporary folder, read read-only, and the copy deleted; no history is sent.
+- **VPN: limits, pause, desktop setup.**
+  - Paused and over-limit devices are left out of the sync answer, so the server removes them (`wg syncconf`).
+  - Traffic totals now use counter differences; the previous "largest value seen" logic undercounted after a VPN restart. Migration 0016 seeds the counters so existing totals are not counted twice.
+  - The desktop app generates the key pair locally and sends only the public key with its device token; tunnel-file values from the server are validated before being written, and the file is owner-only.
 - **Password autofill in the extension.**
   - The extension reads the encrypted vault (`GET /extension/vault`, linked installations only) and decrypts it in memory with the master password; the master password and decrypted vault are never stored, and the vault locks after 10 minutes idle or on demand.
   - Filling is click-only from the popup (never on page load), top frame only, `https://` (or localhost) only, logins for the same site or its subdomains only, refused on pages SENTINEL rates dangerous/suspicious or that you or your family blocked, and only into visible fields (a hidden-field trap stays empty in the end-to-end test).

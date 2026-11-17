@@ -44,11 +44,17 @@ function api(server: string, path: string): string {
   return `${server.replace(/\/$/, "")}/api/v1${path}`;
 }
 
-async function call(server: string, path: string, init: RequestInit & { token?: string } = {}, fetcher: typeof fetch = fetch): Promise<Response> {
+async function call(
+  server: string,
+  path: string,
+  init: RequestInit & { token?: string; timeoutMs?: number } = {},
+  fetcher: typeof fetch = fetch,
+): Promise<Response> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (init.body) headers["Content-Type"] = "application/json";
   if (init.token) headers.Authorization = `Bearer ${init.token}`;
-  const response = await fetcher(api(server, path), { ...init, headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  const { timeoutMs, ...rest } = init;
+  const response = await fetcher(api(server, path), { ...rest, headers, signal: AbortSignal.timeout(timeoutMs ?? TIMEOUT_MS) });
   if (!response.ok && response.status !== 204) {
     let message = `The server answered ${response.status}`;
     try {
@@ -106,6 +112,24 @@ export async function sendHeartbeat(
 export async function fetchCommands(account: LinkedAccount, fetcher: typeof fetch = fetch): Promise<RemoteCommand[]> {
   const response = await call(account.server, "/devices/commands", { token: account.token }, fetcher);
   return (await response.json()) as RemoteCommand[];
+}
+
+/** Long poll: resolves true as soon as the website queues a command for this computer. */
+export async function waitForCommand(account: LinkedAccount, seconds: number, fetcher: typeof fetch = fetch): Promise<boolean> {
+  const response = await call(account.server, `/devices/wait?seconds=${seconds}`, { token: account.token, timeoutMs: (seconds + 15) * 1000 }, fetcher);
+  return ((await response.json()) as { pending: boolean }).pending;
+}
+
+export interface ScanProgress {
+  scanned: number;
+  found: number;
+  folder?: string | null;
+}
+
+/** Counts only: never file names or paths. */
+export async function reportProgress(account: LinkedAccount, id: string, progress: ScanProgress, fetcher: typeof fetch = fetch): Promise<void> {
+  const body = { scanned: progress.scanned, found: progress.found, ...(progress.folder ? { folder: progress.folder.slice(0, 80) } : {}) };
+  await call(account.server, `/devices/commands/${encodeURIComponent(id)}/progress`, { method: "POST", body: JSON.stringify(body), token: account.token }, fetcher);
 }
 
 export async function reportStarted(account: LinkedAccount, id: string, fetcher: typeof fetch = fetch): Promise<void> {

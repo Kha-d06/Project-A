@@ -142,6 +142,8 @@ See [apps/extension/README.md](apps/extension/README.md).
 - ClamAV when installed;
 - optional fingerprint lookups and full server scans.
 
+Its security centre also checks running programs (each executable scanned; ones running from temporary folders, Downloads, hidden folders, deleted files or memory only are pointed out), disk encryption (BitLocker, FileVault, LUKS), and recent browser history against phishing and malware lists. For the history check, the list is downloaded and compared on the computer, so no history is sent. Linked computers can also turn on the VPN with one click (Linux with NetworkManager) or save a tunnel file for the WireGuard app.
+
 It complements, and does not replace, the operating system's own protection. See [apps/desktop/README.md](apps/desktop/README.md).
 
 **Visual phishing detection.** With isolated rendering on, website scans compare each page's first screen with stored fingerprints (64-bit difference hashes) of real sign-in pages. A near-identical page on someone else's domain is flagged. No images are stored, only hashes. Add references with:
@@ -150,7 +152,7 @@ It complements, and does not replace, the operating system's own protection. See
 python -m app.cli add-brand-reference emiratesnbd emiratesnbd.com https://<the brand's real sign-in page>
 ```
 
-**Devices and remote scans.** Link SENTINEL Desktop (and the Android app) to an account with a one-time code. Dashboard → Devices then shows each device's protection status. If the device allows it, you can start a quick, full or folder scan, quarantine what was found, or update signatures from any browser.
+**Devices and remote scans.** Link SENTINEL Desktop (and the Android app) to an account with a one-time code. Dashboard → Devices then shows each device's protection status. If the device allows it, you can start a quick, full or folder scan, quarantine what was found, or update signatures from any browser. Commands reach a computer within a second or two (it keeps one long request open), and the page shows live progress while a scan runs (counts only, never file names).
 
 **Password manager.** Dashboard → Passwords is an end-to-end encrypted vault. It is encrypted in the browser with a master password the server never sees. It includes a generator, a health report (reused, weak, old and breached passwords) and CSV import/export. The browser extension can fill saved logins: unlock the vault in the extension popup with your master password and click **Fill** (only on https sites, only for that site's logins, never on pages SENTINEL flags as dangerous).
 

@@ -18,6 +18,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Header, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from app.api.auth import record_event
 from app.api.deps import Db, SessionUser
@@ -25,7 +26,7 @@ from app.core import rate_limit
 from app.core.config import get_settings
 from app.core.errors import ApiError
 from app.core.rate_limit import RateLimit
-from app.models import VpnPeer, VpnServer
+from app.models import User, VpnPeer, VpnServer
 from app.models.base import utcnow
 
 router = APIRouter(prefix="/vpn", tags=["VPN"])
@@ -62,6 +63,18 @@ class PeerOut(BaseModel):
     connected: bool
     received_bytes: int
     sent_bytes: int
+    month_bytes: int = 0
+    monthly_limit_bytes: int | None = None
+    paused: bool = False
+    # "active", "paused" or "limit_reached": whether the server lets it connect.
+    state: str = "active"
+
+
+class PeerUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    paused: bool | None = None
+    # Monthly allowance in gigabytes (decimal GB); 0 removes the limit.
+    monthly_limit_gb: float | None = Field(default=None, ge=0, le=100_000)
 
 
 class VpnStatus(BaseModel):
@@ -120,12 +133,28 @@ def _aware(value: datetime | None) -> datetime | None:
     return value
 
 
-def _server(db: Db) -> VpnServer | None:
+def _server(db: Session) -> VpnServer | None:
     server = db.get(VpnServer, 1)
     if server is None:
         return None
     last = _aware(server.last_sync_at)
     return server if last and utcnow() - last < SERVER_ONLINE_WINDOW else None
+
+
+def _month(now: datetime | None = None) -> str:
+    return (now or utcnow()).strftime("%Y-%m")
+
+
+def _month_usage(peer: VpnPeer) -> int:
+    return peer.month_bytes if peer.usage_month == _month() else 0
+
+
+def _state(peer: VpnPeer) -> str:
+    if peer.paused:
+        return "paused"
+    if peer.monthly_limit_bytes and _month_usage(peer) >= peer.monthly_limit_bytes:
+        return "limit_reached"
+    return "active"
 
 
 def _peer_out(peer: VpnPeer) -> PeerOut:
@@ -139,10 +168,14 @@ def _peer_out(peer: VpnPeer) -> PeerOut:
         connected=bool(handshake and utcnow() - handshake < CONNECTED_WINDOW),
         received_bytes=peer.received_bytes,
         sent_bytes=peer.sent_bytes,
+        month_bytes=_month_usage(peer),
+        monthly_limit_bytes=peer.monthly_limit_bytes,
+        paused=peer.paused,
+        state=_state(peer),
     )
 
 
-def _next_address(db: Db) -> str:
+def _next_address(db: Session) -> str:
     network = ipaddress.ip_network(get_settings().vpn_subnet, strict=False)
     used = set(db.scalars(select(VpnPeer.address)).all())
     hosts = network.hosts()
@@ -172,6 +205,16 @@ def vpn_status(db: Db, user: SessionUser) -> VpnStatus:
 def add_device(body: PeerIn, request: Request, db: Db, user: SessionUser) -> PeerConfig:
     _require_enabled()
     rate_limit.enforce(ADD_LIMIT, f"user:{user.id}")
+    config = create_peer(db, user, body.name, body.public_key)
+    record_event(db, request, user, "vpn_device_added", config.peer.name)
+    db.commit()
+    return config
+
+
+def create_peer(db: Session, user: User, name: str, public_key: str) -> PeerConfig:
+    """Adds a VPN device for `user` (not committed). Raises ApiError when the VPN is
+    offline, the account is at its device limit, or the key is already in use."""
+    _require_enabled()
     settings = get_settings()
     server = _server(db)
     if server is None:
@@ -187,17 +230,16 @@ def add_device(body: PeerIn, request: Request, db: Db, user: SessionUser) -> Pee
             "vpn_device_limit",
             f"You can add up to {settings.vpn_max_peers_per_user} VPN devices. Remove one first.",
         )
-    if db.scalar(select(VpnPeer.id).where(VpnPeer.public_key == body.public_key)) is not None:
+    if db.scalar(select(VpnPeer.id).where(VpnPeer.public_key == public_key)) is not None:
         raise ApiError(409, "vpn_key_in_use", "That key is already in use. Generate a new one.")
     peer = VpnPeer(
         user_id=user.id,
-        name=body.name.strip(),
-        public_key=body.public_key,
+        name=name.strip()[:80],
+        public_key=public_key,
         address=_next_address(db),
     )
     db.add(peer)
-    record_event(db, request, user, "vpn_device_added", peer.name)
-    db.commit()
+    db.flush()
     return PeerConfig(
         peer=_peer_out(peer),
         address=f"{peer.address}/32",
@@ -210,18 +252,46 @@ def add_device(body: PeerIn, request: Request, db: Db, user: SessionUser) -> Pee
     )
 
 
-@router.delete("/devices/{peer_id}", status_code=204)
-def remove_device(peer_id: str, request: Request, db: Db, user: SessionUser) -> None:
+def _owned_peer(db: Db, peer_id: str, user_id: object) -> VpnPeer:
     peer = next(
         (
             p
-            for p in db.scalars(select(VpnPeer).where(VpnPeer.user_id == user.id))
+            for p in db.scalars(select(VpnPeer).where(VpnPeer.user_id == user_id))
             if str(p.id) == peer_id
         ),
         None,
     )
     if peer is None:
         raise ApiError(404, "not_found", "That VPN device does not exist.")
+    return peer
+
+
+@router.patch("/devices/{peer_id}", response_model=PeerOut)
+def update_device(
+    peer_id: str, body: PeerUpdate, request: Request, db: Db, user: SessionUser
+) -> PeerOut:
+    peer = _owned_peer(db, peer_id, user.id)
+    if body.name is not None:
+        peer.name = body.name.strip()
+    if body.paused is not None and body.paused != peer.paused:
+        peer.paused = body.paused
+        record_event(
+            db,
+            request,
+            user,
+            "vpn_device_paused" if body.paused else "vpn_device_resumed",
+            peer.name,
+        )
+    if body.monthly_limit_gb is not None:
+        peer.monthly_limit_bytes = int(body.monthly_limit_gb * 1_000_000_000) or None
+        record_event(db, request, user, "vpn_device_limit", peer.name)
+    db.commit()
+    return _peer_out(peer)
+
+
+@router.delete("/devices/{peer_id}", status_code=204)
+def remove_device(peer_id: str, request: Request, db: Db, user: SessionUser) -> None:
+    peer = _owned_peer(db, peer_id, user.id)
     record_event(db, request, user, "vpn_device_removed", peer.name)
     db.delete(peer)
     db.commit()
@@ -244,14 +314,37 @@ def sync(
         server.last_sync_at = utcnow()
     peers = db.scalars(select(VpnPeer)).all()
     stats = {item.public_key: item for item in body.peers}
+    month = _month()
     for peer in peers:
         reported = stats.get(peer.public_key)
         if reported is None:
+            # Not on the server (new, paused or over its limit): its counters start
+            # again from zero when it is next added.
+            peer.counter_received = 0
+            peer.counter_sent = 0
             continue
         if reported.latest_handshake:
             peer.last_handshake_at = datetime.fromtimestamp(reported.latest_handshake, UTC)
-        # WireGuard counters reset when the interface restarts; keep the larger total.
-        peer.received_bytes = max(peer.received_bytes, reported.received_bytes)
-        peer.sent_bytes = max(peer.sent_bytes, reported.sent_bytes)
+        received = _delta(reported.received_bytes, peer.counter_received)
+        sent = _delta(reported.sent_bytes, peer.counter_sent)
+        peer.counter_received = reported.received_bytes
+        peer.counter_sent = reported.sent_bytes
+        peer.received_bytes += received
+        peer.sent_bytes += sent
+        if peer.usage_month != month:
+            peer.usage_month = month
+            peer.month_bytes = 0
+        peer.month_bytes += received + sent
     db.commit()
-    return [SyncPeer(public_key=peer.public_key, address=peer.address) for peer in peers]
+    # Paused devices and those over their monthly allowance are left out, so the
+    # server removes them (wg syncconf) until they are resumed or the month ends.
+    return [
+        SyncPeer(public_key=peer.public_key, address=peer.address)
+        for peer in peers
+        if _state(peer) == "active"
+    ]
+
+
+def _delta(current: int, previous: int) -> int:
+    """Bytes since the last sync. A smaller counter means the interface restarted."""
+    return current - previous if current >= previous else current

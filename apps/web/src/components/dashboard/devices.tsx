@@ -106,6 +106,17 @@ function CommandRow({ device, command, onQuarantine }: { device: Device; command
         </span>
       </div>
       {command.error && <p className="text-xs text-danger" dir="auto">{command.error}</p>}
+      {ACTIVE.has(command.status) && command.progress && (
+        <div className="mt-1 space-y-1" role="status">
+          <p className="text-xs text-accent">{d.progress(command.progress.scanned, command.progress.found ?? 0)}</p>
+          <div className="h-1.5 overflow-hidden rounded-full bg-surface-sunken">
+            <div
+              className={`h-full rounded-full ${(command.progress.found ?? 0) > 0 ? "bg-danger" : "bg-accent"} ${command.progress.total ? "" : "motion-safe:animate-pulse"}`}
+              style={{ width: command.progress.total ? `${Math.min(100, Math.round((command.progress.scanned / command.progress.total) * 100))}%` : "100%" }}
+            />
+          </div>
+        </div>
+      )}
       {r && command.kind !== "quarantine" && command.kind !== "update_signatures" && r.scanned !== undefined && (
         <p className="text-xs text-ink-muted">{d.summary(r.scanned, threats)}</p>
       )}
@@ -328,7 +339,7 @@ export function Devices() {
   useEffect(() => {
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") load();
-    }, waiting ? 4000 : 30000);
+    }, waiting ? 2000 : 30000);
     return () => window.clearInterval(timer);
   }, [waiting, load]);
 

@@ -46,7 +46,29 @@ interface SecurityResult {
   ports: { port: number; address: string; process: string | null; pid: number | null; exposed: boolean; risk: string | null }[] | null;
   startup: { id: string; name: string; command: string; location: string; program: string | null; warnings: string[]; isNew: boolean }[];
   deviceUse: { uses: { device: "camera" | "microphone"; app: string }[]; unsupported: string[]; log: { at: string; device: "camera" | "microphone"; app: string }[] };
+  encryption: { state: "on" | "off" | "partial" | "unknown"; detail: string | null; source: string | null };
   checkedAt: string;
+}
+
+interface ProcessReport {
+  supported: boolean;
+  checkedAt: string;
+  unreadable: number;
+  programs: { name: string; path: string; pids: number[]; concerns: string[]; verdict: ScanResult["verdict"] | null; title: string | null }[];
+}
+
+interface BrowsingReport {
+  checkedAt: string;
+  days: number;
+  browsers: { browser: string; profile: string; visits: number; error: string | null }[];
+  matches: { browser: string; profile: string; url: string; host: string; visitedAt: string | null; reason: "url" | "domain" }[];
+}
+
+interface VpnView {
+  linked: boolean;
+  saved: boolean;
+  state: "connected" | "disconnected" | "not_imported" | "unsupported";
+  platform: string;
 }
 
 type Entry = ScanResult & { quarantined?: string };
@@ -62,6 +84,12 @@ const results: Entry[] = [];
 let ransomwareAlert: Status["ransomwareAlert"] = null;
 let security: SecurityResult | null = null;
 let backupProgress: { files: number; current: string | null } | null = null;
+let processReport: ProcessReport | null = null;
+let processBusy = false;
+let browsingReport: BrowsingReport | null = null;
+let browsingBusy = false;
+let vpnView: VpnView | null = null;
+let vpnBusy = false;
 
 type Child = Node | string | null | undefined | false;
 function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, unknown> = {}, ...children: Child[]): HTMLElementTagNameMap[K] {
@@ -342,6 +370,7 @@ function protectionView() {
       h("button", { type: "button", class: "secondary", onclick: async () => { const next = await guard(() => api.addProtectedFolder()); if (next) { status = next as Status; render(); } } }, p.addFolder),
     ),
     updatesPanel(),
+    vpnPanel(),
     h("section", { class: "panel subtle" }, h("h2", {}, p.limits), h("p", { class: "muted" }, p.limitsBody)),
   ];
 }
@@ -611,7 +640,156 @@ function securityPanels(sec: SecurityResult) {
         }, c.startupReviewed)
       : null,
   );
-  return [firewall, ports, startup];
+  const enc = sec.encryption;
+  const encryption = h(
+    "section",
+    { class: "panel", id: "encryption" },
+    h("h2", {}, c.encryption),
+    h(
+      "p",
+      { class: enc.state === "on" ? "good-text" : enc.state === "unknown" ? "muted" : "warning-text" },
+      { on: c.encryptionOn, off: c.encryptionOff, partial: c.encryptionPartial, unknown: c.encryptionUnknown }[enc.state],
+    ),
+    enc.detail && enc.state !== "on" ? h("p", { class: "muted small" }, enc.detail) : null,
+    enc.state === "off" || enc.state === "partial" ? h("p", { class: "small" }, c.encryptionHow[status.platform] ?? c.encryptionHow.linux!) : null,
+    enc.source ? h("p", { class: "muted small" }, c.from(enc.source)) : null,
+  );
+  return [firewall, encryption, ports, startup];
+}
+
+function programsPanel() {
+  const c = t.security;
+  const report = processReport;
+  const flagged = report?.programs.filter((p) => p.concerns.length || p.verdict === "malicious" || p.verdict === "suspicious") ?? [];
+  return h(
+    "section",
+    { class: "panel", id: "programs" },
+    h("h2", {}, c.programs),
+    h("p", { class: "muted" }, c.programsHint),
+    h("button", {
+      type: "button",
+      class: "secondary",
+      id: "programs-check",
+      disabled: processBusy,
+      onclick: async () => {
+        processBusy = true;
+        void render();
+        processReport = (await guard(() => api.processCheck() as Promise<ProcessReport>)) ?? processReport;
+        processBusy = false;
+        void render();
+      },
+    }, processBusy ? c.programsChecking : c.programsCheck),
+    report && !report.supported ? h("p", { class: "muted" }, c.programsUnsupported) : null,
+    report && report.supported
+      ? h("p", { class: flagged.length ? "warning-text" : "good-text", id: "programs-summary" }, flagged.length ? c.programsSummary(report.programs.length, flagged.length) : c.programsAllClear(report.programs.length))
+      : null,
+    flagged.length
+      ? h(
+          "ul",
+          { class: "folders" },
+          ...flagged.map((program) =>
+            h(
+              "li",
+              { class: "item risky" },
+              h("span", {}, h("strong", { dir: "auto" }, program.name), program.verdict === "malicious" || program.verdict === "suspicious" ? " " : null, program.verdict === "malicious" || program.verdict === "suspicious" ? verdictBadge(program.verdict) : null),
+              h("code", { class: "block muted", dir: "ltr" }, program.path),
+              program.title ? h("span", { class: "warning-text block small" }, program.title) : null,
+              ...program.concerns.map((concern) => h("span", { class: "warning-text block small" }, c.concern[concern] ?? concern)),
+              h("span", { class: "muted small block" }, c.processIds(program.pids.join(", "))),
+            ),
+          ),
+        )
+      : null,
+    report && report.unreadable ? h("p", { class: "muted small" }, c.programsHidden(report.unreadable)) : null,
+    report ? h("p", { class: "muted small" }, c.checkedAt(date(report.checkedAt))) : null,
+  );
+}
+
+function browsingPanel() {
+  const c = t.security;
+  const report = browsingReport;
+  const days = 30;
+  const visits = report?.browsers.reduce((sum, b) => sum + b.visits, 0) ?? 0;
+  return h(
+    "section",
+    { class: "panel", id: "browsing" },
+    h("h2", {}, c.browsing),
+    h("p", { class: "muted" }, c.browsingHint),
+    h("button", {
+      type: "button",
+      class: "secondary",
+      id: "browsing-check",
+      disabled: browsingBusy,
+      onclick: async () => {
+        browsingBusy = true;
+        void render();
+        browsingReport = (await guard(() => api.historyCheck(days) as Promise<BrowsingReport>)) ?? browsingReport;
+        browsingBusy = false;
+        void render();
+      },
+    }, browsingBusy ? c.browsingChecking : c.browsingCheck(days)),
+    report && report.browsers.length === 0 ? h("p", { class: "muted" }, c.browsingNoBrowsers) : null,
+    report && report.browsers.length > 0
+      ? h("p", { class: report.matches.length ? "warning-text" : "good-text", id: "browsing-summary" }, report.matches.length ? c.browsingFound(report.matches.length) : c.browsingNone(visits, report.days))
+      : null,
+    report && report.matches.length
+      ? h(
+          "ul",
+          { class: "folders" },
+          ...report.matches.map((match) =>
+            h(
+              "li",
+              { class: "item risky" },
+              h("strong", { dir: "ltr" }, match.host),
+              h("span", { class: "muted small block" }, `${match.browser} · ${match.reason === "url" ? c.browsingExact : c.browsingDomain}${match.visitedAt ? ` · ${date(match.visitedAt)}` : ""}`),
+              h("code", { class: "block muted", dir: "ltr" }, match.url),
+            ),
+          ),
+        )
+      : null,
+    ...(report?.browsers.filter((b) => b.error).map((b) => h("p", { class: "muted small" }, c.browsingError(b.browser, b.error!))) ?? []),
+  );
+}
+
+function vpnPanel() {
+  const c = t.security;
+  const view = vpnView;
+  const act = (action: () => Promise<unknown>) => async () => {
+    vpnBusy = true;
+    void render();
+    vpnView = ((await guard(action)) as VpnView | undefined) ?? vpnView;
+    vpnBusy = false;
+    void render();
+  };
+  const body: (Node | null)[] = [];
+  // Refresh on every visit (linking or unlinking the account changes it); redraw only on a change.
+  if (!vpnBusy) {
+    void api.vpnStatus().then((next) => {
+      if (JSON.stringify(next) === JSON.stringify(vpnView)) return;
+      vpnView = next as VpnView;
+      if (tab === "protection") void render();
+    });
+  }
+  if (!view) {
+    // waiting for the first answer
+  } else if (!view.linked) {
+    body.push(h("p", { class: "muted" }, c.vpnNeedsAccount));
+  } else if (!view.saved) {
+    body.push(h("button", { type: "button", id: "vpn-setup", disabled: vpnBusy, onclick: act(() => api.vpnSetup()) }, vpnBusy ? c.vpnSettingUp : c.vpnSetup));
+  } else if (view.state === "connected" || view.state === "disconnected") {
+    const on = view.state === "connected";
+    body.push(
+      h("p", { class: on ? "good-text" : "muted", id: "vpn-state" }, on ? c.vpnConnected : c.vpnDisconnected),
+      h("button", { type: "button", id: "vpn-toggle", class: on ? "secondary" : "", disabled: vpnBusy, onclick: act(() => (on ? api.vpnDisconnect() : api.vpnConnect())) }, on ? c.vpnDisconnect : c.vpnConnect),
+    );
+  } else {
+    body.push(
+      h("p", { class: "small" }, view.platform === "linux" ? c.vpnNoNetworkManager : c.vpnManual),
+      h("button", { type: "button", class: "secondary", onclick: () => void api.vpnShowFile() }, c.vpnShowFile),
+    );
+  }
+  if (view?.saved) body.push(h("p", { class: "muted small" }, c.vpnLimitNote));
+  return h("section", { class: "panel", id: "vpn" }, h("h2", {}, c.vpn), h("p", { class: "muted" }, c.vpnHint), ...body);
 }
 
 function privacyPanel(sec: SecurityResult | null) {
@@ -801,6 +979,8 @@ async function securityView() {
       sec ? h("span", { class: "muted small" }, c.checkedAt(date(sec.checkedAt))) : null,
     ),
     ...(sec ? securityPanels(sec) : []),
+    programsPanel(),
+    browsingPanel(),
     privacyPanel(sec),
     schedulePanel(),
     backupPanel(),

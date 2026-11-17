@@ -91,13 +91,14 @@ def test_vpn_device_lifecycle(db: Session) -> None:
     assert devices["Phone"]["connected"] is True and devices["Phone"]["received_bytes"] == 5000
     assert devices["Laptop"]["connected"] is False
 
-    # Counters that reset when the server restarts do not lower the totals.
+    # Counters that restart from zero (server restart) never lower the totals, and
+    # the traffic since the restart is still counted.
     sync(
         [{"public_key": phone_key, "latest_handshake": now, "received_bytes": 10, "sent_bytes": 10}]
     )
-    assert {d["name"]: d for d in user.get(f"{API}/vpn").json()["devices"]}["Phone"][
-        "received_bytes"
-    ] == 5000
+    phone = {d["name"]: d for d in user.get(f"{API}/vpn").json()["devices"]}["Phone"]
+    assert phone["received_bytes"] == 5010 and phone["sent_bytes"] == 910
+    assert phone["month_bytes"] == 5920
 
     # Other accounts cannot remove it; the owner can, and the server drops it.
     other, _ = account(db, "vpn2@example.com")
@@ -129,3 +130,70 @@ def test_vpn_needs_a_strong_sync_token() -> None:
 
     with pytest.raises(ValueError, match="VPN_SYNC_TOKEN"):
         Settings(vpn_endpoint="vpn.example.org:51820", vpn_sync_token="short")
+
+
+@pytest.mark.usefixtures("vpn_on")
+def test_vpn_pause_and_monthly_limit(db: Session) -> None:
+    user, _ = account(db, "vpn3@example.com")
+    sync()
+    phone_key = key()
+    phone = user.post(f"{API}/vpn/devices", json={"name": "Phone", "public_key": phone_key}).json()
+    phone_id = phone["peer"]["id"]
+    now = int(time.time())
+
+    def report(received: int) -> list[str]:
+        peers = sync(
+            [
+                {
+                    "public_key": phone_key,
+                    "latest_handshake": now,
+                    "received_bytes": received,
+                    "sent_bytes": 0,
+                }
+            ]
+        ).json()  # type: ignore[attr-defined]
+        return [p["public_key"] for p in peers]
+
+    # Pausing removes it from the server; resuming brings it back.
+    paused = user.patch(f"{API}/vpn/devices/{phone_id}", json={"paused": True}).json()
+    assert paused["state"] == "paused"
+    assert report(0) == []
+    user.patch(f"{API}/vpn/devices/{phone_id}", json={"paused": False})
+    assert report(0) == [phone_key]
+
+    # A 1 GB monthly allowance: under it the device stays, over it it is dropped.
+    limited = user.patch(f"{API}/vpn/devices/{phone_id}", json={"monthly_limit_gb": 1}).json()
+    assert limited["monthly_limit_bytes"] == 1_000_000_000
+    assert report(600_000_000) == [phone_key]
+    assert report(1_100_000_000) == []
+    state = user.get(f"{API}/vpn").json()["devices"][0]
+    assert state["state"] == "limit_reached" and state["month_bytes"] == 1_100_000_000
+
+    # Raising or removing the limit lets it back in; other accounts cannot change it.
+    other, _ = account(db, "vpn4@example.com")
+    assert other.patch(f"{API}/vpn/devices/{phone_id}", json={"paused": True}).status_code == 404
+    user.patch(f"{API}/vpn/devices/{phone_id}", json={"monthly_limit_gb": 0})
+    assert report(1_100_000_000) == [phone_key]
+
+
+@pytest.mark.usefixtures("vpn_on")
+def test_desktop_app_adds_itself_with_its_own_key(db: Session) -> None:
+    from tests.test_devices import link_device
+
+    owner, _ = account(db, "vpn5@example.com")
+    sync()
+    device, auth = link_device(db, owner, name="Home PC")
+    assert (
+        device.post(f"{API}/devices/vpn", json={"public_key": "short"}, headers=auth).status_code
+        == 422
+    )
+    assert device.post(f"{API}/devices/vpn", json={"public_key": key()}).status_code == 401
+    desktop_key = key()
+    created = device.post(f"{API}/devices/vpn", json={"public_key": desktop_key}, headers=auth)
+    assert created.status_code == 201, created.text
+    assert created.json()["peer"]["name"] == "Home PC (desktop app)"
+    assert "private" not in created.text.lower()
+    # It is an ordinary VPN device on the owner's account: listed, limitable, removable.
+    listed = owner.get(f"{API}/vpn").json()["devices"]
+    assert [d["name"] for d in listed] == ["Home PC (desktop app)"]
+    assert [p["public_key"] for p in sync().json()] == [desktop_key]  # type: ignore[attr-defined]

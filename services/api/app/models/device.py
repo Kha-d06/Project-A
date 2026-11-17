@@ -61,6 +61,8 @@ class DeviceCommand(Base):
     args: Mapped[dict[str, Any]] = mapped_column(default=dict)
     status: Mapped[str] = mapped_column(String(10), default="queued")
     result: Mapped[dict[str, Any] | None]
+    # Live counts while running: {"scanned": 120, "found": 0, "total": 400, "at": "..."}
+    progress: Mapped[dict[str, Any] | None]
     error: Mapped[str | None] = mapped_column(String(300))
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     expires_at: Mapped[datetime]

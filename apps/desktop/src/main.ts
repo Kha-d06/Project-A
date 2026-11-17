@@ -8,7 +8,7 @@
  */
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { basename, join } from "node:path";
 
@@ -33,6 +33,10 @@ import {
   startupItems,
 } from "./engine/security";
 import { pendingUpdates, wifiStatus } from "./engine/system";
+import { diskEncryption } from "./engine/encryption";
+import { type HistoryReport, checkHistory } from "./engine/history";
+import { type ProcessConcern, concernsFor, groupByExecutable, listProcesses } from "./engine/processes";
+import * as vpn from "./engine/vpn";
 import { Quarantine } from "./engine/quarantine";
 import { type Detection, type OfferedFolder, type ScanOutcome, RemoteAgent } from "./engine/remote";
 import { type ScanContext, scanFile } from "./engine/scanner";
@@ -79,6 +83,10 @@ const deviceUseLog: { at: string; device: DeviceUse["device"]; app: string }[] =
 let privacyTimer: NodeJS.Timeout | null = null;
 let updateState: UpdateState = { state: "idle" };
 const UPDATE_CHECK_MS = 6 * 60 * 60 * 1000;
+// Executable scan results, reused while the file is unchanged (path → size+mtime).
+const programCache = new Map<string, { stamp: string; verdict: ScanResult["verdict"]; title: string | null }>();
+let lastHistoryReport: HistoryReport | null = null;
+const vpnFile = () => join(dataDir(), `${vpn.CONNECTION_NAME}.conf`);
 
 function send(channel: string, payload: unknown) {
   window?.webContents.send(channel, payload);
@@ -124,7 +132,10 @@ async function record(result: ScanResult, automatic: boolean): Promise<ScanResul
   return entry;
 }
 
-async function scanLabelled(targets: { path: string; label: string | null }[]): Promise<ScanOutcome> {
+async function scanLabelled(
+  targets: { path: string; label: string | null }[],
+  onProgress?: (progress: { scanned: number; found: number; folder: string | null }) => void,
+): Promise<ScanOutcome> {
   const totals = { scanned: 0, malicious: 0, suspicious: 0, quarantined: 0 };
   const detections: Detection[] = [];
   const scanOne = async (path: string, label: string | null) => {
@@ -144,6 +155,7 @@ async function scanLabelled(targets: { path: string; label: string | null }[]): 
       });
     }
     send("scan-progress", { ...totals, current: path });
+    onProgress?.({ scanned: totals.scanned, found: totals.malicious + totals.suspicious, folder: label });
   };
   for (const { path, label } of targets) {
     if (await isDirectory(path)) {
@@ -181,7 +193,7 @@ async function persistSettings() {
 // --- Security centre -------------------------------------------------------------
 
 async function securityCheck() {
-  const [firewall, ports, startup, use] = await Promise.all([firewallStatus(), listeningPorts(), startupItems(), cameraAndMicrophoneUse()]);
+  const [firewall, ports, startup, use, encryption] = await Promise.all([firewallStatus(), listeningPorts(), startupItems(), cameraAndMicrophoneUse(), diskEncryption()]);
   lastFirewall = firewall;
   lastPorts = ports;
   lastStartup = startup;
@@ -197,8 +209,75 @@ async function securityCheck() {
     ports,
     startup: startup.map((item) => ({ ...item, isNew: !known.has(item.id) })),
     deviceUse: { ...use, log: deviceUseLog },
+    encryption,
     checkedAt: new Date().toISOString(),
   };
+}
+
+/** Every running program's executable, scanned (cached while unchanged) and
+ * checked for unusual locations. Read-only: nothing is stopped. */
+async function processCheck() {
+  const processes = await listProcesses();
+  if (!processes) return { supported: false, checkedAt: new Date().toISOString(), programs: [], unreadable: 0 };
+  const programs: { name: string; path: string; pids: number[]; concerns: ProcessConcern[]; verdict: ScanResult["verdict"] | null; title: string | null }[] = [];
+  for (const group of groupByExecutable(processes)) {
+    const concerns = concernsFor({ pid: group.pids[0]!, name: group.name, path: group.path, deleted: group.deleted });
+    let verdict: ScanResult["verdict"] | null = null;
+    let title: string | null = null;
+    try {
+      const info = await stat(group.path);
+      const stamp = `${info.size}:${info.mtimeMs}`;
+      const cached = programCache.get(group.path);
+      if (cached && cached.stamp === stamp) {
+        ({ verdict, title } = cached);
+      } else {
+        const result = await scanFile(group.path, context());
+        verdict = result.verdict;
+        title = result.findings[0]?.title ?? null;
+        programCache.set(group.path, { stamp, verdict, title });
+      }
+    } catch {
+      // Deleted or unreadable executable: the location rules still apply.
+    }
+    programs.push({ name: group.name, path: group.path, pids: group.pids.slice(0, 20), concerns, verdict, title });
+  }
+  const rank = (p: (typeof programs)[number]) => (p.verdict === "malicious" ? 0 : p.verdict === "suspicious" ? 1 : p.concerns.length ? 2 : 3);
+  programs.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+  return { supported: true, checkedAt: new Date().toISOString(), programs, unreadable: processes.filter((p) => !p.path).length };
+}
+
+/** Downloads the threat list from the linked server and compares it with recent
+ * browser history on this computer. No history is sent. */
+async function historyCheck(days: number) {
+  if (!account) throw new Error("Link this computer to your SENTINEL account first (Settings), so it can download the list of dangerous sites.");
+  const response = await fetch(`${account.server.replace(/\/$/, "")}/api/v1/devices/blocklist`, {
+    headers: { Accept: "application/json", Authorization: `Bearer ${account.token}` },
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) throw new Error(`Could not download the list of dangerous sites (the server answered ${response.status}).`);
+  const list = (await response.json()) as { hosts: string[]; urls?: string[] };
+  lastHistoryReport = await checkHistory({ hosts: list.hosts ?? [], urls: list.urls ?? [] }, days);
+  return lastHistoryReport;
+}
+
+async function vpnStatus() {
+  let saved = false;
+  try {
+    await stat(vpnFile());
+    saved = true;
+  } catch {
+    saved = false;
+  }
+  return { linked: Boolean(account), saved, state: await vpn.tunnelState(), platform: process.platform };
+}
+
+async function vpnSetup() {
+  if (!account) throw new Error("Link this computer to your SENTINEL account first (Settings).");
+  const keys = vpn.generateKeyPair();
+  const config = await vpn.requestPeer(account, keys.publicKey);
+  const file = await vpn.saveTunnel(dataDir(), vpn.buildConfig(config, keys.privateKey));
+  if ((await vpn.tunnelState()) !== "unsupported") await vpn.importTunnel(file);
+  return vpnStatus();
 }
 
 async function watchDeviceUse() {
@@ -498,6 +577,9 @@ function registerIpc() {
     settings = { ...settings, allowRemote: false };
     await saveSettings(join(dataDir(), "settings.json"), settings);
     await saveAccount(accountFile(), null);
+    // The VPN tunnel belongs to the account: forget it on this computer too.
+    await vpn.forgetTunnel();
+    await rm(vpnFile(), { force: true });
     return status();
   });
   ipcMain.handle("update-check", () => checkForUpdates());
@@ -507,6 +589,20 @@ function registerIpc() {
     autoUpdater.quitAndInstall();
   });
   ipcMain.handle("security-check", () => securityCheck());
+  ipcMain.handle("process-check", () => processCheck());
+  ipcMain.handle("history-check", (_event, days: unknown) => historyCheck(Math.min(90, Math.max(1, Number(days) || 30))));
+  ipcMain.handle("history-last", () => lastHistoryReport);
+  ipcMain.handle("vpn-status", () => vpnStatus());
+  ipcMain.handle("vpn-setup", () => vpnSetup());
+  ipcMain.handle("vpn-connect", async () => {
+    await vpn.connectTunnel();
+    return vpnStatus();
+  });
+  ipcMain.handle("vpn-disconnect", async () => {
+    await vpn.disconnectTunnel();
+    return vpnStatus();
+  });
+  ipcMain.handle("vpn-show-file", () => shell.showItemInFolder(vpnFile()));
   ipcMain.handle("startup-acknowledge", async () => {
     settings = { ...settings, knownStartup: lastStartup.map((item) => item.id).slice(0, 2000) };
     await persistSettings();
@@ -670,7 +766,7 @@ async function start() {
       last_backup: settings.lastBackup?.at ?? null,
     }),
     version: () => app.getVersion(),
-    scan: (targets) => exclusive(() => scanLabelled(targets)),
+    scan: (targets, onProgress) => exclusive(() => scanLabelled(targets, onProgress)),
     quarantineByHash,
     updateSignatures,
     unlinked: () => {

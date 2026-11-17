@@ -39,6 +39,7 @@ import type {
   DeviceCommand,
   DeviceCommandKind,
   VpnPeerConfig,
+  VpnDevice,
   VpnStatus,
   Trends,
   Group,
@@ -228,6 +229,8 @@ export const api = {
     add: (name: string, publicKey: string) =>
       request<VpnPeerConfig>("/vpn/devices", { method: "POST", json: { name, public_key: publicKey } }),
     remove: (id: string) => request<void>(`/vpn/devices/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    update: (id: string, changes: { paused?: boolean; monthly_limit_gb?: number; name?: string }) =>
+      request<VpnDevice>(`/vpn/devices/${encodeURIComponent(id)}`, { method: "PATCH", json: changes }),
   },
   vault: {
     get: () => request<StoredVault & { updated_at: string }>("/vault"),

@@ -418,6 +418,7 @@ export interface DeviceCommand {
     duration_seconds?: number;
   } | null;
   error: string | null;
+  progress?: { scanned: number; found?: number; total?: number; folder?: string; at?: string } | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
@@ -446,6 +447,10 @@ export interface VpnDevice {
   connected: boolean;
   received_bytes: number;
   sent_bytes: number;
+  month_bytes: number;
+  monthly_limit_bytes: number | null;
+  paused: boolean;
+  state: "active" | "paused" | "limit_reached";
 }
 
 export interface VpnStatus {

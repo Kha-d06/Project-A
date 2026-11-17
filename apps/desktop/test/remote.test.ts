@@ -14,6 +14,7 @@ function fakeServer(commands: unknown[]) {
     calls.push({ path, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : null, auth: headers.Authorization ?? null });
     if (path === "/devices/heartbeat") return Response.json({ pending_commands: commands.length });
     if (path === "/devices/commands") return Response.json(commands.splice(0));
+    if (path === "/devices/wait") return Response.json({ pending: commands.length > 0 });
     return new Response(null, { status: 204 });
   });
   return { calls, fetcher: fetcher as unknown as typeof fetch };
@@ -60,7 +61,7 @@ describe("remote agent", () => {
     const h = host();
     const { calls, fetcher } = fakeServer([{ id: "c1", kind: "folder_scan", args: { folder_id: "documents" } }]);
     await new RemoteAgent(h, fetcher).tick();
-    expect(h.scan).toHaveBeenCalledWith([{ path: "/home/me/Documents", label: "Documents" }]);
+    expect(h.scan).toHaveBeenCalledWith([{ path: "/home/me/Documents", label: "Documents" }], expect.any(Function));
     expect(calls.map((c) => c.path)).toEqual(["/devices/heartbeat", "/devices/commands", "/devices/commands/c1/started", "/devices/commands/c1/result"]);
     expect(calls[3]!.body).toMatchObject({ ok: true, scanned: 3, malicious: 1, detections: [{ name: "bad.exe", folder: "Documents" }] });
     expect(JSON.stringify(calls[3]!.body)).not.toContain("/home/me");
@@ -90,7 +91,7 @@ describe("remote agent", () => {
       { id: "c5", kind: "quarantine", args: { sha256: ["b".repeat(64), "not-a-hash"] } },
     ]);
     await new RemoteAgent(h, fetcher).tick();
-    expect(h.scan).toHaveBeenCalledWith([{ path: "/home/me/Downloads", label: "Downloads" }]);
+    expect(h.scan).toHaveBeenCalledWith([{ path: "/home/me/Downloads", label: "Downloads" }], expect.any(Function));
     expect(h.quarantineByHash).toHaveBeenCalledWith(["b".repeat(64)]);
   });
 
@@ -101,5 +102,30 @@ describe("remote agent", () => {
     await agent.tick();
     expect(h.unlinked).toHaveBeenCalled();
     expect(agent.lastError).toMatch(/removed/);
+  });
+
+  it("reports scan progress as counts only, at most every few seconds", async () => {
+    const h = host({
+      scan: vi.fn(async (_targets, onProgress) => {
+        onProgress?.({ scanned: 1, found: 0, folder: "Home" });
+        onProgress?.({ scanned: 2, found: 0, folder: "Home" }); // throttled
+        return { scanned: 2, malicious: 0, suspicious: 0, quarantined: 0, detections: [] };
+      }),
+    });
+    const { calls, fetcher } = fakeServer([{ id: "c9", kind: "full_scan", args: {} }]);
+    await new RemoteAgent(h, fetcher).tick();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const progress = calls.filter((c) => c.path === "/devices/commands/c9/progress");
+    expect(progress).toHaveLength(1);
+    expect(progress[0]!.body).toEqual({ scanned: 1, found: 0, folder: "Home" });
+    expect(calls.at(-1)!.path).toBe("/devices/commands/c9/result");
+  });
+
+  it("the long poll asks the server whether a command is waiting", async () => {
+    const { calls, fetcher } = fakeServer([{ id: "c10", kind: "update_signatures", args: {} }]);
+    const agent = new RemoteAgent(host(), fetcher);
+    expect(await agent.waitOnce(account)).toBe(true);
+    const wait = calls.find((c) => c.path === "/devices/wait")!;
+    expect(wait.auth).toBe("Bearer sdv_test");
   });
 });

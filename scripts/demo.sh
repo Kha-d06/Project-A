@@ -25,7 +25,7 @@ text = open(path).read()
 defaults = {
     "COMPOSE_PROFILES": "devmail,backups",
     "SENTINEL_EMAIL_BACKEND": "smtp",
-    "SENTINEL_EMAIL_FROM": "SENTINEL <no-reply@example.com>",
+    "SENTINEL_EMAIL_FROM": "\"SENTINEL <no-reply@example.com>\"",
     "SENTINEL_SMTP_HOST": "mailpit",
     "SENTINEL_SMTP_PORT": "1025",
     "SENTINEL_SMTP_STARTTLS": "false",

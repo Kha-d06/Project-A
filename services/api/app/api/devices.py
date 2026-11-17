@@ -2,7 +2,10 @@
 
 A device links with the same one-time code as the browser extension and gets a
 long random token (stored as a digest). It sends a heartbeat with its
-protection status, and every 15 seconds or so asks for new commands.
+protection status every 30 seconds, and keeps one long request open
+(`/devices/wait`) so a command from the website reaches it within a second.
+While a scan runs it reports counts (files scanned, threats found) so the
+website can show live progress.
 
 From the website, the account holder can ask a chosen, online device to:
 - run a quick, full or folder scan;
@@ -22,19 +25,23 @@ from datetime import timedelta
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Header, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.api import vpn
 from app.api.auth import record_event
 from app.api.deps import Db, SessionUser
-from app.api.extension import _redeem_link_code
-from app.core import rate_limit
+from app.api.extension import _redeem_link_code, build_blocklist
+from app.api.vpn import PeerConfig
+from app.core import rate_limit, wake
 from app.core.errors import ApiError
 from app.core.rate_limit import RateLimit, client_address
 from app.core.security import new_token, token_digest
-from app.models import Device, DeviceCommand
+from app.intel.feeds import OPENPHISH, THREATFOX, URLHAUS
+from app.models import Device, DeviceCommand, User
 from app.models.base import utcnow
+from app.schemas.extension import Blocklist
 
 router = APIRouter(tags=["Devices"])
 
@@ -61,6 +68,10 @@ MAX_COMMANDS_KEPT = 50
 REGISTER_LIMIT = RateLimit("device-register", max_requests=10, window_seconds=3600)
 COMMAND_LIMIT = RateLimit("device-command", max_requests=30, window_seconds=3600)
 POLL_LIMIT = RateLimit("device-poll", max_requests=600, window_seconds=3600)
+WAIT_LIMIT = RateLimit("device-wait", max_requests=400, window_seconds=3600)
+PROGRESS_LIMIT = RateLimit("device-progress", max_requests=2400, window_seconds=3600)
+WAIT_SECONDS_MAX = 25
+BLOCKLIST_LIMIT = RateLimit("device-blocklist", max_requests=12, window_seconds=3600)
 _NOT_FOUND = "That device does not exist or is not linked to your account."
 
 
@@ -100,9 +111,20 @@ class CommandOut(BaseModel):
     status: str
     result: dict[str, Any] | None
     error: str | None
+    progress: dict[str, Any] | None = None
     created_at: Any
     started_at: Any
     finished_at: Any
+
+
+class CommandProgress(BaseModel):
+    """Live progress while a scan runs: counts only, never file names or paths."""
+
+    scanned: int = Field(ge=0)
+    found: int = Field(default=0, ge=0)
+    # Optional total when the device knows it (for a progress bar).
+    total: int | None = Field(default=None, ge=0)
+    folder: str | None = Field(default=None, max_length=80)
 
 
 class Detection(BaseModel):
@@ -281,6 +303,73 @@ def command_started(command_id: uuid.UUID, device: CurrentDevice, db: Db) -> Non
         db.commit()
 
 
+@router.post("/devices/commands/{command_id}/progress", status_code=204)
+def command_progress(
+    command_id: uuid.UUID, body: CommandProgress, device: CurrentDevice, db: Db
+) -> None:
+    rate_limit.enforce(PROGRESS_LIMIT, f"device:{device.id}")
+    command = _device_command(db, device, command_id)
+    if command.status not in ("sent", "running"):
+        return
+    if command.status == "sent":
+        command.status = "running"
+        command.started_at = utcnow()
+    command.progress = {**body.model_dump(exclude_none=True), "at": utcnow().isoformat()}
+    device.last_seen_at = utcnow()
+    db.commit()
+
+
+@router.get("/devices/wait")
+async def wait_for_command(
+    device: CurrentDevice, db: Db, seconds: int = WAIT_SECONDS_MAX
+) -> dict[str, bool]:
+    """Long poll: returns {"pending": true} as soon as a command is queued for this
+    device, or {"pending": false} after up to 25 seconds. The device then fetches
+    its commands as usual."""
+    rate_limit.enforce(WAIT_LIMIT, f"device:{device.id}")
+    queued = db.scalar(
+        select(DeviceCommand.id).where(
+            DeviceCommand.device_id == device.id, DeviceCommand.status == "queued"
+        )
+    )
+    device_id = device.id
+    db.close()  # do not hold a database connection while waiting
+    if queued is not None:
+        return {"pending": True}
+    return {"pending": await wake.wait(device_id, max(1, min(seconds, WAIT_SECONDS_MAX)))}
+
+
+class DeviceVpnIn(BaseModel):
+    public_key: str
+
+    _key = field_validator("public_key")(classmethod(lambda cls, v: vpn._check_key(v)))
+
+
+@router.post("/devices/vpn", response_model=PeerConfig, status_code=201)
+def device_vpn(body: DeviceVpnIn, request: Request, device: CurrentDevice, db: Db) -> PeerConfig:
+    """The desktop app's "Connect" button: adds this computer as a VPN device on the
+    owner's account. The app generated the key pair and sends only the public key."""
+    rate_limit.enforce(vpn.ADD_LIMIT, f"device:{device.id}")
+    owner = db.get(User, device.user_id)
+    if owner is None:
+        raise ApiError(401, "device_unauthorized", "This device is not linked.")
+    config = vpn.create_peer(
+        db, owner, f"{device.name} (desktop app)", vpn._check_key(body.public_key)
+    )
+    record_event(db, request, owner, "vpn_device_added", config.peer.name)
+    db.commit()
+    return config
+
+
+@router.get("/devices/blocklist", response_model=Blocklist)
+def device_blocklist(device: CurrentDevice, db: Db) -> Blocklist:
+    """Malicious domains and exact phishing/malware URLs for the desktop app's
+    browser-history check. The app downloads the list and compares locally, so
+    no browsing history is sent to the server."""
+    rate_limit.enforce(BLOCKLIST_LIMIT, f"device:{device.id}")
+    return build_blocklist(db, url_sources=(OPENPHISH, URLHAUS, THREATFOX), max_urls=20_000)
+
+
 @router.post("/devices/commands/{command_id}/result", status_code=204)
 def command_result(
     command_id: uuid.UUID, body: CommandResult, device: CurrentDevice, db: Db
@@ -415,6 +504,7 @@ def send_command(
     _prune_commands(db, device)
     record_event(db, request, user, "device_command", f"{device.name}: {body.kind}")
     db.commit()
+    wake.notify(device.id)
     return command
 
 

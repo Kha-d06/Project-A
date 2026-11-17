@@ -317,3 +317,30 @@ def test_hash_list_for_offline_scanners(client: TestClient, db: Session) -> None
     body = client.get("/api/v1/intelligence/hash-list").json()
     assert body["sha256"] == [sample]
     assert body["sources"] and body["version"].startswith("1-")
+
+
+def test_phone_lookup_with_reports_and_country(client: TestClient, db: Session) -> None:
+    moderator, headers = account(db, "phonemod@example.com", role="moderator")
+    moderator.headers.update(headers)
+    created = report(
+        client,
+        category="phone_number",
+        subject="+971 50 123 4567",
+        description="Called saying my card is blocked.",
+    )
+    report(
+        client, category="phone_number", subject="+971501234567", description="Same caller again."
+    )
+    lookup = client.get("/api/v1/intelligence/phone/+971501234567").json()
+    assert lookup["kind"] == "phone" and lookup["country"] == "United Arab Emirates"
+    assert lookup["reports_awaiting_review"] == 2 and lookup["verdict"] == "not_listed"
+
+    moderator.post(
+        f"/api/v1/admin/reports/{created['report']['id']}/review", json={"status": "verified"}
+    )
+    verified = client.get("/api/v1/intelligence/phone/00971501234567").json()
+    assert verified["verdict"] == "community_verified"
+
+    premium = client.get("/api/v1/intelligence/phone/+8823456789").json()
+    assert "premium-rate" in premium["notes"][0]
+    assert client.get("/api/v1/intelligence/phone/123").status_code == 422

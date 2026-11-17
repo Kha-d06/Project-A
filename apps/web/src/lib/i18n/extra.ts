@@ -119,6 +119,10 @@ export const extraEn = {
     checkIt: "Check something with SENTINEL",
     back: "All guides",
   },
+  phone: {
+    country: (country: string) => `Registered in: ${country}`,
+    pending: (n: number) => (n === 1 ? "1 report about this number is awaiting review." : `${n} reports about this number are awaiting review.`),
+  },
   staff: {
     healthy: "Healthy:",
     attention: "Needs attention:",
@@ -323,6 +327,10 @@ export const extraAr: ExtraDictionary = {
     whatToDo: "ماذا تفعل",
     checkIt: "افحص شيئًا باستخدام SENTINEL",
     back: "كل الأدلة",
+  },
+  phone: {
+    country: (country) => `مسجّل في: ${country}`,
+    pending: (n) => `${n} بلاغ عن هذا الرقم بانتظار المراجعة.`,
   },
   staff: {
     healthy: "سليم:",

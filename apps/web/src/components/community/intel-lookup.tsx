@@ -13,9 +13,10 @@ import { formatDateTime, formatRelative } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 
 /** Works out what kind of indicator the user typed. */
-export function lookupKind(value: string): "domain" | "ip" | "hash" | null {
+export function lookupKind(value: string): "domain" | "ip" | "hash" | "phone" | null {
   const text = value.trim();
   if (/^[a-fA-F0-9]{32,64}$/.test(text)) return "hash";
+  if (/^(\+|00)?[\d\s().-]{7,20}$/.test(text) && text.replace(/\D/g, "").length >= 7 && !/^\d{1,3}(\.\d{1,3}){3}$/.test(text)) return "phone";
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(text) || (text.includes(":") && /^[0-9a-fA-F:]+$/.test(text))) return "ip";
   const host = text.replace(/^[a-z]+:\/\//i, "").split(/[/?#]/)[0] ?? "";
   return host.includes(".") ? "domain" : null;
@@ -52,6 +53,10 @@ function Result({ result }: { result: LookupResult }) {
         </ul>
       )}
       <div className="space-y-2 border-t border-line px-5 py-4 text-sm text-ink-muted">
+        {result.kind === "phone" && result.country && <p className="text-ink">{t.extra.phone.country(result.country)}</p>}
+        {result.kind === "phone" && !!result.reports_awaiting_review && (
+          <p className="text-warning">{t.extra.phone.pending(result.reports_awaiting_review)}</p>
+        )}
         {result.notes.map((note) => (
           <p key={note} dir="auto">
             {note}

@@ -71,6 +71,25 @@ def set_role(db: Session, email: str, role: str) -> int:
 COMMANDS = {"sync-feeds": sync_feeds, "load-test-fixtures": load_test_fixtures}
 
 
+def add_brand_reference(brand: str, domains: str, url: str) -> int:
+    """Render a brand's real sign-in page and store its visual hash."""
+    from app.analyzers.page_render import RenderingUnavailableError, render_page
+    from app.analyzers.visual import Reference, dhash, reference_file, save_reference
+
+    try:
+        result = render_page(url)
+    except RenderingUnavailableError as exc:
+        print(f"Could not render {url}: {exc}. Set SENTINEL_BROWSER_RENDERING=true.")
+        return 1
+    if not result.screenshot:
+        print("The page rendered but no screenshot was taken.")
+        return 1
+    owned = frozenset(d.strip().lower() for d in domains.split(",") if d.strip())
+    save_reference(Reference(brand.lower(), owned, dhash(result.screenshot), url))
+    print(f"Saved a visual reference for {brand} to {reference_file()}.")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -79,7 +98,15 @@ def main() -> int:
     role = commands.add_parser("set-role", help="Give an account the user, moderator or admin role")
     role.add_argument("email")
     role.add_argument("role")
+    reference = commands.add_parser(
+        "add-brand-reference", help="Store the look of a brand's real sign-in page"
+    )
+    reference.add_argument("brand")
+    reference.add_argument("domains", help="Comma-separated domains the brand owns")
+    reference.add_argument("url", help="Address of the real sign-in page")
     args = parser.parse_args()
+    if args.command == "add-brand-reference":
+        return add_brand_reference(args.brand, args.domains, args.url)
     with get_session_factory()() as db:
         if args.command == "set-role":
             return set_role(db, args.email, args.role)

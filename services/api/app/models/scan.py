@@ -7,7 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, utcnow
 
-SCAN_TYPES = ("url", "message", "file", "qr", "website", "apk")
+SCAN_TYPES = ("url", "message", "file", "qr", "website", "apk", "screenshot")
 SCAN_STATUSES = ("queued", "processing", "completed", "failed", "inconclusive")
 RISK_LEVELS = ("known_malicious", "suspicious", "no_known_threat", "inconclusive")
 SEVERITIES = ("critical", "high", "medium", "low", "info")

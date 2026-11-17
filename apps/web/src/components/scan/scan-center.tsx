@@ -7,7 +7,8 @@ import type { ScanType } from "@/lib/api/types";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/lib/i18n/client";
 
-import { ApkScanForm, FileScanForm, MessageScanForm, QrScanForm, SCAN_TABS, UrlScanForm } from "./scan-forms";
+import { ApkScanForm,
+  ScreenshotScanForm, FileScanForm, MessageScanForm, QrScanForm, SCAN_TABS, UrlScanForm } from "./scan-forms";
 
 function isScanType(value: string | null): value is ScanType {
   return SCAN_TABS.some((tab) => tab.type === value);
@@ -96,6 +97,7 @@ export function ScanCenter({ reportBase }: { reportBase: string }) {
           <UrlScanForm reportBase={reportBase} mode="website" initialUrl={params.get("url")?.slice(0, 2048) ?? ""} />
         )}
         {active === "apk" && <ApkScanForm reportBase={reportBase} />}
+        {active === "screenshot" && <ScreenshotScanForm reportBase={reportBase} />}
       </div>
     </div>
   );

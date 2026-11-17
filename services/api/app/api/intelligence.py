@@ -5,7 +5,7 @@ import re
 from datetime import timedelta
 
 from fastapi import APIRouter, Request
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.analyzers.urls import InvalidUrlError, parse_url
 from app.api.deps import Db
@@ -15,7 +15,7 @@ from app.core.errors import ApiError
 from app.core.rate_limit import RateLimit, client_address
 from app.intel.feeds import COMMUNITY, MALWAREBAZAAR, THREATFOX, URLHAUS
 from app.intel.lookup import IndicatorMatch, find_by_host, find_indicators
-from app.models import ThreatIndicator, ThreatSource
+from app.models import CommunityReport, ThreatIndicator, ThreatSource
 from app.models.base import utcnow
 from app.schemas.intel import HashList, IndicatorOut, LookupResult, SourceFreshness
 
@@ -137,6 +137,52 @@ def lookup_hash(file_hash: str, request: Request, db: Db) -> LookupResult:
         raise ApiError(422, "invalid_hash", message)
     matches = find_indicators(db, "sha256", value)
     return _result(value, "hash", matches, _sources(db, (MALWAREBAZAAR, THREATFOX)))
+
+
+@router.get("/phone/{number}", response_model=LookupResult)
+def lookup_phone(number: str, request: Request, db: Db) -> LookupResult:
+    """Moderator-verified scam reports for a number, how many reports await review,
+    and which country the number belongs to. Numbers are often spoofed, so the
+    result is about the number, not necessarily about who is calling."""
+    from app.analyzers.message_scan import normalize_phone
+    from app.analyzers.phones import phone_info
+    from app.community.service import subject_key
+
+    rate_limit.enforce(LOOKUP_LIMIT, client_address(request))
+    normalized = normalize_phone(number.strip())
+    if len(normalized.lstrip("+")) < 7 or len(normalized) > 20:
+        raise ApiError(422, "invalid_phone", "Enter the full number, with its country code.")
+    info = phone_info(normalized)
+    matches = find_indicators(db, "phone", normalized)
+    pending = db.scalar(
+        select(func.count())
+        .select_from(CommunityReport)
+        .where(
+            CommunityReport.subject_key == subject_key("phone_number", normalized),
+            CommunityReport.status == "pending",
+        )
+    )
+    result = _result(normalized, "phone", matches, _sources(db, (COMMUNITY,)))
+    if result.verdict == "unavailable":
+        result.verdict = "not_listed"
+        result.notes = [NOT_A_GUARANTEE]
+    notes = list(result.notes)
+    if info.premium:
+        notes.insert(
+            0,
+            "This is an international premium-rate or shared-cost number. Returning a "
+            "missed call from it can be expensive.",
+        )
+    if info.country:
+        notes.append(
+            f"The number belongs to {info.country}. A caller claiming to be your local bank or "
+            "a government office from a foreign number is a common scam sign."
+        )
+    notes.append("Caller ID can be faked, so a clean number does not prove who is calling.")
+    result.notes = notes
+    result.country = info.country
+    result.reports_awaiting_review = pending or 0
+    return result
 
 
 @router.get("/hash-list", response_model=HashList)

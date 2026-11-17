@@ -55,6 +55,7 @@ export const en = {
     qr: "QR code",
     website: "Website",
     apk: "Android app",
+    screenshot: "Screenshot",
   },
   scanners: {
     url: "Link scanner",
@@ -63,6 +64,7 @@ export const en = {
     qr: "QR scanner",
     website: "Website analyzer",
     apk: "Android app analyzer",
+    screenshot: "Screenshot checker",
   },
   risk: {
     known_malicious: {
@@ -120,6 +122,7 @@ export const en = {
       qr: "Reads a QR code from a photo and checks where it leads or what payment it requests.",
       website: "Everything the link scan does, plus DNS and a reading of the page: forms, scripts and imitation of brands.",
       apk: "Permissions, components, embedded addresses, known malware and imitation of popular apps.",
+      screenshot: "A screenshot of a chat, SMS, email or page: its QR codes, and with your consent the text, links and numbers in it.",
     },
     link: {
       label: "Link to check",
@@ -169,6 +172,13 @@ export const en = {
       submit: "Analyse app",
       hint: (size: string) =>
         `Up to ${size}. The app is inspected without being installed or run: permissions, components, embedded addresses and known malware. It is deleted after the scan.`,
+    },
+    screenshot: {
+      label: "Screenshot of the message or page",
+      submit: "Check screenshot",
+      hint: "QR codes in the image are always checked. The image is deleted after the scan.",
+      aiConsent: "Let an AI model read the text in the image",
+      aiConsentHint: "The image (without its metadata) is sent to the AI provider, which transcribes the text, links and numbers. SENTINEL's own rules then judge them; the AI's opinion never decides the verdict.",
     },
     errors: { slowDown: "Please slow down", couldNotStart: "The scan could not start", generic: "Something went wrong." },
   },
@@ -445,6 +455,7 @@ export const en = {
       qr: "Reads a QR code from a photo and checks where it leads, without opening it. Payment codes show who you would be paying.",
       website: "Reads a page as text, never running its scripts, to spot fake sign-in forms, brand imitation, hidden frames and obfuscated code, and looks up its DNS.",
       apk: "Inspects an APK without installing it: risky permission combinations, fake versions of popular apps, embedded addresses and known malware.",
+      screenshot: "Checks a screenshot of a suspicious chat or page: QR codes always, and with your consent the text, links and phone numbers in it.",
     },
     howEyebrow: "How it works",
     howTitle: "Three steps, no guesswork",
@@ -498,7 +509,7 @@ export const en = {
     intro: "Check whether a domain, IP address or file fingerprint appears in the threat feeds SENTINEL uses, or in community reports a moderator has confirmed.",
     field: "Domain, IP address or SHA-256 fingerprint",
     lookup: "Look up",
-    invalid: "Enter a domain (example.com), an IP address, or a SHA-256 file fingerprint.",
+    invalid: "Enter a domain (example.com), an IP address, a phone number with its country code, or a SHA-256 file fingerprint.",
     failed: "The lookup failed.",
     verdicts: {
       listed: "Listed in threat intelligence",

@@ -4,7 +4,7 @@
  * source of truth.
  */
 
-export type ScanType = "url" | "message" | "file" | "qr" | "website" | "apk";
+export type ScanType = "url" | "message" | "file" | "qr" | "website" | "apk" | "screenshot";
 export type ScanStatus = "queued" | "processing" | "completed" | "failed" | "inconclusive";
 export type RiskLevel = "known_malicious" | "suspicious" | "no_known_threat" | "inconclusive";
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
@@ -194,11 +194,13 @@ export interface SourceFreshness {
 
 export interface LookupResult {
   query: string;
-  kind: "domain" | "ip" | "hash";
+  kind: "domain" | "ip" | "hash" | "phone";
   verdict: "listed" | "community_verified" | "not_listed" | "unavailable";
   indicators: IntelIndicator[];
   sources: SourceFreshness[];
   notes: string[];
+  country?: string | null;
+  reports_awaiting_review?: number | null;
 }
 
 export interface AdminOverview {

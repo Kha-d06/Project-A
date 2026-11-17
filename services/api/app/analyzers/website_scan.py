@@ -11,9 +11,10 @@ from app.analyzers.page_content import PageFacts, charset_of, inspect_html
 from app.analyzers.page_render import RenderingUnavailableError, render_page, rendering_enabled
 from app.analyzers.safe_fetch import Hop
 from app.analyzers.types import Check, FindingData, Outcome
-from app.analyzers.url_heuristics import BRAND_DOMAINS
+from app.analyzers.url_heuristics import BRAND_DOMAINS, brand_name
 from app.analyzers.url_scan import analyze_url_target
 from app.analyzers.urls import ParsedUrl, parse_url
+from app.analyzers.visual import closest_match, dhash, load_references
 
 SOURCE = "SENTINEL page analysis"
 DNS_SOURCE = "DNS"
@@ -50,7 +51,12 @@ def _on_free_hosting(url: ParsedUrl) -> str | None:
 
 def _brands_mentioned(facts: PageFacts) -> set[str]:
     text = " ".join([facts.title, *facts.headings]).lower()
-    return {brand for brand in BRAND_DOMAINS if len(brand) >= 4 and brand in text}
+    squashed = "".join(char for char in text if char.isalnum())
+    return {
+        brand
+        for brand in BRAND_DOMAINS
+        if len(brand) >= 4 and (brand in text or (len(brand) >= 6 and brand in squashed))
+    }
 
 
 def _brand_resources(facts: PageFacts) -> set[str]:
@@ -76,10 +82,10 @@ def _page_findings(final: ParsedUrl, facts: PageFacts) -> list[FindingData]:
             FindingData(
                 "high",
                 "brand_impersonation",
-                f"Sign-in or payment page presents itself as {brand.title()}",
-                f"The page asks for a password or card details and uses {brand.title()}'s "
+                f"Sign-in or payment page presents itself as {brand_name(brand)}",
+                f"The page asks for a password or card details and uses {brand_name(brand)}'s "
                 f"name or images, but it is hosted on “{final.registrable_domain}”, which is "
-                f"not a {brand.title()} domain. This is the typical shape of a phishing page.",
+                f"not a {brand_name(brand)} domain. This is the typical shape of a phishing page.",
                 SOURCE,
                 {"page_title": facts.title, "domain": final.registrable_domain, "brand": brand},
             )
@@ -326,6 +332,34 @@ def _mail_policy_check(domain: str, outcome: Outcome) -> None:
     )
 
 
+def _visual_check(final: ParsedUrl, screenshot: bytes | None, outcome: Outcome) -> None:
+    references = load_references()
+    if not screenshot or not references:
+        return
+    try:
+        page_hash = dhash(screenshot)
+    except OSError:
+        return
+    match = closest_match(page_hash, final.registrable_domain, references)
+    outcome.details.setdefault("page", {})["visual_hash"] = f"{page_hash:016x}"
+    if match is None:
+        return
+    reference, gap = match
+    name = brand_name(reference.brand)
+    outcome.findings.append(
+        FindingData(
+            "high",
+            "visual_impersonation",
+            f"Page looks like {name}'s sign-in page",
+            f"The page is visually almost identical to {name}'s real sign-in page, but it is "
+            f"hosted on “{final.registrable_domain}”, which does not belong to {name}. Copying the "
+            "look of a real page is how phishing kits work.",
+            "SENTINEL visual comparison",
+            {"brand": name, "domain": final.registrable_domain, "difference": f"{gap}/64"},
+        )
+    )
+
+
 def _rendered_check(final: ParsedUrl, outcome: Outcome) -> bool:
     """Load the page in the isolated browser and inspect what scripts built.
     Returns True when the rendered page was inspected."""
@@ -342,6 +376,7 @@ def _rendered_check(final: ParsedUrl, outcome: Outcome) -> bool:
     for finding in _page_findings(final, facts):
         if (finding.category, finding.title) not in known:
             outcome.findings.append(finding)
+    _visual_check(final, result.screenshot, outcome)
     rendered = outcome.details.setdefault("page", {})
     rendered["rendered"] = {
         "title": result.title,

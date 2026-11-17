@@ -72,6 +72,7 @@ export const SCAN_TYPE_LABEL = {
   qr: "QR code",
   website: "Website",
   apk: "Android app",
+  screenshot: "Screenshot",
 } as const;
 
 export function isActive(status: ScanStatus): boolean {

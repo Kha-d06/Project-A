@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { BrowserWindow, Menu, Notification, Tray, app, dialog, ipcMain, nativeImage, session, shell } from "electron";
 
 import { findClam } from "./engine/clamav";
+import { findSevenZip } from "./engine/formats";
 import { Quarantine } from "./engine/quarantine";
 import { type ScanContext, scanFile } from "./engine/scanner";
 import { fetchSignatures, lookupHash, uploadForFullScan } from "./engine/server";
@@ -32,6 +33,7 @@ let settings: DesktopSettings;
 let signatures: SignatureStore;
 let quarantine: Quarantine;
 let clamBinary: string | null = null;
+let sevenZip: string | null = null;
 let window: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let history: ScanResult[] = [];
@@ -46,6 +48,7 @@ function context(): ScanContext {
   return {
     signatures,
     clamBinary: settings.useClamav ? clamBinary : null,
+    sevenZip,
     cloudLookup: settings.cloudLookup ? (sha) => lookupHash(settings.serverUrl, sha) : undefined,
   };
 }
@@ -238,6 +241,7 @@ async function start() {
     history = [];
   }
   clamBinary = await findClam();
+  sevenZip = await findSevenZip();
   watcher = new FolderWatcher((path) => {
     void scanFile(path, context()).then((result) => record(result, true));
   });

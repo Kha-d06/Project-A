@@ -92,7 +92,7 @@ describe("ScanCenter tabs", () => {
     navigation.search = new URLSearchParams("type=qr");
     render(<ScanCenter reportBase="/scans" />);
     const tabs = screen.getAllByRole("tab").map((tab) => tab.textContent);
-    expect(tabs).toEqual(["Link", "Message", "File", "QR code", "Website", "Android app"]);
+    expect(tabs).toEqual(["Link", "Message", "File", "QR code", "Website", "Android app", "Screenshot"]);
     expect(screen.getByRole("tab", { name: "QR code" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByLabelText("Photo or screenshot of the QR code")).toHaveAttribute("capture", "environment");
   });

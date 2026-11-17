@@ -224,6 +224,8 @@ export const api = {
       uploadScan("/scans/file", file, options.virustotalConsent ? { virustotal_consent: "true" } : {}),
     qr: (image: File) => uploadScan("/scans/qr", image),
     apk: (file: File) => uploadScan("/scans/apk", file),
+    screenshot: (image: File, options: { aiConsent?: boolean } = {}) =>
+      uploadScan("/scans/screenshot", image, options.aiConsent ? { ai_consent: "true" } : {}),
     website: (url: string) => request<Scan>("/scans/website", { method: "POST", json: { url } }),
     explain: (id: string) =>
       request<Explanation>(`/scans/${encodeURIComponent(id)}/explanation`, { method: "POST" }),
@@ -283,7 +285,7 @@ export const api = {
     clearEvents: () => request<void>("/extension/events", { method: "DELETE" }),
   },
   intelligence: {
-    lookup: (kind: "domain" | "ip" | "hash", value: string) =>
+    lookup: (kind: "domain" | "ip" | "hash" | "phone", value: string) =>
       request<LookupResult>(`/intelligence/${kind}/${encodeURIComponent(value)}`),
     sources: () => request<SourceFreshness[]>("/intelligence/sources"),
   },

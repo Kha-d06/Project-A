@@ -146,6 +146,28 @@ def scan_file(
     )
 
 
+@router.post("/screenshot", response_model=ScanOut, status_code=202)
+def scan_screenshot(
+    request: Request,
+    db: Db,
+    user: OptionalUser,
+    file: Annotated[UploadFile, File()],
+    ai_consent: Annotated[bool, Form()] = False,
+) -> ScanOut:
+    """A screenshot of a message or page. QR codes are always checked; the visible
+    text is read by an AI model only when ai_consent is set."""
+    rate_limit.enforce(FILE_SCAN_LIMIT, _limit_subject(request, user))
+    return _upload_scan(
+        request,
+        db,
+        user,
+        file,
+        "screenshot",
+        get_settings().max_image_bytes,
+        {"ai_consent": ai_consent},
+    )
+
+
 @router.post("/qr", response_model=ScanOut, status_code=202)
 def scan_qr(
     request: Request, db: Db, user: OptionalUser, file: Annotated[UploadFile, File()]

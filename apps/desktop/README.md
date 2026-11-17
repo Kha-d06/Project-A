@@ -11,6 +11,7 @@ quarantine. English and Arabic.
 | --- | --- | --- |
 | Fingerprints | SHA-256 of every file (and every file inside ZIP archives) against recent malware from MalwareBazaar and ThreatFox. The list is downloaded from your SENTINEL server every six hours (`GET /api/v1/intelligence/hash-list`); nothing about your files is sent. | A SENTINEL server, for the list |
 | Heuristics | Programs disguised as documents (content vs. name, double extensions, hidden text-direction characters), encoded PowerShell and download-and-run droppers, Defender tampering, PDFs that launch programs or auto-run JavaScript, Office macros, path traversal, zip bombs, password-protected archives, the EICAR test file. | Nothing |
+| Containers | Looks inside ISO/IMG disk images (files fingerprinted and checked like everything else), flags Windows shortcuts (.lnk) that start PowerShell, cmd, mshta and similar, and lists 7z and RAR archives with 7-Zip when it is installed. | 7-Zip (optional, for 7z/RAR) |
 | ClamAV | Used automatically when `clamdscan` or `clamscan` is installed. | ClamAV (optional) |
 | Cloud lookup | Sends each file's SHA-256 (never the file) to the server, to catch samples reported since the last list update. **Off by default.** | Opt-in in Settings |
 | Full server scan | Uploads one file to the SENTINEL server for YARA, Office and PE analysis, and opens the report. Only when you click it, after a confirmation. | A SENTINEL server |

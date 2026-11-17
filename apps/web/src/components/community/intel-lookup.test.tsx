@@ -13,7 +13,9 @@ describe("lookupKind", () => {
     ["2001:db8::1", "ip"],
     ["a".repeat(64), "hash"],
     ["not a thing", null],
-  ])("classifies %s", (input, kind) => expect(lookupKind(input)).toBe(kind));
+      ["+971 50 123 4567", "phone"],
+    ["00966501234567", "phone"],
+])("classifies %s", (input, kind) => expect(lookupKind(input)).toBe(kind));
 });
 
 describe("IntelLookup", () => {

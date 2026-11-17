@@ -12,6 +12,16 @@ import { basename } from "node:path";
 
 import { clamScan } from "./clamav";
 import {
+  archiveKind,
+  isIso,
+  isoFinding,
+  listedArchiveFindings,
+  listIso,
+  listWithSevenZip,
+  lnkFindings,
+  readIsoEntry,
+} from "./formats";
+import {
   containsEicar,
   disguiseFindings,
   executableKind,
@@ -32,6 +42,8 @@ const MAX_ARCHIVE_TOTAL = 128 * 1024 * 1024;
 export interface ScanContext {
   signatures: SignatureStore;
   clamBinary?: string | null;
+  /** 7-Zip, when installed, to list 7z and RAR archives. */
+  sevenZip?: string | null;
   /** Fingerprint-only lookup; returns a source name when the hash is known malware. */
   cloudLookup?: (sha256: string) => Promise<string | null>;
 }
@@ -61,7 +73,7 @@ function contentFindings(name: string, content: Buffer, signatures: SignatureSto
     }
   }
   findings.push(...tag(nameFindings(name)), ...tag(disguiseFindings(name, content.subarray(0, 8))));
-  findings.push(...tag(scriptFindings(name, content)), ...tag(pdfFindings(content)));
+  findings.push(...tag(scriptFindings(name, content)), ...tag(pdfFindings(content)), ...tag(lnkFindings(content)));
   return findings;
 }
 
@@ -126,6 +138,34 @@ function archiveFindings(content: Buffer, signatures: SignatureStore): Finding[]
   return findings;
 }
 
+function unreadableArchive(kind: string): Finding {
+  return {
+    severity: "info",
+    rule: "archive_not_listed",
+    title: `The contents of this ${kind.toUpperCase()} archive were not checked`,
+    detail: "Install 7-Zip so SENTINEL can list what is inside, or extract it to a folder and scan that folder.",
+  };
+}
+
+async function isoFindings(path: string, signatures: SignatureStore): Promise<Finding[]> {
+  const handle = await open(path, "r");
+  try {
+    const entries = await listIso(handle);
+    const findings = isoFinding(entries);
+    let read = 0;
+    for (const entry of entries.slice(0, MAX_MEMBERS)) {
+      if (read > MAX_ARCHIVE_TOTAL) break;
+      const member = await readIsoEntry(handle, entry, MAX_MEMBER_BYTES);
+      if (!member) continue;
+      read += member.length;
+      findings.push(...contentFindings(basename(entry.path), member, signatures, entry.path.slice(0, 200)));
+    }
+    return findings;
+  } finally {
+    await handle.close();
+  }
+}
+
 async function readHead(path: string, size: number): Promise<Buffer> {
   const handle = await open(path, "r");
   try {
@@ -170,6 +210,20 @@ export async function scanFile(path: string, context: ScanContext): Promise<Scan
     const content = await readHead(path, info.size);
     findings.push(...contentFindings(name, content, context.signatures));
     if (isZip(content)) findings.push(...archiveFindings(content, context.signatures));
+    if (isIso(content)) findings.push(...(await isoFindings(path, context.signatures)));
+    const otherArchive = archiveKind(content.subarray(0, 8));
+    if (otherArchive) {
+      if (context.sevenZip) {
+        try {
+          findings.push(...listedArchiveFindings(otherArchive, await listWithSevenZip(context.sevenZip, path)));
+          engines.push("7-zip");
+        } catch {
+          findings.push(unreadableArchive(otherArchive));
+        }
+      } else {
+        findings.push(unreadableArchive(otherArchive));
+      }
+    }
     if (info.size > MAX_CONTENT_BYTES) {
       findings.push({
         severity: "info",

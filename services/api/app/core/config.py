@@ -79,6 +79,8 @@ class Settings(BaseSettings):
     # request the browser makes is fulfilled by the SSRF-protected fetcher.
     browser_rendering: bool = False
     browser_executable: str | None = None
+    # Hashes of real sign-in pages for visual phishing detection (see analyzers/visual.py).
+    brand_reference_file: Path | None = None
 
     # Optional reputation services. Each is reported as unavailable until configured.
     web_risk_api_key: str | None = None
@@ -114,6 +116,8 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     openai_model: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
+    # Vision-capable model for screenshot reading; falls back to openai_model.
+    openai_vision_model: str | None = None
 
     @model_validator(mode="after")
     def _refuse_default_secret_in_production(self) -> "Settings":

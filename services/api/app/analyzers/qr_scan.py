@@ -27,8 +27,13 @@ _CRYPTO_SCHEMES = ("bitcoin", "ethereum", "litecoin", "monero", "tron", "solana"
 
 
 def decode_image(path: Path) -> list[str]:
-    Image.MAX_IMAGE_PIXELS = MAX_PIXELS
+    # Checked from the header before any pixels are decoded. Pillow's own global
+    # limit is left alone so one analyzer's setting cannot affect another's.
     with Image.open(path) as image:
+        if image.width * image.height > MAX_PIXELS:
+            raise Image.DecompressionBombError(
+                f"Image size ({image.width * image.height} pixels) exceeds the limit"
+            )
         image.load()
         return [result.text for result in zxingcpp.read_barcodes(image) if result.text]
 

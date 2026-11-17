@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.analyzers.file_scan import antivirus_check, hash_reputation_check, sha256_of
 from app.analyzers.types import Check, FindingData, Outcome, Severity
+from app.analyzers.url_heuristics import brand_name
 from app.analyzers.urls import InvalidUrlError, parse_url
 from app.analyzers.yara_scan import yara_check
 from app.core.config import get_settings
@@ -206,9 +207,9 @@ def _impersonation_findings(facts: dict[str, Any]) -> list[FindingData]:
                 FindingData(
                     "high",
                     "brand_impersonation",
-                    f"App is named like {brand.title()} but is not the official app",
+                    f"App is named like {brand_name(brand)} but is not the official app",
                     f"The app calls itself “{facts['app_name']}”, but its package name "
-                    f"“{package}” does not belong to {brand.title()}. Fake versions of popular "
+                    f"“{package}” does not belong to {brand_name(brand)}. Fake versions of popular "
                     "apps are a common way to spread Android malware. Install apps only from "
                     "Google Play or the developer's official site.",
                     SOURCE,

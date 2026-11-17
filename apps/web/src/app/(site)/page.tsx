@@ -10,8 +10,7 @@ import {
   Scale,
   ShieldOff,
   Smartphone,
-  Trash2,
-} from "lucide-react";
+  Trash2, Image as ImageIcon } from "lucide-react";
 import Link from "next/link";
 
 import { RiskBadge } from "@/components/scan/risk-badge";
@@ -29,6 +28,7 @@ const TOOLS: { type: ScanType; icon: typeof Link2 }[] = [
   { type: "qr", icon: QrCode },
   { type: "website", icon: Globe },
   { type: "apk", icon: Smartphone },
+  { type: "screenshot", icon: ImageIcon },
 ];
 const VERDICTS: RiskLevel[] = ["known_malicious", "suspicious", "no_known_threat", "inconclusive"];
 const PRIVACY_ICONS = [Eye, Trash2, Lock, ShieldOff];

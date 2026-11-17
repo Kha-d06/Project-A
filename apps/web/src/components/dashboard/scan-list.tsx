@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, Globe, Link2, MessageSquareText, QrCode, Smartphone } from "lucide-react";
+import { FileText, Globe, Link2, MessageSquareText, QrCode, Smartphone, Image } from "lucide-react";
 import Link from "next/link";
 
 
@@ -16,6 +16,7 @@ const TYPE_ICON: Record<ScanType, typeof Link2> = {
   qr: QrCode,
   website: Globe,
   apk: Smartphone,
+  screenshot: Image,
 };
 
 export function ScanList({ scans, empty }: { scans: ScanSummary[]; empty: string }) {

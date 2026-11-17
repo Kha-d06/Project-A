@@ -6,6 +6,7 @@ import json
 import zipfile
 import zlib
 from datetime import timedelta
+from pathlib import Path
 
 import dns.resolver
 import httpx
@@ -407,3 +408,99 @@ def test_rendered_page_reveals_script_built_phishing_form(
 def test_rendering_off_by_default_leaves_a_limitation(client: TestClient) -> None:
     scan = post(client, "website", json={"url": "https://example.org/"})
     assert any("Isolated browser inspection is not enabled" in x for x in scan["limitations"])
+
+
+@pytest.mark.skipif(not _browser_available(), reason="headless browser not installed")
+def test_visual_copy_of_a_sign_in_page_is_recognised(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import glob
+    import ipaddress
+    import os
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from app.analyzers import page_render, safe_fetch, visual
+    from app.analyzers.urls import parse_url
+
+    real_page = b"""<!doctype html><html><head><title>Sign in</title><style>
+    body{margin:0;font-family:sans-serif;background:#f1f5fb}
+    header{background:#0a3d91;height:120px}
+    form{margin:80px auto;width:420px;background:#fff;padding:40px;border-radius:12px}
+    input{display:block;width:100%;height:44px;margin:12px 0}
+    button{width:100%;height:48px;background:#e3a400;border:0}
+    </style></head><body><header></header><form><h1>Welcome</h1>
+    <input><input type=password><button>Log in</button></form></body></html>"""
+    copied_page = real_page.replace(b"Welcome", b"Welcome back")
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            body = copied_page if "copy" in (self.headers.get("Host") or "") else real_page
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    port = server.server_address[1]
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    def loopback_only(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+        return not address.is_loopback
+
+    executable = os.environ.get("SENTINEL_BROWSER_EXECUTABLE") or next(
+        iter(sorted(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux*/chrome"))), None
+    )
+    monkeypatch.setattr(safe_fetch, "is_forbidden_address", loopback_only)
+    monkeypatch.setattr(safe_fetch, "ALLOWED_PORTS", frozenset({port}))
+    monkeypatch.setattr(safe_fetch, "resolve_host", lambda host, p: ["127.0.0.1"])
+    monkeypatch.setattr(get_settings(), "browser_rendering", True)
+    monkeypatch.setattr(get_settings(), "browser_executable", executable)
+    monkeypatch.setattr(get_settings(), "brand_reference_file", tmp_path / "refs.json")
+    monkeypatch.setattr(website_scan, "render_page", page_render.render_page)
+    try:
+        real = page_render.render_page(f"http://signin.examplebank.com:{port}/")
+        assert real.screenshot
+        visual.save_reference(
+            visual.Reference(
+                "examplebank", frozenset({"examplebank.com"}), visual.dhash(real.screenshot), "x"
+            )
+        )
+
+        copy = parse_url(f"http://examplebank-copy.example.net:{port}/")
+        outcome = Outcome()
+        assert website_scan._rendered_check(copy, outcome)
+        finding = next(f for f in outcome.findings if f.category == "visual_impersonation")
+        assert finding.severity == "high"
+
+        genuine = parse_url(f"http://signin.examplebank.com:{port}/")
+        outcome = Outcome()
+        website_scan._rendered_check(genuine, outcome)
+        assert not any(f.category == "visual_impersonation" for f in outcome.findings)
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_dhash_distance_is_small_for_similar_images() -> None:
+    import io
+
+    from PIL import Image, ImageDraw
+
+    from app.analyzers.visual import Reference, closest_match, dhash, distance
+
+    def picture(shift: int, colour: str) -> bytes:
+        image = Image.new("RGB", (400, 300), "white")
+        ImageDraw.Draw(image).rectangle([50 + shift, 50, 300 + shift, 200], fill=colour)
+        out = io.BytesIO()
+        image.save(out, format="PNG")
+        return out.getvalue()
+
+    a, b, other = dhash(picture(0, "navy")), dhash(picture(2, "navy")), dhash(picture(0, "white"))
+    assert distance(a, b) <= 6 < distance(a, other)
+    refs = [Reference("bank", frozenset({"bank.com"}), a, "")]
+    assert closest_match(b, "evil.com", refs) is not None
+    assert closest_match(b, "bank.com", refs) is None

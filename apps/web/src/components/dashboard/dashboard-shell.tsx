@@ -49,7 +49,7 @@ const STAFF_NAV: { href: string; key: NavKey; icon: typeof History; roles: strin
   { href: "/dashboard/admin", key: "admin", icon: ShieldCheck, roles: ["admin"] },
 ];
 
-const SCANNERS: ScanType[] = ["url", "message", "file", "qr", "website", "apk"];
+const SCANNERS: ScanType[] = ["url", "message", "file", "qr", "website", "apk", "screenshot"];
 
 function isCurrent(pathname: string, href: string) {
   return href === "/dashboard" ? pathname === href : pathname.startsWith(href);

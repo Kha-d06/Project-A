@@ -17,6 +17,7 @@ from app.analyzers.arabic import (
 from app.analyzers.file_scan import analyze_file
 from app.analyzers.message_scan import analyze_message
 from app.analyzers.qr_scan import analyze_qr
+from app.analyzers.screenshot_scan import analyze_screenshot
 from app.analyzers.types import Outcome
 from app.analyzers.url_scan import analyze_url
 from app.analyzers.verdict import assess
@@ -34,6 +35,7 @@ ANALYZERS: dict[str, Callable[[dict[str, Any], Session], Outcome]] = {
     "qr": analyze_qr,
     "website": analyze_website,
     "apk": analyze_apk,
+    "screenshot": analyze_screenshot,
 }
 
 _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}

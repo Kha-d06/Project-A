@@ -49,6 +49,7 @@ export default async function PrivacyPage() {
           <li>If the operator has configured a live URLhaus key, the link is also sent to abuse.ch. The <Link href="/#integrations">integrations list</Link> shows whether that is the case.</li>
           <li><strong>AI explanations</strong> are only created when you ask for one. Then the verdict and the summaries of the findings are sent to the AI provider (OpenAI). Your message text, files and full addresses are not.</li>
           <li><strong>AI second opinion on a message</strong> is off unless you tick the box for that scan. The message is then sent to the AI provider with links, email addresses and numbers masked.</li>
+          <li><strong>AI reading of screenshots</strong> is off unless you tick the box for that scan. The image, re-encoded without its metadata, is then sent to the AI provider to transcribe its text, links and numbers.</li>
           <li><strong>VirusTotal</strong> is off unless you tick the box for that scan. Only the file’s SHA-256 fingerprint is sent, never the file.</li>
           <li>If the operator runs MobSF for deeper app analysis, uploaded apps are sent to that server, which belongs to the operator.</li>
         </ul>

@@ -24,11 +24,14 @@ class SourceFreshness(BaseModel):
 
 class LookupResult(BaseModel):
     query: str
-    kind: Literal["domain", "ip", "hash"]
+    kind: Literal["domain", "ip", "hash", "phone"]
     verdict: Literal["listed", "community_verified", "not_listed", "unavailable"]
     indicators: list[IndicatorOut]
     sources: list[SourceFreshness]
     notes: list[str]
+    # Phone lookups only.
+    country: str | None = None
+    reports_awaiting_review: int | None = None
 
 
 class HashList(BaseModel):

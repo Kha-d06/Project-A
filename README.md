@@ -144,6 +144,12 @@ See [apps/extension/README.md](apps/extension/README.md).
 
 It complements, and does not replace, the operating system's own protection. See [apps/desktop/README.md](apps/desktop/README.md).
 
+**Visual phishing detection.** With isolated rendering on, website scans compare each page's first screen with stored fingerprints (64-bit difference hashes) of real sign-in pages. A near-identical page on someone else's domain is flagged. No images are stored, only hashes. Add references with:
+
+```bash
+python -m app.cli add-brand-reference emiratesnbd emiratesnbd.com https://<the brand's real sign-in page>
+```
+
 **Integrations:** Telegram and WhatsApp bots, scan-by-email, signed webhooks and a bulk API. See [docs/integrations.md](docs/integrations.md).
 
 **Honesty about providers.** `/api/v1/system/providers` reports which checks this deployment can run. The landing page shows that list live, and every report lists each check as completed, unavailable, failed or skipped.

@@ -28,7 +28,51 @@ BRAND_DOMAINS: dict[str, frozenset[str]] = {
     "outlook": frozenset({"outlook.com", "live.com", "office.com"}),
     "dropbox": frozenset({"dropbox.com"}),
     "steam": frozenset({"steampowered.com", "steamcommunity.com"}),
+    # Gulf banks, telecoms, government services and delivery firms: the names most
+    # often copied in local phishing. Only official domains we are sure of are listed.
+    "emiratesnbd": frozenset({"emiratesnbd.com"}),
+    "bankfab": frozenset({"bankfab.com"}),
+    "mashreq": frozenset({"mashreq.com", "mashreqbank.com"}),
+    "rakbank": frozenset({"rakbank.ae"}),
+    "alrajhi": frozenset({"alrajhibank.com.sa"}),
+    "alahli": frozenset({"alahli.com"}),
+    "riyadbank": frozenset({"riyadbank.com"}),
+    "alinma": frozenset({"alinma.com"}),
+    "bankmuscat": frozenset({"bankmuscat.com"}),
+    "etisalat": frozenset({"etisalat.ae", "eand.com"}),
+    "mobily": frozenset({"mobily.com.sa"}),
+    "ooredoo": frozenset({"ooredoo.qa", "ooredoo.com", "ooredoo.om"}),
+    "omantel": frozenset({"omantel.om"}),
+    "batelco": frozenset({"batelco.com"}),
+    "absher": frozenset({"absher.sa"}),
+    "uaepass": frozenset({"uaepass.ae"}),
+    "nafath": frozenset({"nafath.sa", "iam.gov.sa"}),
+    "dubaipolice": frozenset({"dubaipolice.gov.ae"}),
+    "salik": frozenset({"salik.ae"}),
+    "emiratespost": frozenset({"emiratespost.ae"}),
+    "splonline": frozenset({"splonline.com.sa"}),
+    "smsaexpress": frozenset({"smsaexpress.com"}),
+    "nusuk": frozenset({"nusuk.sa"}),
+    "careem": frozenset({"careem.com"}),
+    "talabat": frozenset({"talabat.com"}),
 }
+
+# How brands are named in findings, where the lookup key is not the usual name.
+BRAND_NAMES: dict[str, str] = {
+    "paypal": "PayPal", "linkedin": "LinkedIn", "whatsapp": "WhatsApp", "dhl": "DHL",
+    "fedex": "FedEx",
+    "emiratesnbd": "Emirates NBD", "bankfab": "First Abu Dhabi Bank", "rakbank": "RAKBANK",
+    "alrajhi": "Al Rajhi Bank", "alahli": "Saudi National Bank (AlAhli)", "riyadbank": "Riyad Bank",
+    "alinma": "Alinma Bank", "bankmuscat": "Bank Muscat", "etisalat": "e& (Etisalat)",
+    "uaepass": "UAE Pass", "dubaipolice": "Dubai Police", "emiratespost": "Emirates Post",
+    "splonline": "Saudi Post (SPL)", "smsaexpress": "SMSA Express", "nusuk": "Nusuk",
+}  # fmt: skip
+
+
+def brand_name(brand: str) -> str:
+    return BRAND_NAMES.get(brand, brand.title())
+
+
 # Short brand names turn up inside ordinary words ("dhl" is rare, "apple" is not),
 # so near-miss matching is limited to names long enough to be distinctive.
 _MIN_TYPOSQUAT_LENGTH = 6
@@ -152,9 +196,9 @@ def _brand_findings(url: ParsedUrl) -> list[FindingData]:
                     "high",
                     "typosquatting",
                     f"Domain is a look-alike of “{brand}”",
-                    f"“{url.registrable_domain}” is not a domain used by {brand.title()}, but it "
-                    "is spelled almost the same. Look-alike domains are a common way to collect "
-                    "passwords and payment details.",
+                    f"“{url.registrable_domain}” is not a domain used by {brand_name(brand)}, "
+                    "but it is spelled almost the same. Look-alike domains are a common way "
+                    "to collect passwords and payment details.",
                     SOURCE,
                     {"domain": url.registrable_domain, "resembles": brand},
                 )
@@ -166,7 +210,7 @@ def _brand_findings(url: ParsedUrl) -> list[FindingData]:
                 FindingData(
                     "medium",
                     "brand_impersonation",
-                    f"“{brand}” appears in the address, but the site is not {brand.title()}'s",
+                    f"“{brand}” appears in the address, but the site is not {brand_name(brand)}'s",
                     f"The real domain here is “{url.registrable_domain}”. Putting a familiar "
                     "brand name elsewhere in the address is a common way to make a link look "
                     "official.",

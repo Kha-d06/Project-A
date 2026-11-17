@@ -19,6 +19,7 @@ _SUBJECT = {
     "qr": "QR code",
     "website": "website",
     "apk": "app",
+    "screenshot": "screenshot",
 }
 
 
@@ -153,6 +154,23 @@ _RECOMMENDATIONS: dict[tuple[str, str], list[str]] = {
         "Google Play.",
         "Review the permissions listed below and refuse any the app does not obviously need.",
     ],
+    ("screenshot", "known_malicious"): [
+        "Do not open the links or call the numbers shown in this screenshot.",
+        "If you already entered details or paid, contact your bank and change the password you "
+        "used.",
+    ],
+    ("screenshot", "suspicious"): [
+        "Do not reply, pay, share codes or open the links in this message.",
+        "Contact the organisation through its official app or a number you already know.",
+    ],
+    ("screenshot", "no_known_threat"): [
+        "No known threat was found, which is not a guarantee. Be wary of any request for money, "
+        "codes or personal details.",
+    ],
+    ("screenshot", "inconclusive"): [
+        "The screenshot could not be fully checked. Paste the message text into the message "
+        "scanner, or allow AI reading, for a full check.",
+    ],
     ("apk", "inconclusive"): [
         "No malware database was available to check this app, so it remains unverified. Do not "
         "install it unless you trust its source.",
@@ -191,6 +209,7 @@ _SUBJECT_AR = {
     "qr": "رمز QR هذا",
     "website": "هذا الموقع",
     "apk": "هذا التطبيق",
+    "screenshot": "لقطة الشاشة هذه",
 }
 _RECOMMENDATIONS_AR: dict[str, list[str]] = {
     "known_malicious": [

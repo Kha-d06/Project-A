@@ -1,6 +1,6 @@
 "use client";
 
-import { FileUp, Globe, Link2, MessageSquareText, QrCode, Smartphone, X } from "lucide-react";
+import { FileUp, Globe, Image as ImageIcon, Link2, MessageSquareText, QrCode, Smartphone, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 
@@ -393,6 +393,30 @@ export function ApkScanForm({ reportBase }: { reportBase: string }) {
   );
 }
 
+export function ScreenshotScanForm({ reportBase }: { reportBase: string }) {
+  const { t } = useI18n();
+  const [aiConsent, setAiConsent] = useState(false);
+  return (
+    <UploadScanForm
+      reportBase={reportBase}
+      label={t.scan.screenshot.label}
+      submitLabel={t.scan.screenshot.submit}
+      accept="image/png,image/jpeg,image/webp,image/gif,image/bmp"
+      maxBytes={MAX_IMAGE_BYTES}
+      hint={t.scan.screenshot.hint}
+      start={(image) => api.scans.screenshot(image, { aiConsent })}
+      extra={
+        <ConsentCheckbox
+          checked={aiConsent}
+          onChange={setAiConsent}
+          label={t.scan.screenshot.aiConsent}
+          hint={t.scan.screenshot.aiConsentHint}
+        />
+      }
+    />
+  );
+}
+
 /** Order and icons of the scanner tabs; labels and descriptions come from the dictionary. */
 export const SCAN_TABS: { type: ScanType; icon: typeof Link2 }[] = [
   { type: "url", icon: Link2 },
@@ -401,4 +425,5 @@ export const SCAN_TABS: { type: ScanType; icon: typeof Link2 }[] = [
   { type: "qr", icon: QrCode },
   { type: "website", icon: Globe },
   { type: "apk", icon: Smartphone },
+  { type: "screenshot", icon: ImageIcon },
 ];

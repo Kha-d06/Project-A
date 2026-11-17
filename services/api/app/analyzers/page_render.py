@@ -59,6 +59,8 @@ class RenderResult:
     requests: int = 0
     refused: list[str] = field(default_factory=list)
     truncated: bool = False
+    # PNG of the first screen, for visual comparison with known sign-in pages.
+    screenshot: bytes | None = None
 
 
 def rendering_enabled() -> bool:
@@ -128,7 +130,12 @@ def render_page(url: str) -> RenderResult:
                 page.goto(url, wait_until="load", timeout=RENDER_SECONDS * 1000)
                 # Give scripts a moment to build the page, within the overall budget.
                 page.wait_for_timeout(min(2000, max(0, int((deadline - time.monotonic()) * 1000))))
+                try:
+                    screenshot: bytes | None = page.screenshot(type="png", timeout=5000)
+                except PlaywrightError:
+                    screenshot = None
                 return RenderResult(
+                    screenshot=screenshot,
                     final_url=page.url,
                     html=page.content()[: 4 * 1024 * 1024],
                     title=page.title()[:200],

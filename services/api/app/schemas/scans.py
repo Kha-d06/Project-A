@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.analyzers.message_scan import MAX_MESSAGE_LENGTH
 from app.analyzers.urls import MAX_URL_LENGTH, InvalidUrlError, parse_url
 
-ScanType = Literal["url", "message", "file", "qr", "website", "apk"]
+ScanType = Literal["url", "message", "file", "qr", "website", "apk", "screenshot"]
 ScanStatus = Literal["queued", "processing", "completed", "failed", "inconclusive"]
 RiskLevel = Literal["known_malicious", "suspicious", "no_known_threat", "inconclusive"]
 

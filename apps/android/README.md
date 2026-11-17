@@ -1,39 +1,81 @@
 # SENTINEL for Android
 
-The SENTINEL web app packaged for Android as a Trusted Web Activity (TWA): it opens
-the site full-screen in the user's Chrome, with no browser bar. The site is
-verified through Digital Asset Links. Everything the web app does works here, including:
-- every scanner, the dashboard, Arabic and offline notices;
-- **"Share to SENTINEL"** from WhatsApp, SMS, email or the browser, which fills in the scan form without submitting it.
+**A native scanner for this phone, plus the SENTINEL web app.**
 
-## Why a TWA and not a native app
+- **`MainActivity`** (the app's launcher icon) checks the phone itself:
+  - **Installed apps:**
+    - every app is fingerprinted (SHA-256 of its APK) and compared with the server's known-malware list;
+    - apps installed from outside an app store are checked for the behaviour of banking trojans and stalkerware:
+      - screen reading plus drawing over other apps;
+      - reading SMS one-time codes;
+      - device-administrator rights;
+      - notification access;
+      - a hidden icon combined with location and microphone or message access;
+    - apps that call themselves WhatsApp, Telegram, Instagram and others without being the official package are flagged;
+    - you can open Android's own uninstall prompt for any flagged app.
+  - **Files:**
+    - with "All files access": Downloads (quick scan) or all shared storage (full scan);
+    - without it: any files you pick;
+    - finds known malware, the EICAR test file, app installers, and programs disguised as documents or pictures (`invoice.pdf.apk`);
+    - flagged files can be moved to an encrypted quarantine, and restored.
+  - **Phone settings:**
+    - security patch age;
+    - screen lock;
+    - developer options and USB debugging;
+    - signs of root;
+    - apps allowed to install other apps.
+  - **SENTINEL account:**
+    - link with the code from Dashboard → Devices;
+    - turn on **Allow scans from my SENTINEL account** (off by default), and quick, full and Downloads scans, quarantine and fingerprint updates can be started from the website;
+    - the phone checks in every 15 minutes (Android's shortest interval for background work), so a scan starts at its next check-in;
+    - only names, verdicts, fingerprints and the settings summary are sent, never file contents or paths.
+- **`LauncherActivity`** is the SENTINEL web app in a Trusted Web Activity: full-screen Chrome, verified with Digital Asset Links. It opens from the scanner's "Open the SENTINEL website" button, from links to your SENTINEL site, and from **Share to SENTINEL** in other apps. Shared text fills in the scan form and is never submitted automatically.
 
-A native app needs its own scanner client, a separate release cycle and many more
-permissions. A TWA reuses the reviewed, tested web app, needs only the Internet
-permission, and still installs from Google Play. What a TWA cannot do:
-- read SMS automatically: that needs a native app with SMS permissions, which Google Play restricts heavily;
-- scan files on the device in the background.
+**English and Arabic** follow the system language.
 
-## Build
+**Layout:**
 
-Needs JDK 17 and the Android SDK (or Android Studio).
+| Path | What |
+| --- | --- |
+| `scanner-core/` | All decisions: app risk rules, device checks, file checks, the account protocol, and the English and Arabic text. Plain Kotlin, unit-tested on the JVM. |
+| `app/` | The Android side: reading installed apps and settings, storage, quarantine, the 15-minute check-in job, and the screen. Platform APIs only, with no AndroidX in the scanner. |
+
+## What it cannot do
+
+Android limits what any app can see, and these limits apply to every antivirus:
+- **No access to other apps' private data**, and no way to stop an app while it runs.
+- **Apps cannot be removed for you.** SENTINEL opens Android's uninstall prompt and you confirm. Remotely, only files can be quarantined, not apps.
+- **Without "All files access"**, files can only be scanned when you pick them.
+- **It does not replace Google Play Protect.** Keep it on.
+
+On iPhone, apps cannot scan other apps or files at all. iPhone users get the website and the browser extension.
+
+## Build and test
+
+You need JDK 17 and the Android SDK (or Android Studio).
 
 ```bash
 cd apps/android
-gradle assembleRelease -PsiteHost=sentinel.your-domain.example   # Gradle 8.10+
+gradle :scanner-core:test                                         # unit tests, no SDK needed
+gradle assembleRelease -PsiteHost=sentinel.your-domain.example     # Gradle 8.10+
 ```
 
-CI builds a debug APK on every push (`android` job). This repository's
-development environment had no Android SDK, so **the build has only been
-checked in CI, never on a device**.
+**What CI does:** on every push, CI runs the unit tests and builds a debug APK (`android` job).
 
-## Publish
+**What was verified here:**
+- This repository's development environment has no Android SDK.
+- The Android code was type-checked here against the Android 15 framework classes (Robolectric's `android-all`).
+- The scanner logic is covered by the unit tests.
+- **It has not been run on a phone yet.** Try it on a test device before you publish.
 
-1. Change `applicationId` in `app/build.gradle.kts` to your own reverse domain.
-2. Create an upload key and sign the release (Android Studio → Generate Signed Bundle), or use Play App Signing.
-3. On the server set:
-   - `SENTINEL_ANDROID_PACKAGE` to your application ID;
-   - `SENTINEL_ANDROID_CERT_SHA256` to the signing certificate's SHA-256 fingerprint, which Play Console shows under App integrity.
+## Publish on Google Play
 
-   The site then serves `/.well-known/assetlinks.json`; without it, Android shows a browser bar.
-4. Upload the bundle in Google Play Console. This needs your developer account.
+1. **Change `applicationId`** in `app/build.gradle.kts` to your own reverse domain.
+2. **Sign the release** with Play App Signing, or with your own upload key.
+3. **Fill in Play Console's permission declarations.** The app's core purpose is "antivirus / security", which both policies list as allowed:
+   - **`QUERY_ALL_PACKAGES`**: needed to check every installed app.
+   - **`MANAGE_EXTERNAL_STORAGE`** ("All files access"): needed to scan and quarantine files in shared storage. The app asks for it only when the person taps the button, and works without it.
+4. **Set these on the server** so links open full-screen without a browser bar:
+   - `SENTINEL_ANDROID_PACKAGE`: your application ID;
+   - `SENTINEL_ANDROID_CERT_SHA256`: from Play Console → App integrity.
+5. **Upload the bundle** in Google Play Console. This needs your developer account.

@@ -193,6 +193,7 @@ function DeviceCard({ device, onChange }: { device: Device; onChange: () => void
           ) : (
             <p className="text-xs text-clear">{d.remoteOn}</p>
           )}
+          {device.platform === "android" && device.allow_remote && <p className="text-xs text-ink-muted">{d.phoneHint}</p>}
           <div className="flex flex-wrap gap-2">
             {action("quick_scan", d.quickScan)}
             {action("full_scan", d.fullScan)}

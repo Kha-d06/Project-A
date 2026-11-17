@@ -1,5 +1,5 @@
 import uuid
-from datetime import timedelta
+from datetime import UTC, timedelta
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -14,13 +14,13 @@ SHA = "a" * 64
 
 
 def link_device(
-    db: Session, owner: TestClient, name: str = "Work laptop"
+    db: Session, owner: TestClient, name: str = "Work laptop", platform: str = "windows"
 ) -> tuple[TestClient, dict[str, str]]:
     code = owner.post(f"{API}/extension/link-codes").json()["code"]
     device = TestClient(owner.app)
     registered = device.post(
         f"{API}/devices/register",
-        json={"link_code": code, "name": name, "platform": "windows", "app_version": "0.2.0"},
+        json={"link_code": code, "name": name, "platform": platform, "app_version": "0.2.0"},
     )
     assert registered.status_code == 201, registered.text
     return device, {"Authorization": f"Bearer {registered.json()['token']}"}
@@ -213,3 +213,28 @@ def test_removal_deletes_history_and_old_commands_are_pruned(db: Session) -> Non
     db.expire_all()
     assert db.get(Device, uuid.UUID(device_id)) is None
     assert db.scalars(select(DeviceCommand).where(DeviceCommand.device_id == stored_id)).all() == []
+
+
+def test_phones_check_in_less_often_and_their_commands_wait_longer(db: Session) -> None:
+    owner, _ = account(db, "devices6@example.com")
+    phone, auth = link_device(db, owner, name="Pixel 9", platform="android")
+    heartbeat(phone, auth)
+    phone_id = owner.get(f"{API}/user/devices").json()[0]["id"]
+    stored = db.get(Device, uuid.UUID(phone_id))
+    assert stored is not None
+    stored.last_seen_at = utcnow() - timedelta(minutes=12)
+    db.commit()
+    view = owner.get(f"{API}/user/devices").json()[0]
+    assert view["platform"] == "android" and view["online"] is True
+    command = owner.post(f"{API}/user/devices/{phone_id}/commands", json={"kind": "quick_scan"})
+    assert command.status_code == 201, command.text
+    queued = db.get(DeviceCommand, uuid.UUID(command.json()["id"]))
+    assert queued is not None
+    expires = (
+        queued.expires_at if queued.expires_at.tzinfo else queued.expires_at.replace(tzinfo=UTC)
+    )
+    assert timedelta(minutes=30) < expires - utcnow() <= timedelta(minutes=35)
+
+    stored.last_seen_at = utcnow() - timedelta(minutes=25)
+    db.commit()
+    assert owner.get(f"{API}/user/devices").json()[0]["online"] is False

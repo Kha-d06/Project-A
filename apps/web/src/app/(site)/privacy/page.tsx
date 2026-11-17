@@ -73,6 +73,7 @@ export default async function PrivacyPage() {
           <li><strong>Remote scans are off until you turn them on in the app on that device.</strong> When they are on, anyone signed in to your account can start a scan, quarantine a file a scan found, or update the fingerprint list there. Nobody can open, upload, copy or delete your files from the website.</li>
           <li>Scan results sent back contain file names, the label of the folder they were in, verdicts and SHA-256 fingerprints. File contents and full paths stay on the device.</li>
           <li>SENTINEL Desktop’s security centre (firewall, open ports, startup programs, camera and microphone use) runs entirely on the computer. A linked computer reports only whether its firewall is on, how many risky services are open to the network, and when it last made a backup.</li>
+          <li>The Android app checks installed apps, files and phone settings on the phone itself, by comparing fingerprints with a list it downloads. A linked phone reports its Android version, security-patch age, whether a screen lock, developer options and file access are on, how many apps may install other apps, and how many apps need attention. It never sends the list of your apps, only those a scan flagged.</li>
           <li>Encrypted backups are written where you choose, never to SENTINEL. Their password never leaves the computer.</li>
           <li>Only the last 50 commands per device are kept. Removing a device from your account deletes its records and signs the app out.</li>
         </ul>

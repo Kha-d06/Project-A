@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The scanner screen. Android 10+ uses the day/night variant in values-v29. -->
+    <style name="SentinelTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:colorAccent">#157A6E</item>
+        <item name="android:colorPrimary">#157A6E</item>
+    </style>
+</resources>

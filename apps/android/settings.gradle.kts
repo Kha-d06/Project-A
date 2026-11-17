@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "sentinel-android"
-include(":app")
+include(":app", ":scanner-core")

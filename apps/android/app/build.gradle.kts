@@ -1,5 +1,6 @@
 plugins {
     id("com.android.application")
+    id("org.jetbrains.kotlin.android")
 }
 
 val siteHost: String = (project.findProperty("siteHost") as String?) ?: "sentinel.example.org"
@@ -15,8 +16,9 @@ android {
         applicationId = "app.sentinel.protect"
         minSdk = 23
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
+        buildConfigField("String", "SITE_URL", "\"$siteUrl\"")
 
         manifestPlaceholders["hostName"] = siteHost
         manifestPlaceholders["defaultUrl"] = "$siteUrl/scan?utm_source=android"
@@ -34,6 +36,14 @@ android {
         }
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -42,4 +52,5 @@ android {
 
 dependencies {
     implementation("com.google.androidbrowserhelper:androidbrowserhelper:2.5.0")
+    implementation(project(":scanner-core"))
 }

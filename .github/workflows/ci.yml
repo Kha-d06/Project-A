@@ -176,6 +176,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.10.2"
+      - name: Scanner unit tests (app risk, device checks, files, account protocol)
+        run: gradle :scanner-core:test
       - run: gradle assembleDebug -PsiteHost=sentinel.example.org
       - uses: actions/upload-artifact@v4
         with:

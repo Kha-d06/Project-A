@@ -41,6 +41,20 @@ router = APIRouter(tags=["Devices"])
 TOKEN_PREFIX = "sdv_"  # noqa: S105 - a public prefix, not a secret
 ONLINE_WINDOW = timedelta(seconds=90)
 COMMAND_LIFETIME = timedelta(minutes=15)
+# Android allows background work at most every 15 minutes, so phones check in
+# less often: they count as reachable for longer and their commands wait longer.
+ANDROID_ONLINE_WINDOW = timedelta(minutes=20)
+ANDROID_COMMAND_LIFETIME = timedelta(minutes=35)
+
+
+def _online_window(device: Device) -> timedelta:
+    return ANDROID_ONLINE_WINDOW if device.platform == "android" else ONLINE_WINDOW
+
+
+def _command_lifetime(device: Device) -> timedelta:
+    return ANDROID_COMMAND_LIFETIME if device.platform == "android" else COMMAND_LIFETIME
+
+
 MAX_DEVICES = 20
 SERVER_STATUS_KEYS = ("last_scan", "last_scan_threats")
 MAX_COMMANDS_KEPT = 50
@@ -318,7 +332,7 @@ def _device_out(db: Session, device: Device) -> DeviceOut:
         name=device.name,
         platform=device.platform,
         app_version=device.app_version,
-        online=utcnow() - device.last_seen_at < ONLINE_WINDOW,
+        online=utcnow() - device.last_seen_at < _online_window(device),
         allow_remote=device.allow_remote,
         status=device.status,
         folders=device.folders,
@@ -355,7 +369,7 @@ def send_command(
             "remote_disabled",
             "This device does not allow scans from the website. Turn it on in the app's settings.",
         )
-    if utcnow() - device.last_seen_at >= ONLINE_WINDOW:
+    if utcnow() - device.last_seen_at >= _online_window(device):
         raise ApiError(
             409,
             "device_offline",
@@ -394,7 +408,7 @@ def send_command(
         requested_by_id=user.id,
         kind=body.kind,
         args=args,
-        expires_at=utcnow() + COMMAND_LIFETIME,
+        expires_at=utcnow() + _command_lifetime(device),
     )
     db.add(command)
     db.flush()

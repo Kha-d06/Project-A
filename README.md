@@ -150,6 +150,10 @@ It complements, and does not replace, the operating system's own protection. See
 python -m app.cli add-brand-reference emiratesnbd emiratesnbd.com https://<the brand's real sign-in page>
 ```
 
+**Android.** `apps/android` is a Trusted Web Activity for Google Play. See [apps/android/README.md](apps/android/README.md).
+
+**Operations.** Backups, restore, upgrades, alerts, capacity and key rotation are covered in [docs/operations.md](docs/operations.md).
+
 **Integrations:** Telegram and WhatsApp bots, scan-by-email, signed webhooks and a bulk API. See [docs/integrations.md](docs/integrations.md).
 
 **Honesty about providers.** `/api/v1/system/providers` reports which checks this deployment can run. The landing page shows that list live, and every report lists each check as completed, unavailable, failed or skipped.

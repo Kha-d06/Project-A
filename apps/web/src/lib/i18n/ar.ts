@@ -32,7 +32,7 @@ export const ar: Dictionary = {
     openMenu: "فتح القائمة",
     closeMenu: "إغلاق القائمة",
     main: "القائمة الرئيسية",
-    home: "الصفحة الرئيسية لسنتينل",
+    home: "SENTINEL: الصفحة الرئيسية",
     skip: "الانتقال إلى المحتوى",
   },
   footer: {

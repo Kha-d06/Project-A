@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.analyzers.urls import parse_url
 from app.cli import set_role
 from app.intel.feeds import MALWAREBAZAAR, URLHAUS, FeedIndicator
 from app.main import app
@@ -344,3 +345,19 @@ def test_phone_lookup_with_reports_and_country(client: TestClient, db: Session) 
     premium = client.get("/api/v1/intelligence/phone/+8823456789").json()
     assert "premium-rate" in premium["notes"][0]
     assert client.get("/api/v1/intelligence/phone/123").status_code == 422
+
+
+def test_admin_stats_series_and_workload(db: Session) -> None:
+    admin, headers = account(db, "statsadmin@example.com", role="admin")
+    admin.headers.update(headers)
+    user, user_headers = account(db, "statsuser@example.com")
+    user.headers.update(user_headers)
+    seed_feed(db, URLHAUS, [FeedIndicator("url", parse_url(LISTED).normalized, "malware_download")])
+    user.post("/api/v1/scans/url", json={"url": LISTED})
+    report(user)
+    body = admin.get("/api/v1/admin/stats?days=7").json()
+    today = body["series"][-1]
+    assert today["scans"] == 1 and today["flagged"] == 1 and today["reports"] == 1
+    assert len(body["series"]) == 8
+    assert body["pending_by_age"]["under_1_day"] == 1
+    assert user.get("/api/v1/admin/stats").status_code == 403

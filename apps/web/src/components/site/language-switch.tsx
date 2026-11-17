@@ -26,10 +26,14 @@ export function LanguageSwitch({ className }: { className?: string }) {
         "inline-flex items-center gap-1.5 rounded-control px-2.5 py-1.5 text-sm text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink",
         className,
       )}
-      aria-label={t.common.switchLanguage}
+      title={t.common.switchLanguage}
     >
       <Languages aria-hidden className="size-4" />
       {LOCALE_NAMES[other]}
+      {/* The accessible name starts with the visible text (WCAG 2.5.3). */}
+      <span className="sr-only" lang={locale}>
+        {` – ${t.common.switchLanguage}`}
+      </span>
     </button>
   );
 }

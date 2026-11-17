@@ -3,6 +3,7 @@
 import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
+import { AdminStats } from "@/components/admin/admin-stats";
 import { PageTitle } from "@/components/dashboard/dashboard-shell";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -297,6 +298,7 @@ export function AdminConsole() {
       <PageTitle title={s.administration} description={s.administrationHint} />
       {error && <Alert tone="warning">{error}</Alert>}
       <div className="space-y-6">
+        <AdminStats />
         {overview && <OverviewPanels overview={overview} onSync={sync} />}
         <Users />
         <div className="grid gap-6 lg:grid-cols-2">

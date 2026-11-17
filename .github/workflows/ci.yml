@@ -143,6 +143,34 @@ jobs:
           npx playwright install --with-deps chromium
           SENTINEL_SERVER=http://localhost:8080 npm run build
           SENTINEL_SERVER=http://localhost:8080 node test/e2e.mjs
+      - name: Accessibility audit (axe-core, WCAG 2.1 AA, English and Arabic, light and dark)
+        working-directory: apps/web
+        run: |
+          npm ci
+          npm install --no-save playwright@1.63.0
+          SITE=http://localhost:8080 node test/a11y.mjs
       - name: Logs on failure
         if: failure()
         run: docker compose logs --tail=200
+
+  # The Android Trusted Web Activity. GitHub's Ubuntu runners include the Android SDK.
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+      - run: gradle assembleDebug -PsiteHost=sentinel.example.org
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-android-debug
+          path: apps/android/app/build/outputs/apk/debug/*.apk
+

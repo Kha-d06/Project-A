@@ -43,6 +43,29 @@ Scope: the API (`services/api`), web app (`apps/web`), browser extension
 - **Breach check.** Only the signed-in user's own address can be checked, so it cannot be used to look up other people. Password checks run in the browser against the Pwned Passwords range API (k-anonymity); passwords never reach SENTINEL.
 - **Extension assistant.** Reads cookie names, never values, and sends only a summary to the server. It is drawn in a closed shadow root using text nodes only.
 
+## Round 3 additions, reviewed
+
+| # | Area | Finding | Resolution |
+| --- | --- | --- | --- |
+| 7 | QR decoder | The decoder set Pillow's process-wide pixel limit. A lower value set by one caller (a test) leaked into other image code. | Images are checked from their header against the limit before decoding; the global setting is left alone. |
+| 8 | Web gateway | The gateway did not forward `PUT`, so saving a group block list failed. It was harmless, but it showed the gateway's method list was not covered by tests. | `PUT` is forwarded and the group block-list flow is covered end to end. |
+| 9 | Check cache | The cache generation was first bumped before the database commit, so a concurrent request could cache old data for up to two minutes. | The bump now happens in an `after_commit` hook. The cache key is a digest of the address, never the address. |
+| 10 | Desktop app | A slower, older screen render could replace a newer one. The ransomware alert could be hidden this way. | Renders carry a token, and only the newest is applied. The alert is held separately from status refreshes. |
+
+**Also reviewed, with no change needed:**
+
+- **Screenshot scans.** AI reading happens only with consent. The image is re-encoded with EXIF and other metadata removed and resized. The vision model's output is treated as text for SENTINEL's own rules, and its opinion is capped at low severity. QR codes are always checked locally.
+- **Visual phishing references.** Only 64-bit hashes are stored, never screenshots. A brand's own domains never match their own reference.
+- **Phone lookups and trends.** Phone lookups show verified reports and pending counts, not the reports themselves. Trends publish aggregates only, with counts below three hidden.
+- **Web Push.** Payloads contain a title, a sentence and a site-relative link, never scanned content. The service worker opens only same-origin URLs on notification click. Dead subscriptions are deleted.
+- **Weekly summaries and breach monitoring.** Both are opt-in. Breach monitoring only checks the user's own confirmed address and announces only new breaches.
+- **Family block lists.** Admins can only suggest a list. Each member applies it in their own browser by their own choice. A family block has no "continue anyway", and it says which group set it.
+- **Extension search labels and tracker blocking.** Both are opt-in. Search pages are read only for result links and only on the six listed search origins. Tracker blocking uses declarativeNetRequest and needs no host access.
+- **Desktop system checks.** Wi-Fi, updates and 7-Zip listing all run through `execFile` with fixed arguments and timeouts, and never through a shell. Ransomware watch is detection only and never deletes or moves files.
+- **Rate-limit multiplier.** It exists for load tests only, and production refuses to start with it set.
+- **Android app.** It is a Trusted Web Activity with only the Internet permission. Asset links are served only when configured, and malformed fingerprints are dropped.
+- **Accessibility.** Not a security item, but audited the same way: axe-core finds no serious or critical WCAG 2.1 AA violations on 72 page views (English and Arabic, light and dark).
+
 ## Open items
 
 | Risk | Item | Recommendation |

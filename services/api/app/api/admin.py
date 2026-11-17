@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import timedelta
-from typing import Annotated
+from typing import Annotated, Any
 
 import redis
 from fastapi import APIRouter, Query, Request
@@ -277,3 +277,79 @@ def sync_feeds(request: Request, db: Db, admin: AdminUser) -> dict[str, str]:
 
     sync_feeds_task.delay()
     return {"status": "queued"}
+
+
+def _daily(db: Db, column: Any, query: Any, since: Any) -> dict[str, int]:
+    day = func.date(column)
+    return {
+        str(d): int(n)
+        for d, n in db.execute(
+            query.add_columns(day, func.count()).where(column >= since).group_by(day)
+        ).all()
+    }
+
+
+@router.get("/stats")
+def stats(
+    db: Db, admin: AdminUser, days: Annotated[int, Query(ge=7, le=90)] = 30
+) -> dict[str, Any]:
+    """Daily activity and moderator workload. Counts only, never what was scanned."""
+    now = utcnow()
+    since = now - timedelta(days=days)
+    scans = _daily(db, ScanJob.created_at, select().select_from(ScanJob), since)
+    flagged = _daily(
+        db,
+        ScanJob.created_at,
+        select().select_from(ScanJob).where(ScanJob.risk.in_(("known_malicious", "suspicious"))),
+        since,
+    )
+    failed = _daily(
+        db,
+        ScanJob.created_at,
+        select().select_from(ScanJob).where(ScanJob.status == "failed"),
+        since,
+    )
+    signups = _daily(db, User.created_at, select().select_from(User), since)
+    reports = _daily(db, CommunityReport.created_at, select().select_from(CommunityReport), since)
+    series = []
+    for offset in range(days, -1, -1):
+        date = (now - timedelta(days=offset)).date().isoformat()
+        series.append(
+            {
+                "date": date,
+                "scans": scans.get(date, 0),
+                "flagged": flagged.get(date, 0),
+                "failed": failed.get(date, 0),
+                "signups": signups.get(date, 0),
+                "reports": reports.get(date, 0),
+            }
+        )
+    pending = db.scalars(
+        select(CommunityReport.created_at).where(CommunityReport.status == "pending")
+    ).all()
+    ages = {"under_1_day": 0, "1_to_3_days": 0, "over_3_days": 0}
+    for created in pending:
+        age = now - created
+        key = (
+            "under_1_day"
+            if age < timedelta(days=1)
+            else "1_to_3_days"
+            if age < timedelta(days=3)
+            else "over_3_days"
+        )
+        ages[key] += 1
+    reviewers = db.execute(
+        select(User.email, func.count())
+        .join(CommunityReport, CommunityReport.reviewed_by_id == User.id)
+        .where(CommunityReport.reviewed_at >= since)
+        .group_by(User.email)
+        .order_by(func.count().desc())
+    ).all()
+    return {
+        "days": days,
+        "series": series,
+        "pending_by_age": ages,
+        "reviews_by_moderator": [
+            {"moderator": email, "reviews": count} for email, count in reviewers
+        ],
+    }

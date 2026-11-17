@@ -186,6 +186,8 @@ services:
     environment:
       SENTINEL_API_URL: http://api:8000
       NEXT_PUBLIC_CONTACT_URL: ${NEXT_PUBLIC_CONTACT_URL:-}
+      SENTINEL_ANDROID_PACKAGE: ${SENTINEL_ANDROID_PACKAGE:-}
+      SENTINEL_ANDROID_CERT_SHA256: ${SENTINEL_ANDROID_CERT_SHA256:-}
     read_only: true
     tmpfs: [/tmp]
     depends_on:

@@ -378,3 +378,10 @@ export interface Trends {
   verified_reports_by_country: Record<string, number>;
   minimum_count: number;
 }
+
+export interface AdminStats {
+  days: number;
+  series: { date: string; scans: number; flagged: number; failed: number; signups: number; reports: number }[];
+  pending_by_age: { under_1_day: number; "1_to_3_days": number; over_3_days: number };
+  reviews_by_moderator: { moderator: string; reviews: number }[];
+}

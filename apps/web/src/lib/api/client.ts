@@ -28,6 +28,7 @@ import type {
   ScanType,
   SessionInfo,
   SessionStatus,
+  AdminStats,
   BreachResult,
   Trends,
   Group,
@@ -325,6 +326,7 @@ export const api = {
     review: (id: string, body: { status: "verified" | "rejected" | "duplicate"; note?: string; duplicate_of?: string }) =>
       request<CommunityReport>(`/admin/reports/${encodeURIComponent(id)}/review`, { method: "POST", json: body }),
   },
+  adminStats: (days = 30) => request<AdminStats>("/admin/stats", { query: { days } }),
   admin: {
     overview: () => request<AdminOverview>("/admin/overview"),
     users: (query?: string, page = 1) =>

@@ -15,3 +15,33 @@ groups:
         expr: sum(sentinel_scans_24h{status="failed"}) > 20
         annotations:
           summary: "More than 20 scans failed in the last 24 hours."
+      - alert: SentinelDown
+        expr: up{job="sentinel"} == 0
+        for: 5m
+        annotations:
+          summary: "The SENTINEL API has not answered Prometheus for 5 minutes."
+      - alert: ScanQueueBacklog
+        expr: sentinel_queue_length{queue="scans"} > 100
+        for: 10m
+        annotations:
+          summary: "More than 100 scans are waiting. Add scan workers or check that they are running."
+      - alert: TaskQueueBacklog
+        expr: sentinel_queue_length{queue="tasks"} > 500
+        for: 15m
+        annotations:
+          summary: "Notifications, feeds and clean-up tasks are piling up. Check the task worker."
+      - alert: RedisUnreachable
+        expr: min(sentinel_queue_length) < 0
+        for: 5m
+        annotations:
+          summary: "The API cannot reach Redis: rate limiting fails closed, so requests are being refused."
+      - alert: ReportsWaiting
+        expr: sentinel_reports_pending > 50
+        for: 1d
+        annotations:
+          summary: "More than 50 community reports have been waiting for moderation for a day."
+      - alert: WebhooksFailing
+        expr: sentinel_webhooks_failing > 10
+        for: 1h
+        annotations:
+          summary: "Many user webhooks are failing; check outbound network access from the task worker."

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Mirrors share_target in the web app manifest (apps/web/src/app/manifest.ts). -->
+    <string name="share_target" translatable="false">
+        {
+          "action": "/share",
+          "method": "GET",
+          "params": { "title": "title", "text": "text", "url": "url" }
+        }
+    </string>
+</resources>

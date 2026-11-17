@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     # Public address of the web app, used to build links in emails.
     public_url: str = "http://localhost:8080"
 
+    # Scales every rate limit. Raise it only for load tests on a private instance;
+    # production refuses values other than 1.
+    rate_limit_multiplier: float = 1.0
+
     # Bearer token Prometheus uses to read /api/v1/system/metrics. Unset: no metrics.
     metrics_token: str | None = None
 
@@ -128,6 +132,8 @@ class Settings(BaseSettings):
     def _refuse_default_secret_in_production(self) -> "Settings":
         if self.environment == "production" and self.secret_key == DEVELOPMENT_SECRET:
             raise ValueError("SENTINEL_SECRET_KEY must be set to a unique value in production")
+        if self.environment == "production" and self.rate_limit_multiplier != 1.0:
+            raise ValueError("SENTINEL_RATE_LIMIT_MULTIPLIER cannot be used in production")
         return self
 
 

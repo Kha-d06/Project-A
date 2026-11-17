@@ -216,3 +216,16 @@ def test_anonymous_installations_never_store_events(client: TestClient) -> None:
     event = {"kind": "proceeded", "url": LISTED, "verdict": "dangerous"}
     response = client.post(f"{EXT}/report-event", json=event, headers=bearer(enroll(client)))
     assert response.json() == {"stored": False}
+
+
+def test_cached_checks_follow_new_threat_data(client: TestClient, db: Session) -> None:
+    from app.core.cache import get_cache
+
+    get_cache().bump()  # start from an empty cache
+    credentials = enroll(client)
+    url = "http://fresh-threat.example.net/x"
+    seed_feed(db, URLHAUS, [FeedIndicator("url", parse_url(LISTED).normalized, "malware_download")])
+    assert check(client, credentials, url)["verdict"] == "no_known_threat"
+    assert check(client, credentials, url)["verdict"] == "no_known_threat"  # served from cache
+    seed_feed(db, URLHAUS, [FeedIndicator("url", parse_url(url).normalized, "malware_download")])
+    assert check(client, credentials, url)["verdict"] == "dangerous"

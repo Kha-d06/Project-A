@@ -122,7 +122,7 @@ def enforce(limit: RateLimit, subject: str) -> None:
             "rate_limiter_unavailable",
             "The service is temporarily unable to accept requests. Please try again shortly.",
         ) from exc
-    if count > limit.max_requests:
+    if count > limit.max_requests * get_settings().rate_limit_multiplier:
         record_rejection(limit.name)
         raise ApiError(
             429,

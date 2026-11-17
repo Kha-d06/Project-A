@@ -17,6 +17,7 @@ from app.api.extension_auth import (
     issue_access_token,
 )
 from app.core import rate_limit
+from app.core.cache import get_cache
 from app.core.errors import ApiError
 from app.core.rate_limit import RateLimit, client_address
 from app.core.security import new_token, token_digest
@@ -60,6 +61,7 @@ LINK_ATTEMPT_LIMIT = RateLimit("ext-link", max_requests=10, window_seconds=900)
 # Generous: one check per page load, with the extension's own cache in front.
 CHECK_LIMIT = RateLimit("ext-check", max_requests=1200, window_seconds=3600)
 EVENT_LIMIT = RateLimit("ext-event", max_requests=300, window_seconds=3600)
+QUICK_CACHE_SECONDS = 120
 BLOCKLIST_LIMIT = RateLimit("ext-blocklist", max_requests=30, window_seconds=3600)
 ASSISTANT_LIMIT = RateLimit("ext-assistant", max_requests=60, window_seconds=3600)
 
@@ -207,7 +209,17 @@ def extension_settings(installation: CurrentInstallation, db: Db) -> ExtensionSe
 def check_url(body: CheckUrlRequest, installation: CurrentInstallation, db: Db) -> QuickVerdict:
     """Nothing about the request is stored: checking a site leaves no record."""
     rate_limit.enforce(CHECK_LIMIT, f"install:{installation.id}")
-    return _to_verdict(quick_check_url(db, body.url, host_only=body.mode == "host"))
+    # Most checks repeat (popular sites), so answers are shared briefly between
+    # browsers. The key is a digest of the address, never the address itself.
+    cache = get_cache()
+    generation = cache.generation()
+    key = f"qc:{generation}:{body.mode}:{token_digest(body.url)}"
+    if generation >= 0 and (cached := cache.get(key)):
+        return QuickVerdict.model_validate_json(cached)
+    verdict = _to_verdict(quick_check_url(db, body.url, host_only=body.mode == "host"))
+    if generation >= 0:
+        cache.set(key, verdict.model_dump_json(), min(verdict.cache_seconds, QUICK_CACHE_SECONDS))
+    return verdict
 
 
 @router.post("/check-download", response_model=QuickVerdict)

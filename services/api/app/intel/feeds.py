@@ -211,6 +211,9 @@ def store_indicators(db: Session, source: ThreatSource, indicators: Iterable[Fee
             )
             .values(last_seen_at=now)
         )
+    from app.core.cache import threat_data_changed
+
+    threat_data_changed(db)
     return len(seen)
 
 
@@ -221,6 +224,9 @@ def remove_stale_indicators(db: Session, source: ThreatSource) -> None:
             ThreatIndicator.source_id == source.id, ThreatIndicator.last_seen_at < cutoff
         )
     )
+    from app.core.cache import threat_data_changed
+
+    threat_data_changed(db)
 
 
 def sync_feed(db: Session, feed: Feed, fetch: Callable[[str], str] = download_feed) -> ThreatSource:

@@ -8,6 +8,7 @@ SENTINEL_METRICS_TOKEN is set; Prometheus must send it as a bearer token.
 import hmac
 from datetime import timedelta
 
+import redis
 from fastapi import APIRouter, Request
 from fastapi.responses import PlainTextResponse
 from sqlalchemy import func, select
@@ -15,7 +16,7 @@ from sqlalchemy import func, select
 from app.api.deps import Db
 from app.core.config import get_settings
 from app.core.errors import ApiError
-from app.models import CommunityReport, ExtensionInstallation, ScanJob, ThreatSource, User
+from app.models import CommunityReport, ExtensionInstallation, ScanJob, ThreatSource, User, Webhook
 from app.models.base import utcnow
 
 router = APIRouter(tags=["System"])
@@ -96,4 +97,20 @@ def metrics(request: Request, db: Db) -> str:
             or 0,
         ),
     ]
+    failing = db.scalar(
+        select(func.count()).select_from(Webhook).where(Webhook.consecutive_failures >= 3)
+    )
+    lines += [
+        "# HELP sentinel_webhooks_failing Webhooks with three or more failed deliveries in a row.",
+        "# TYPE sentinel_webhooks_failing gauge",
+        _line("sentinel_webhooks_failing", failing or 0),
+        "# HELP sentinel_queue_length Tasks waiting in each Celery queue (-1 when Redis is unreachable).",
+        "# TYPE sentinel_queue_length gauge",
+    ]
+    for queue in ("scans", "tasks"):
+        try:
+            length = redis.Redis.from_url(get_settings().redis_url, socket_timeout=2).llen(queue)
+        except redis.RedisError:
+            length = -1
+        lines.append(_line("sentinel_queue_length", float(length), {"queue": queue}))
     return "\n".join(lines) + "\n"

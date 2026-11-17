@@ -116,6 +116,9 @@ def _sync_indicators(db: Session, report: CommunityReport) -> None:
         or 0
     )
     source.last_success_at = utcnow()
+    from app.core.cache import threat_data_changed
+
+    threat_data_changed(db)
 
 
 def review(

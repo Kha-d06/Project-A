@@ -11,7 +11,7 @@ import contextlib
 import ipaddress
 import re
 import uuid
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
@@ -19,9 +19,8 @@ from sqlalchemy import func, select
 
 from app.api.auth import record_event
 from app.api.deps import Db, SessionUser
-from app.assess import runner, verify
+from app.assess import runner, schedule, verify
 from app.core import rate_limit
-from app.core.config import get_settings
 from app.core.errors import ApiError
 from app.core.rate_limit import RateLimit
 from app.models import Assessment, User, VerifiedDomain
@@ -64,7 +63,7 @@ def _normalise_domain(value: str) -> str:
 
 
 def _entitled(user: User) -> bool:
-    return user.role == "admin" or user.assessment_enabled_at is not None
+    return schedule.entitled(user)
 
 
 def _require_entitled(user: User) -> None:
@@ -87,6 +86,19 @@ class DomainOut(BaseModel):
     verified_method: str | None
     verified_at: Any
     created_at: Any
+    schedule: str = "off"
+    next_run_at: Any = None
+
+
+class ScheduleIn(BaseModel):
+    schedule: Literal["off", "weekly", "monthly"]
+
+
+class ScanIn(BaseModel):
+    # Light active tests (reflection, open redirect, database errors). They run only
+    # when the owner also confirms, for this scan, that they own and may test the site.
+    active_probes: bool = False
+    confirm_owner: bool = False
 
 
 class VerificationInstructions(BaseModel):
@@ -107,6 +119,8 @@ class AssessmentSummary(BaseModel):
     summary: str | None
     finding_count: int
     pages_checked: int
+    active_probes: bool = False
+    scheduled: bool = False
     created_at: Any
     finished_at: Any
 
@@ -134,6 +148,8 @@ def _domain_out(d: VerifiedDomain) -> DomainOut:
         verified_method=d.verified_method,
         verified_at=d.verified_at,
         created_at=d.created_at,
+        schedule=d.schedule,
+        next_run_at=d.next_run_at,
     )
 
 
@@ -146,6 +162,8 @@ def _summary(a: Assessment) -> AssessmentSummary:
         summary=a.summary,
         finding_count=len(a.findings),
         pages_checked=a.pages_checked,
+        active_probes=a.active_probes,
+        scheduled=a.scheduled,
         created_at=a.created_at,
         finished_at=a.finished_at,
     )
@@ -261,11 +279,39 @@ def remove_domain(domain_id: uuid.UUID, request: Request, db: Db, user: SessionU
     db.commit()
 
 
+@router.patch("/domains/{domain_id}", response_model=DomainOut)
+def set_schedule(
+    domain_id: uuid.UUID, body: ScheduleIn, request: Request, db: Db, user: SessionUser
+) -> DomainOut:
+    _require_entitled(user)
+    record = _owned_domain(db, user, domain_id)
+    if body.schedule != "off" and record.verified_at is None:
+        raise ApiError(
+            409, "not_verified", "Verify that you own this domain before scheduling scans."
+        )
+    record.schedule = body.schedule
+    record.next_run_at = schedule.next_run(body.schedule)
+    record_event(db, request, user, f"assessment_schedule_{body.schedule}", record.domain)
+    db.commit()
+    return _domain_out(record)
+
+
 @router.post("/domains/{domain_id}/scan", response_model=AssessmentDetail, status_code=201)
 def start_scan(
-    domain_id: uuid.UUID, request: Request, db: Db, user: SessionUser
+    domain_id: uuid.UUID,
+    request: Request,
+    db: Db,
+    user: SessionUser,
+    body: ScanIn | None = None,
 ) -> AssessmentDetail:
+    body = body or ScanIn()
     _require_entitled(user)
+    if body.active_probes and not body.confirm_owner:
+        raise ApiError(
+            422,
+            "confirmation_required",
+            "Active tests send test requests to the site. Confirm that you own it and allow this.",
+        )
     rate_limit.enforce(SCAN_LIMIT, f"user:{user.id}")
     record = _owned_domain(db, user, domain_id)
     if record.verified_at is None:
@@ -284,17 +330,23 @@ def start_scan(
             "monthly_limit",
             f"You have used all {user.assessment_monthly_limit} assessments for this month.",
         )
-    job = Assessment(user_id=user.id, domain_id=record.id, domain=record.domain, status="queued")
+    job = Assessment(
+        user_id=user.id,
+        domain_id=record.id,
+        domain=record.domain,
+        status="queued",
+        active_probes=body.active_probes,
+    )
     db.add(job)
-    record_event(db, request, user, "assessment_started", record.domain)
+    record_event(
+        db,
+        request,
+        user,
+        "assessment_started_active" if body.active_probes else "assessment_started",
+        record.domain,
+    )
     db.commit()
-
-    if get_settings().run_scans_inline:
-        runner.run_assessment(db, job.id)
-    else:
-        from app.workers.tasks import run_assessment_task
-
-        run_assessment_task.delay(str(job.id))
+    schedule.dispatch(db, job.id)
     db.refresh(job)
     return _detail(job)
 

@@ -9,6 +9,7 @@ out, reading only what the server returns.
 from __future__ import annotations
 
 import logging
+import secrets
 import time
 import uuid
 from collections.abc import Callable
@@ -83,6 +84,33 @@ class _Runner:
     def _sleep(self) -> None:
         if self.pause:
             time.sleep(self.pause)
+
+    def run_probes(self, domain: str) -> None:
+        """The opt-in active tests: three GETs to the homepage, nothing more."""
+        token = secrets.token_hex(4)
+        paths = checks.probe_paths(token)
+        self._sleep()
+        reflected = self.fetch(f"https://{domain}{paths['reflection']}")
+        self.pages += 1
+        self._sleep()
+        redirect = self.fetch(f"https://{domain}{paths['redirect']}")
+        self.pages += 1
+        self._sleep()
+        sql = self.fetch(f"https://{domain}{paths['sql']}")
+        self.pages += 1
+        for finding in (
+            checks.check_reflection(token, reflected.status, reflected.body),
+            checks.check_open_redirect(redirect.status, redirect.redirect_location),
+            checks.check_sql_errors(sql.body),
+        ):
+            if finding:
+                self.findings.append(finding)
+        self._check(
+            "active",
+            "Light active tests (XSS reflection, open redirect, database errors)",
+            "completed",
+            "3 requests",
+        )
 
     def run(self, domain: str) -> None:
         https = self.fetch(f"https://{domain}/")
@@ -217,6 +245,8 @@ def run_assessment(
     runner = _Runner(fetch=fetch, resolver=resolver, has_mx=has_mx, dnssec=dnssec)
     try:
         runner.run(job.domain)
+        if job.active_probes:
+            runner.run_probes(job.domain)
     except Exception:  # noqa: BLE001 - a crash must still leave a truthful record
         logger.exception("Assessment %s failed", assessment_id)
         _fail(db, job, "The assessment could not be completed because of an internal error.")

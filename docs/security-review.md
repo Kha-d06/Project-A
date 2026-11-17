@@ -114,6 +114,14 @@ Scope: the API (`services/api`), web app (`apps/web`), browser extension
   - Assessments run in the isolated scan worker, whose DB role is granted only `assessments` and `verified_domains` (plus the existing scan tables) — it still cannot read users, sessions, API keys or audit logs.
   - Each user sees only their own domains and assessments (ownership checks on every endpoint; a cross-account test covers 404s).
   - The report never claims a site is "secure"; the best result is "no issues found by the checks that ran".
+  - Optional active tests (reflection, open redirect, SQL error) run only when the request carries both `active_probes` and `confirm_owner`; otherwise `422`. They are three GETs with harmless markers, never part of scheduled scans, and audited as `assessment_started_active`.
+  - Fixed: `sentinel.run_assessment` was not routed to the `scans` queue, so assessments ran in the full-access task worker. It is now routed to the isolated worker; the regression email runs afterwards as a separate `tasks`-queue job.
+  - Scheduled re-assessments re-check ownership, entitlement and the monthly limit each time, and always advance `next_run_at` so a skipped domain is not retried every hour.
+
+- **Password autofill in the extension.**
+  - The extension reads the encrypted vault (`GET /extension/vault`, linked installations only) and decrypts it in memory with the master password; the master password and decrypted vault are never stored, and the vault locks after 10 minutes idle or on demand.
+  - Filling is click-only from the popup (never on page load), top frame only, `https://` (or localhost) only, logins for the same site or its subdomains only, refused on pages SENTINEL rates dangerous/suspicious or that you or your family blocked, and only into visible fields (a hidden-field trap stays empty in the end-to-end test).
+  - Secret-returning messages are accepted only from the extension's own popup page; content scripts and web pages get "Not allowed".
 
 ## Open items
 

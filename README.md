@@ -152,9 +152,9 @@ python -m app.cli add-brand-reference emiratesnbd emiratesnbd.com https://<the b
 
 **Devices and remote scans.** Link SENTINEL Desktop (and the Android app) to an account with a one-time code. Dashboard → Devices then shows each device's protection status. If the device allows it, you can start a quick, full or folder scan, quarantine what was found, or update signatures from any browser.
 
-**Password manager.** Dashboard → Passwords is an end-to-end encrypted vault. It is encrypted in the browser with a master password the server never sees. It includes a generator, a health report (reused, weak, old and breached passwords) and CSV import/export.
+**Password manager.** Dashboard → Passwords is an end-to-end encrypted vault. It is encrypted in the browser with a master password the server never sees. It includes a generator, a health report (reused, weak, old and breached passwords) and CSV import/export. The browser extension can fill saved logins: unlock the vault in the extension popup with your master password and click **Fill** (only on https sites, only for that site's logins, never on pages SENTINEL flags as dangerous).
 
-**Website security assessment.** An admin-enabled feature (Dashboard → Site assessment) that runs read-only security checks — TLS, security headers, cookie flags, exposed files, SPF/DMARC — against websites the account has **verified it owns**. Ownership is re-checked at scan time, and unverified domains are refused. See [docs/assessment.md](docs/assessment.md).
+**Website security assessment.** An admin-enabled feature (Dashboard → Site assessment) that runs read-only security checks — TLS, security headers, cookie flags, exposed files, SPF/DMARC — against websites the account has **verified it owns**. Ownership is re-checked at scan time, and unverified domains are refused. Scans can repeat weekly or monthly with an email when a site gets worse, reports print or save as PDF, and optional light active tests (XSS reflection, open redirect, database errors) run only when the owner confirms for that scan. See [docs/assessment.md](docs/assessment.md).
 
 **VPN.** An optional self-hosted WireGuard server (`docker compose --profile vpn`). Devices are added from Dashboard → VPN with keys made in the browser. See [docs/vpn.md](docs/vpn.md).
 

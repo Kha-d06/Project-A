@@ -1,18 +1,20 @@
 "use client";
 
-import { Check, ChevronDown, Copy, Globe, Plus, ShieldAlert, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, Copy, FileText, Globe, Plus, ShieldAlert, Trash2, X } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 
 import { PageTitle } from "@/components/dashboard/dashboard-shell";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Field, Input } from "@/components/ui/field";
+import { Field, Input, Select } from "@/components/ui/field";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { useToast } from "@/components/ui/toast";
 import { ApiError, api } from "@/lib/api/client";
 import type {
   AssessedDomain,
   AssessmentDetail,
+  AssessmentSchedule,
   AssessmentStatus,
   AssessmentSummary,
   VerificationInstructions,
@@ -28,7 +30,7 @@ function errorText(error: unknown): string {
   return error instanceof ApiError || error instanceof Error ? error.message : String(error);
 }
 
-const SEVERITY_TONE: Record<string, string> = {
+export const SEVERITY_TONE: Record<string, string> = {
   critical: "border-danger bg-danger-soft text-danger",
   high: "border-danger bg-danger-soft text-danger",
   medium: "border-warning bg-warning-soft text-warning",
@@ -36,7 +38,7 @@ const SEVERITY_TONE: Record<string, string> = {
   info: "border-line bg-surface-sunken text-ink-muted",
 };
 
-const RESULT_TONE: Record<string, string> = {
+export const RESULT_TONE: Record<string, string> = {
   critical: "text-danger",
   high: "text-danger",
   medium: "text-warning",
@@ -122,7 +124,7 @@ function Verification({ instructions, onVerified }: { instructions: Verification
   );
 }
 
-function Findings({ detail }: { detail: AssessmentDetail }) {
+export function Findings({ detail }: { detail: AssessmentDetail }) {
   const a = useAssessText();
   return (
     <div className="space-y-3">
@@ -213,7 +215,11 @@ function AssessmentRow({ item }: { item: AssessmentSummary }) {
       <button type="button" className="flex w-full flex-wrap items-center justify-between gap-2 text-start" onClick={toggle} aria-expanded={open}>
         <span className="min-w-0">
           <span className="font-medium text-ink" dir="ltr">{item.domain}</span>
-          <span className="block text-xs text-ink-faint">{formatDateTime(item.created_at)}</span>
+          <span className="block text-xs text-ink-faint">
+            {formatDateTime(item.created_at)}
+            {item.scheduled && <> · {a.scheduledBadge}</>}
+            {item.active_probes && <> · {a.activeBadge}</>}
+          </span>
         </span>
         <span className="flex items-center gap-2">
           {status === "running" || status === "queued" ? (
@@ -229,8 +235,17 @@ function AssessmentRow({ item }: { item: AssessmentSummary }) {
         </span>
       </button>
       {open && detail && (
-        <div className="mt-3">
+        <div className="mt-3 space-y-3">
           <Findings detail={detail} />
+          {detail.status === "completed" && (
+            <Link
+              href={`/dashboard/assessment/report/${detail.id}`}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline"
+            >
+              <FileText aria-hidden className="size-4" />
+              {a.report}
+            </Link>
+          )}
         </div>
       )}
     </li>
@@ -252,6 +267,10 @@ function DomainCard({
   const notify = useToast();
   const [instructions, setInstructions] = useState<VerificationInstructions | null>(null);
   const [pending, setPending] = useState(false);
+  const [active, setActive] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [schedule, setSchedule] = useState<AssessmentSchedule>(domain.schedule ?? "off");
+  const [nextRun, setNextRun] = useState<string | null>(domain.next_run_at ?? null);
 
   useEffect(() => {
     // When unverified, fetch the token and instructions (re-adding is idempotent).
@@ -284,15 +303,81 @@ function DomainCard({
       />
       <div className="space-y-4 p-5">
         {!domain.verified && instructions && <Verification instructions={instructions} onVerified={onChange} />}
+        {domain.verified && (
+          <div className="space-y-3 rounded-control border border-line p-4">
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1 size-4 accent-[var(--accent)]"
+                checked={active}
+                onChange={(event) => {
+                  setActive(event.target.checked);
+                  if (!event.target.checked) setConfirmed(false);
+                }}
+              />
+              <span>
+                <span className="font-medium text-ink">{a.activeTitle}</span>
+                <span className="block text-ink-muted">{a.activeHow}</span>
+              </span>
+            </label>
+            {active && (
+              <label className="ms-6 flex items-start gap-2 rounded-control border border-warning bg-warning-soft p-3 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  className="mt-1 size-4 accent-[var(--accent)]"
+                  checked={confirmed}
+                  onChange={(event) => setConfirmed(event.target.checked)}
+                />
+                <span>{a.activeConfirm}</span>
+              </label>
+            )}
+          </div>
+        )}
+        {domain.verified && (
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="space-y-1 text-sm">
+              <span className="block font-medium text-ink">{a.scheduleLabel}</span>
+              <Select
+                value={schedule}
+                onChange={async (event) => {
+                  const next = event.target.value as AssessmentSchedule;
+                  try {
+                    const saved = await api.assess.setSchedule(domain.id, next);
+                    setSchedule(saved.schedule);
+                    setNextRun(saved.next_run_at);
+                    notify("success", a.scheduleSaved);
+                  } catch (error) {
+                    notify("error", errorText(error));
+                  }
+                }}
+              >
+                {(["off", "weekly", "monthly"] as const).map((value) => (
+                  <option key={value} value={value}>
+                    {a.schedules[value]}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            <p className="pb-2 text-xs text-ink-muted">
+              {schedule !== "off" && nextRun ? a.nextRun(formatDateTime(nextRun)) : a.scheduleHint}
+            </p>
+          </div>
+        )}
         <div className="flex flex-wrap gap-2">
           {domain.verified && (
             <Button
               pending={pending}
               disabled={!canScan}
               onClick={async () => {
+                if (active && !confirmed) {
+                  notify("error", a.activeNeedsConfirm);
+                  return;
+                }
                 setPending(true);
                 try {
-                  await api.assess.scan(domain.id);
+                  await api.assess.scan(domain.id, { active_probes: active, confirm_owner: active && confirmed });
+                  setActive(false);
+                  setConfirmed(false);
                   onScanned();
                 } catch (error) {
                   notify("error", errorText(error));

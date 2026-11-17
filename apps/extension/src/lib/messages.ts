@@ -19,7 +19,27 @@ export type Request =
   | { type: "refresh-account" }
   | { type: "settings"; changes: Partial<Settings> }
   | { type: "clear-alerts" }
-  | { type: "clear-cache" };
+  | { type: "clear-cache" }
+  | { type: "vault-status"; url?: string }
+  | { type: "vault-unlock"; master: string }
+  | { type: "vault-lock" }
+  | { type: "vault-fill"; tabId: number; url: string; itemId: string }
+  | { type: "vault-secret"; url: string; itemId: string };
+
+export interface VaultLogin {
+  id: string;
+  title: string;
+  username: string;
+}
+
+export interface VaultStatus {
+  linked: boolean;
+  unlocked: boolean;
+  /** Logins saved for the page in the active tab (no passwords). */
+  logins: VaultLogin[];
+  /** Why filling would be refused on this page, if it would. */
+  refusal: "not_https" | "dangerous_site" | null;
+}
 
 export interface Status {
   state: ProtectionState;

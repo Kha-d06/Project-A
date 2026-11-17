@@ -11,7 +11,9 @@ import {
 } from "./lib/blocklist";
 import { clearCache } from "./lib/cache";
 import { initLanguage, language, t } from "./lib/i18n";
-import type { Request, Response, Status } from "./lib/messages";
+import { WrongMasterPassword, type VaultDoc, unlockVault } from "../../web/src/lib/vault";
+import { fillLoginForm, loginsFor, refusal } from "./lib/autofill";
+import type { Request, Response, Status, VaultStatus } from "./lib/messages";
 import { allowForSession, assessDownload, assessUrl, isAllowedForSession } from "./lib/protection";
 import { SEARCH_ORIGINS, loadSettings, saveSettings, type Settings } from "./lib/settings";
 import type { CheckResult, ProtectionState, Verdict } from "./lib/types";
@@ -342,6 +344,58 @@ async function pageSummary(url: string, resourceHosts: string[], settings: Setti
   };
 }
 
+// --- Password vault (autofill) ---------------------------------------------------------
+// The decrypted vault lives only in this worker's memory: never in storage. It is
+// dropped after 10 minutes without use, and whenever the browser stops the worker.
+
+const VAULT_IDLE_MS = 10 * 60 * 1000;
+let vault: { doc: VaultDoc; timer: ReturnType<typeof setTimeout> } | null = null;
+
+function fromPopup(sender: chrome.runtime.MessageSender): boolean {
+  return Boolean(sender.url?.startsWith(chrome.runtime.getURL("popup.html")));
+}
+
+function lockVault() {
+  if (vault) clearTimeout(vault.timer);
+  vault = null;
+}
+
+function touchVault() {
+  if (!vault) return;
+  clearTimeout(vault.timer);
+  vault.timer = setTimeout(lockVault, VAULT_IDLE_MS);
+}
+
+async function vaultStatus(url: string | undefined, settings: Settings): Promise<VaultStatus> {
+  const account = await cachedAccount();
+  if (!account?.linked) return { linked: false, unlocked: false, logins: [], refusal: null };
+  if (!vault || !url) return { linked: true, unlocked: Boolean(vault), logins: [], refusal: null };
+  touchVault();
+  const logins = loginsFor(vault.doc.items, url);
+  const verdict = (await verdictFor(url, settings))?.verdict ?? null;
+  const why = refusal(url, verdict, logins.length);
+  return {
+    linked: true,
+    unlocked: true,
+    logins: logins.map((item) => ({ id: item.id, title: item.title, username: item.username })),
+    refusal: why === "not_https" || why === "dangerous_site" ? why : null,
+  };
+}
+
+/** The login, only if it belongs to this page and the page is safe to fill. */
+async function loginForPage(url: string, itemId: string, settings: Settings) {
+  if (!vault) throw new Error(t().vault.lock);
+  touchVault();
+  const matches = loginsFor(vault.doc.items, url);
+  const verdict = (await verdictFor(url, settings))?.verdict ?? null;
+  const why = refusal(url, verdict, matches.length);
+  if (why === "not_https") throw new Error(t().vault.notHttps);
+  if (why === "dangerous_site") throw new Error(t().vault.dangerous);
+  const item = matches.find((entry) => entry.id === itemId);
+  if (!item) throw new Error(t().vault.none);
+  return item;
+}
+
 // --- Messages from extension pages -----------------------------------------------------
 
 async function handle(request: Request, sender: chrome.runtime.MessageSender): Promise<unknown> {
@@ -461,6 +515,48 @@ async function handle(request: Request, sender: chrome.runtime.MessageSender): P
     case "clear-cache":
       await clearCache();
       return null;
+    case "vault-status":
+      return vaultStatus(request.url, settings);
+    case "vault-lock":
+      lockVault();
+      return null;
+    case "vault-unlock": {
+      const account = await cachedAccount();
+      if (!account?.linked) throw new Error(t().vault.linkFirst);
+      const stored = await api.fetchVault(settings.serverUrl);
+      if (!stored) throw new Error(t().vault.noVault);
+      try {
+        const { doc } = await unlockVault(stored, request.master, stored.user_id);
+        lockVault();
+        vault = { doc, timer: setTimeout(lockVault, VAULT_IDLE_MS) };
+      } catch (error) {
+        if (error instanceof WrongMasterPassword) throw new Error(t().vault.wrong);
+        throw error;
+      }
+      return null;
+    }
+    case "vault-secret": {
+      // Only the extension's own popup may read a password, never a content script.
+      if (!fromPopup(sender)) throw new Error("Not allowed.");
+      const item = await loginForPage(request.url, request.itemId, settings);
+      return { username: item.username, password: item.password };
+    }
+    case "vault-fill": {
+      if (!fromPopup(sender)) throw new Error("Not allowed.");
+      const tab = await chrome.tabs.get(request.tabId);
+      // The tab must still be on the page the popup was showing.
+      if (!tab.url || tab.url !== request.url) throw new Error(t().vault.none);
+      const item = await loginForPage(tab.url, request.itemId, settings);
+      if (!chrome.scripting) throw new Error(t().vault.needPermission);
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId: request.tabId, allFrames: false },
+        func: fillLoginForm,
+        args: [item.username, item.password],
+      });
+      const outcome = result?.result as { filled: boolean } | undefined;
+      if (!outcome?.filled) throw new Error(t().vault.noField);
+      return outcome;
+    }
   }
 }
 

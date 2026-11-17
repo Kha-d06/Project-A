@@ -6,6 +6,7 @@ import type {
   AdminUser,
   AssessedDomain,
   AssessmentDetail,
+  AssessmentSchedule,
   AssessmentStatus,
   VerificationInstructions,
   AuditEntry,
@@ -365,8 +366,13 @@ export const api = {
       request<AssessedDomain>(`/assess/domains/${encodeURIComponent(domainId)}/verify`, { method: "POST" }),
     removeDomain: (domainId: string) =>
       request<void>(`/assess/domains/${encodeURIComponent(domainId)}`, { method: "DELETE" }),
-    scan: (domainId: string) =>
-      request<AssessmentDetail>(`/assess/domains/${encodeURIComponent(domainId)}/scan`, { method: "POST" }),
+    scan: (domainId: string, options: { active_probes?: boolean; confirm_owner?: boolean } = {}) =>
+      request<AssessmentDetail>(`/assess/domains/${encodeURIComponent(domainId)}/scan`, {
+        method: "POST",
+        json: { active_probes: Boolean(options.active_probes), confirm_owner: Boolean(options.confirm_owner) },
+      }),
+    setSchedule: (domainId: string, schedule: AssessmentSchedule) =>
+      request<AssessedDomain>(`/assess/domains/${encodeURIComponent(domainId)}`, { method: "PATCH", json: { schedule } }),
     assessment: (id: string) =>
       request<AssessmentDetail>(`/assess/assessments/${encodeURIComponent(id)}`),
   },

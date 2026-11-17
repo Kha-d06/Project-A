@@ -15,6 +15,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, utcnow
 
 VERIFY_METHODS = ("dns", "file")
+SCHEDULES = ("off", "weekly", "monthly")
 ASSESSMENT_STATUSES = ("queued", "running", "completed", "failed")
 # Worst finding severity seen, used as the headline. Never "secure": the best
 # outcome is "no_issues", meaning nothing was found by the checks that ran.
@@ -33,6 +34,7 @@ class VerifiedDomain(Base):
             name="verify_method_valid",
         ),
         Index("ix_verified_domains_user_domain", "user_id", "domain", unique=True),
+        CheckConstraint(_one_of("schedule", SCHEDULES), name="schedule_valid"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -47,6 +49,10 @@ class VerifiedDomain(Base):
     verified_at: Mapped[datetime | None]
     last_checked_at: Mapped[datetime | None]
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    # Automatic re-assessment: "off", "weekly" or "monthly". The owner is emailed
+    # when a scheduled result is worse than the previous one.
+    schedule: Mapped[str] = mapped_column(String(10), default="off", server_default="off")
+    next_run_at: Mapped[datetime | None]
 
     assessments: Mapped[list["Assessment"]] = relationship(
         back_populates="domain_ref", cascade="all, delete-orphan"
@@ -81,6 +87,9 @@ class Assessment(Base):
     # [{key, label, status, detail}] — every check attempted, findings or not.
     checks: Mapped[list[Any]] = mapped_column(default=list)
     pages_checked: Mapped[int] = mapped_column(Integer, default=0)
+    # Light active tests, run only when the owner confirmed them for this scan.
+    active_probes: Mapped[bool] = mapped_column(default=False, server_default="false")
+    scheduled: Mapped[bool] = mapped_column(default=False, server_default="false")
     error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     started_at: Mapped[datetime | None]

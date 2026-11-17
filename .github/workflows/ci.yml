@@ -159,6 +159,11 @@ jobs:
           npx playwright install --with-deps chromium
           SENTINEL_SERVER=http://localhost:8080 npm run build
           SENTINEL_SERVER=http://localhost:8080 node test/e2e.mjs
+      - name: Password autofill end to end (vault on the site, fill from the extension)
+        working-directory: apps/extension
+        run: |
+          SENTINEL_TEST_BUILD=1 SENTINEL_SERVER=http://localhost:8080 npm run build
+          SENTINEL_SERVER=http://localhost:8080 node test/e2e-autofill.mjs
       - name: Accessibility audit (axe-core, WCAG 2.1 AA, English and Arabic, light and dark)
         working-directory: apps/web
         run: |

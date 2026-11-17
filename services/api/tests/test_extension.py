@@ -229,3 +229,36 @@ def test_cached_checks_follow_new_threat_data(client: TestClient, db: Session) -
     assert check(client, credentials, url)["verdict"] == "no_known_threat"  # served from cache
     seed_feed(db, URLHAUS, [FeedIndicator("url", parse_url(url).normalized, "malware_download")])
     assert check(client, credentials, url)["verdict"] == "dangerous"
+
+
+def test_linked_extension_reads_only_its_own_encrypted_vault(client: TestClient) -> None:
+    import base64
+    import os
+
+    headers = sign_up(client)
+    unlinked = enroll(TestClient(app))
+    assert (
+        client.get(f"{EXT}/vault", headers=bearer(unlinked)).json()["error"]["code"] == "not_linked"
+    )
+
+    code = client.post(f"{EXT}/link-codes", headers=headers).json()["code"]
+    linked = enroll(TestClient(app), link_code=code)
+    assert (
+        client.get(f"{EXT}/vault", headers=bearer(linked)).json()["error"]["code"]
+        == "vault_not_found"
+    )
+
+    stored = {
+        "kdf": {
+            "name": "PBKDF2-SHA256",
+            "iterations": 600_000,
+            "salt": base64.b64encode(os.urandom(16)).decode(),
+        },
+        "wrapped_key": base64.b64encode(os.urandom(60)).decode(),
+        "data": base64.b64encode(os.urandom(1052)).decode(),
+        "expected_version": None,
+    }
+    assert client.put("/api/v1/vault", json=stored, headers=headers).status_code == 200
+    vault = client.get(f"{EXT}/vault", headers=bearer(linked)).json()
+    assert vault["data"] == stored["data"] and vault["wrapped_key"] == stored["wrapped_key"]
+    assert vault["user_id"] == client.get("/api/v1/auth/session").json()["user"]["id"]

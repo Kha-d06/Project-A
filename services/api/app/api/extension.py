@@ -1,8 +1,10 @@
 import secrets
 import uuid
 from datetime import timedelta
+from typing import Any
 
 from fastapi import APIRouter, Request
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -31,6 +33,7 @@ from app.models import (
     GroupMember,
     ThreatIndicator,
     User,
+    Vault,
 )
 from app.models.base import utcnow
 from app.schemas.extension import (
@@ -202,6 +205,41 @@ def extension_settings(installation: CurrentInstallation, db: Db) -> ExtensionSe
         sync_events=bool(user and user.settings.sync_extension_events),
         family_blocklist=sorted(domains)[:2000],
         family_groups=groups,
+    )
+
+
+class ExtensionVault(BaseModel):
+    """The account's encrypted vault for autofill. Ciphertext only: the extension
+    decrypts it locally with the master password, which never leaves the browser."""
+
+    user_id: uuid.UUID
+    kdf: dict[str, Any]
+    wrapped_key: str
+    data: str
+    version: int
+
+
+VAULT_READ_LIMIT = RateLimit("extension-vault", max_requests=120, window_seconds=3600)
+
+
+@router.get("/vault", response_model=ExtensionVault)
+def extension_vault(installation: CurrentInstallation, db: Db) -> ExtensionVault:
+    if installation.user_id is None:
+        raise ApiError(
+            403,
+            "not_linked",
+            "Link this browser to your SENTINEL account to use your passwords here.",
+        )
+    rate_limit.enforce(VAULT_READ_LIMIT, f"installation:{installation.id}")
+    vault = db.get(Vault, installation.user_id)
+    if vault is None:
+        raise ApiError(404, "vault_not_found", "You have not created a password vault yet.")
+    return ExtensionVault(
+        user_id=installation.user_id,
+        kdf=vault.kdf,
+        wrapped_key=vault.wrapped_key,
+        data=vault.data,
+        version=vault.version,
     )
 
 

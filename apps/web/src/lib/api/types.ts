@@ -471,7 +471,11 @@ export interface AssessedDomain {
   verified_method: "dns" | "file" | null;
   verified_at: string | null;
   created_at: string;
+  schedule: AssessmentSchedule;
+  next_run_at: string | null;
 }
+
+export type AssessmentSchedule = "off" | "weekly" | "monthly";
 
 export interface VerificationInstructions {
   domain: AssessedDomain;
@@ -509,6 +513,8 @@ export interface AssessmentSummary {
   summary: string | null;
   finding_count: number;
   pages_checked: number;
+  active_probes: boolean;
+  scheduled: boolean;
   created_at: string;
   finished_at: string | null;
 }

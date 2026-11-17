@@ -1,9 +1,11 @@
 import type { AccountLink } from "../lib/api";
 import { byId, el, relativeTime } from "../lib/dom";
 import { initLanguage, localizeDocument, t } from "../lib/i18n";
-import { ask, type Status } from "../lib/messages";
+import { ask, type Status, type VaultStatus } from "../lib/messages";
 import type { CheckResult } from "../lib/types";
 import { VERDICTS } from "../lib/verdicts";
+
+declare const __TEST_BUILD__: boolean;
 
 function stateText(state: Status["state"]): string {
   const p = t().popup;
@@ -119,6 +121,101 @@ function renderAlerts(status: Status) {
   }
 }
 
+function vaultMessage(text: string, tone: "muted" | "error" = "muted") {
+  return el("p", { class: tone === "error" ? "error" : "muted", role: tone === "error" ? "alert" : "status" }, text);
+}
+
+async function renderVault() {
+  const section = byId("vault");
+  const v = t().vault;
+  const url = activeTab?.url;
+  let state: VaultStatus;
+  try {
+    state = await ask<VaultStatus>({ type: "vault-status", url });
+  } catch {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+  const title = el("h2", { class: "section-title" }, v.title);
+  if (!state.linked) {
+    section.replaceChildren(title, vaultMessage(v.linkFirst));
+    return;
+  }
+  if (!state.unlocked) {
+    const input = el("input", { type: "password", id: "vault-master", autocomplete: "current-password", "aria-label": v.master, placeholder: v.master });
+    const status = el("div", {});
+    const form = el(
+      "form",
+      { class: "row" },
+      input,
+      el("button", { type: "submit", id: "vault-unlock" }, v.unlock),
+    );
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      status.replaceChildren(vaultMessage(v.unlocking));
+      try {
+        await ask({ type: "vault-unlock", master: (input as HTMLInputElement).value });
+        await renderVault();
+      } catch (error) {
+        status.replaceChildren(vaultMessage(error instanceof Error ? error.message : String(error), "error"));
+      }
+    });
+    section.replaceChildren(title, form, status, el("p", { class: "faint" }, v.autoLock));
+    return;
+  }
+  const feedback = el("div", { id: "vault-feedback" });
+  const lock = el("button", { type: "button", class: "ghost", id: "vault-lock" }, v.lock);
+  lock.addEventListener("click", async () => {
+    await ask({ type: "vault-lock" });
+    await renderVault();
+  });
+  const header = el("div", { class: "row spread" }, title, lock);
+  if (state.refusal) {
+    section.replaceChildren(header, vaultMessage(state.refusal === "not_https" ? v.notHttps : v.dangerous, "error"));
+    return;
+  }
+  if (!state.logins.length || !url || activeTab?.id === undefined) {
+    section.replaceChildren(header, vaultMessage(v.none));
+    return;
+  }
+  const tabId = activeTab.id;
+  const list = el("ul", { class: "stack", id: "vault-logins" });
+  for (const login of state.logins) {
+    const fill = el("button", { type: "button", "data-fill": login.id }, v.fill);
+    fill.addEventListener("click", async () => {
+      try {
+        // Filling uses the optional "scripting" permission; ask the first time.
+        const granted = await chrome.permissions.request({ permissions: ["scripting"] });
+        if (!granted) throw new Error(v.needPermission);
+        await ask({ type: "vault-fill", tabId, url, itemId: login.id });
+        feedback.replaceChildren(vaultMessage(v.filled));
+      } catch (error) {
+        feedback.replaceChildren(vaultMessage(error instanceof Error ? error.message : String(error), "error"));
+      }
+    });
+    const copy = el("button", { type: "button", class: "secondary" }, v.copyPassword);
+    copy.addEventListener("click", async () => {
+      try {
+        const secret = await ask<{ password: string }>({ type: "vault-secret", url, itemId: login.id });
+        await navigator.clipboard.writeText(secret.password);
+        feedback.replaceChildren(vaultMessage(v.copied));
+      } catch (error) {
+        feedback.replaceChildren(vaultMessage(error instanceof Error ? error.message : String(error), "error"));
+      }
+    });
+    list.append(
+      el(
+        "li",
+        { class: "row spread" },
+        el("span", { class: "stack" }, el("strong", {}, login.title), el("span", { class: "faint mono" }, login.username)),
+        el("span", { class: "row" }, fill, copy),
+      ),
+    );
+  }
+  section.replaceChildren(header, list, feedback);
+}
+
 function render(status: Status) {
   const toggle = byId<HTMLInputElement>("protection");
   toggle.checked = !status.settings.paused;
@@ -141,6 +238,9 @@ async function main() {
   await initLanguage();
   localizeDocument();
   [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  // Test builds only: open the popup as popup.html?tab=<id> to act on that tab.
+  const testTab = __TEST_BUILD__ ? new URLSearchParams(location.search).get("tab") : null;
+  if (testTab) activeTab = await chrome.tabs.get(Number(testTab));
   // Show "checking" immediately; the first status may wait for a network check.
   byId("page").replaceChildren(el("div", { class: "checking", "aria-hidden": "true" }), el("p", { class: "muted" }, t().popup.checking));
   byId("protection").addEventListener("change", async (event) => {
@@ -158,6 +258,7 @@ async function main() {
   });
   try {
     await refresh();
+    await renderVault();
   } catch (error) {
     byId("page").replaceChildren(el("p", { class: "muted", role: "alert" }, error instanceof Error ? error.message : String(error)));
   }

@@ -470,3 +470,96 @@ def summarise(findings: list[Finding]) -> tuple[str, str]:
         f"Found {len(issues)} issue(s) to review: {', '.join(parts)}. "
         "They are configuration weaknesses on your own site, listed below with how to fix each."
     )
+
+
+# --- Light active tests (opt-in, confirmed per scan) ------------------------------------
+#
+# Three GET requests to the site's own homepage. They send harmless markers, never
+# exploit code, never submit forms or credentials, and change nothing on the site.
+
+REDIRECT_CANARY = "https://sentinel-redirect-test.invalid/"
+_REDIRECT_PARAMS = ("next", "url", "redirect", "return", "returnUrl", "continue")
+_SQL_ERRORS = (
+    "you have an error in your sql syntax",
+    "warning: mysql",
+    "mysql_fetch",
+    "unclosed quotation mark after the character string",
+    "quoted string not properly terminated",
+    "pg_query()",
+    "psycopg2.errors",
+    "sqlstate[",
+    "ora-01756",
+    "ora-00933",
+    "sqlite3.operationalerror",
+    "syntax error at or near",
+)
+
+
+def probe_marker(token: str) -> str:
+    """A marker with characters that must be escaped in HTML. Not script."""
+    return f"sntl{token}\"'<x>"
+
+
+def probe_paths(token: str) -> dict[str, str]:
+    from urllib.parse import quote, urlencode
+
+    marker = probe_marker(token)
+    return {
+        "reflection": "/?" + urlencode({"q": marker, "s": marker, "search": marker}),
+        "redirect": "/?" + urlencode(dict.fromkeys(_REDIRECT_PARAMS, REDIRECT_CANARY)),
+        "sql": f"/?id=1{quote(chr(39))}&q={quote(chr(39))}",
+    }
+
+
+def check_reflection(token: str, status: int | None, body: str) -> Finding | None:
+    if status is None or not body:
+        return None
+    if probe_marker(token) in body:
+        return Finding(
+            "high",
+            "active",
+            "Text from the address is shown on the page without escaping",
+            "SENTINEL put a harmless marker containing < > and quotes in the page address, "
+            "and the page displayed it unchanged. An attacker could put script there instead "
+            "(reflected cross-site scripting) and send the link to your users.",
+            "Escape everything from the URL before writing it into HTML (most templating "
+            "engines do this by default), and add a Content-Security-Policy.",
+            {"marker": f"sntl{token}"},
+        )
+    return None
+
+
+def check_open_redirect(status: int | None, location: str | None) -> Finding | None:
+    if (
+        status in (301, 302, 303, 307, 308)
+        and location
+        and location.startswith(REDIRECT_CANARY.rstrip("/"))
+    ):
+        return Finding(
+            "medium",
+            "active",
+            "The homepage redirects to any address given in the URL",
+            "A link to your own site can send visitors anywhere, which phishing campaigns use "
+            "to make malicious links look trustworthy (an open redirect).",
+            "Only redirect to your own paths, or to an allow-list of addresses.",
+            {"location": location[:200]},
+        )
+    return None
+
+
+def check_sql_errors(body: str) -> Finding | None:
+    lowered = body.lower()
+    hit = next((signature for signature in _SQL_ERRORS if signature in lowered), None)
+    if hit:
+        return Finding(
+            "high",
+            "active",
+            "A database error message is shown to visitors",
+            "Adding a single quote to the address made the page show a database error. That "
+            "usually means input reaches the database without being handled safely (a sign of "
+            "possible SQL injection), and it reveals details about your database.",
+            "Use parameterised queries everywhere, and show a generic error page instead of "
+            "database errors.",
+            {"signature": hit},
+        )
+    return None

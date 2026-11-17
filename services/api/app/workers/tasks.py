@@ -30,6 +30,24 @@ def run_assessment_task(assessment_id: str) -> None:
 
     with get_worker_session_factory()() as db:
         run_assessment(db, uuid.UUID(assessment_id))
+    assessment_finished_task.delay(assessment_id)
+
+
+@celery_app.task(name="sentinel.assessment_finished")  # type: ignore[untyped-decorator]
+def assessment_finished_task(assessment_id: str) -> None:
+    """Runs on the "tasks" queue: compares with the last assessment, emails on regressions."""
+    from app.assess.schedule import after_assessment
+
+    with get_session_factory()() as db:
+        after_assessment(db, uuid.UUID(assessment_id))
+
+
+@celery_app.task(name="sentinel.scheduled_assessments")  # type: ignore[untyped-decorator]
+def scheduled_assessments_task() -> None:
+    from app.assess.schedule import run_due
+
+    with get_session_factory()() as db:
+        run_due(db)
 
 
 @celery_app.task(name="sentinel.sync_feeds")  # type: ignore[untyped-decorator]

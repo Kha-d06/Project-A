@@ -17,12 +17,19 @@ celery_app.conf.update(
     # Scans run in the isolated scan worker; everything that needs full database
     # access (feeds, retention, notifications) runs in the task worker.
     task_default_queue="tasks",
-    task_routes={"sentinel.run_scan": {"queue": "scans"}},
+    task_routes={
+        "sentinel.run_scan": {"queue": "scans"},
+        "sentinel.run_assessment": {"queue": "scans"},
+    },
 )
 
 if settings.feed_sync_enabled:
     celery_app.conf.beat_schedule = {
         "sync-threat-feeds": {"task": "sentinel.sync_feeds", "schedule": crontab(minute=7)},
+        "scheduled-assessments": {
+            "task": "sentinel.scheduled_assessments",
+            "schedule": crontab(minute=19),
+        },
         "purge-expired-data": {"task": "sentinel.purge_expired", "schedule": crontab(minute=37)},
         # Mondays 05:23 UTC: morning in the Gulf.
         "breach-monitoring": {

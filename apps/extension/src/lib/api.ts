@@ -267,3 +267,20 @@ export async function askAssistant(
   if (!response.ok) throw await readError(response);
   return (await response.json()) as { answer: string; model: string };
 }
+
+export interface StoredVaultResponse {
+  user_id: string;
+  kdf: { name: "PBKDF2-SHA256"; iterations: number; salt: string };
+  wrapped_key: string;
+  data: string;
+  version: number;
+}
+
+/** The account's encrypted vault (ciphertext only). Null when none exists. */
+export async function fetchVault(serverUrl: string): Promise<StoredVaultResponse | null> {
+  const response = await authorized(serverUrl, "/extension/vault");
+  if (response.status === 404) return null;
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as StoredVaultResponse;
+}
+

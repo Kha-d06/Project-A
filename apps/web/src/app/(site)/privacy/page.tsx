@@ -87,6 +87,14 @@ export default async function PrivacyPage() {
         </ul>
       </section>
       <section>
+        <h2>VPN</h2>
+        <ul>
+          <li>If this server offers the VPN, each device you add gets a key pair made in your browser. SENTINEL stores only the public key, the device name and its address inside the VPN, never the private key.</li>
+          <li>The VPN server records when each device last connected and how much data it moved, so you can see it on your dashboard. It does not log the sites you visit.</li>
+          <li>A VPN does not make you anonymous: whoever operates this server could see which addresses your devices connect to, as an internet provider can.</li>
+        </ul>
+      </section>
+      <section>
         <h2>Sharing, groups, bots and email</h2>
         <ul>
           <li><strong>Share links</strong> show a read-only copy of one result. What was scanned is hidden unless you choose to include it. Links expire (30 days by default) and you can withdraw them at any time.</li>

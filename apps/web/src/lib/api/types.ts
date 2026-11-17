@@ -432,3 +432,30 @@ export interface Device {
   created_at: string;
   recent_commands: DeviceCommand[];
 }
+
+export interface VpnDevice {
+  id: string;
+  name: string;
+  address: string;
+  created_at: string;
+  last_handshake_at: string | null;
+  connected: boolean;
+  received_bytes: number;
+  sent_bytes: number;
+}
+
+export interface VpnStatus {
+  enabled: boolean;
+  server_online: boolean;
+  max_devices: number;
+  devices: VpnDevice[];
+}
+
+export interface VpnPeerConfig {
+  peer: VpnDevice;
+  address: string;
+  dns: string;
+  server_public_key: string;
+  endpoint: string;
+  allowed_ips: string;
+}

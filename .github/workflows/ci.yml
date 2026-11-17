@@ -132,6 +132,14 @@ jobs:
           set -a; . ./.env; set +a
           ! docker compose exec -T postgres psql "postgresql://sentinel_worker:${WORKER_DB_PASSWORD}@localhost/sentinel" -c 'select count(*) from users'
           docker compose exec -T worker sh -c 'env | grep -q "^SENTINEL_DATABASE_URL=postgresql+psycopg://sentinel_worker:"'
+      - name: VPN sync script
+        run: sh infrastructure/vpn/test/sync-test.sh
+      - name: VPN end to end (WireGuard server, a real handshake from the runner)
+        run: |
+          sudo apt-get install -y wireguard-tools
+          sed -i 's|^SENTINEL_VPN_ENDPOINT=.*|SENTINEL_VPN_ENDPOINT=127.0.0.1:51820|' .env
+          docker compose --profile vpn up -d --build api vpn
+          python3 infrastructure/vpn/test/stack-test.py http://localhost:8080
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -151,7 +159,7 @@ jobs:
           SITE=http://localhost:8080 node test/a11y.mjs
       - name: Logs on failure
         if: failure()
-        run: docker compose logs --tail=200
+        run: docker compose --profile vpn logs --tail=200
 
   # The Android Trusted Web Activity. GitHub's Ubuntu runners include the Android SDK.
   android:

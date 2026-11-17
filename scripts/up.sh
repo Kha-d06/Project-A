@@ -10,7 +10,7 @@ secret() { python3 -c "import secrets; print(secrets.token_urlsafe(48))"; }
 
 if [ ! -f .env ]; then
   cp .env.example .env
-  for name in SENTINEL_SECRET_KEY POSTGRES_PASSWORD WORKER_DB_PASSWORD WORKER_SECRET_KEY; do
+  for name in SENTINEL_SECRET_KEY POSTGRES_PASSWORD WORKER_DB_PASSWORD WORKER_SECRET_KEY SENTINEL_VPN_SYNC_TOKEN; do
     value="$(secret)"
     sed -i.bak "s|^${name}=.*|${name}=${value}|" .env
   done

@@ -150,6 +150,12 @@ It complements, and does not replace, the operating system's own protection. See
 python -m app.cli add-brand-reference emiratesnbd emiratesnbd.com https://<the brand's real sign-in page>
 ```
 
+**Devices and remote scans.** Link SENTINEL Desktop (and the Android app) to an account with a one-time code. Dashboard → Devices then shows each device's protection status. If the device allows it, you can start a quick, full or folder scan, quarantine what was found, or update signatures from any browser.
+
+**Password manager.** Dashboard → Passwords is an end-to-end encrypted vault. It is encrypted in the browser with a master password the server never sees. It includes a generator, a health report (reused, weak, old and breached passwords) and CSV import/export.
+
+**VPN.** An optional self-hosted WireGuard server (`docker compose --profile vpn`). Devices are added from Dashboard → VPN with keys made in the browser. See [docs/vpn.md](docs/vpn.md).
+
 **Android.** `apps/android` is a Trusted Web Activity for Google Play. See [apps/android/README.md](apps/android/README.md).
 
 **Operations.** Backups, restore, upgrades, alerts, capacity and key rotation are covered in [docs/operations.md](docs/operations.md).
@@ -246,6 +252,7 @@ All settings use the `SENTINEL_` prefix. See [`.env.example`](.env.example) and
 | `SENTINEL_HIBP_API_KEY` | no | Have I Been Pwned check of the user's own address. |
 | `SENTINEL_TELEGRAM_*`, `SENTINEL_WHATSAPP_*` | no | Messaging bots; see [docs/integrations.md](docs/integrations.md). |
 | `SENTINEL_INBOUND_EMAIL_TOKEN`, `SENTINEL_INBOUND_EMAIL_ADDRESS` | no | Scan by forwarding an email. |
+| `SENTINEL_VPN_ENDPOINT`, `SENTINEL_VPN_SYNC_TOKEN` | no | Optional WireGuard VPN; see [docs/vpn.md](docs/vpn.md). |
 | `WORKER_SECRET_KEY` | yes | Separate secret for the isolated scan worker. |
 | `SENTINEL_BROWSER_RENDERING` | no | `true` to render pages in the isolated headless browser (image built with `WITH_BROWSER=true`). |
 | `SENTINEL_YARA_RULES_DIR` | no | Extra YARA rule files, subject to their licences. |

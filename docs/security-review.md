@@ -97,6 +97,15 @@ Scope: the API (`services/api`), web app (`apps/web`), browser extension
   - CSV export is exact (no spreadsheet-formula mangling), behind a warning.
   - Known limit: PBKDF2 is the strongest function WebCrypto offers. A memory-hard function (Argon2) would need a WebAssembly dependency.
 
+- **WireGuard VPN.**
+  - Device private keys are made in the browser and never sent. The API validates public keys as 32-byte base64.
+  - The sync endpoint needs a token of at least 32 characters (compared in constant time) and is left out of the OpenAPI schema.
+  - `sync.sh` writes only peers whose key and IPv4 address match strict patterns, so a compromised API response cannot add other directives. A test feeds it injection attempts.
+  - The token is read from a 0600 header file, not passed on the command line.
+  - Firewall rules isolate peers from each other, from the container, and from RFC 1918, CGNAT, link-local, loopback and multicast ranges. That keeps PostgreSQL and Redis out of reach.
+  - IPv6 is routed into the tunnel and dropped to prevent leaks.
+  - CI starts the real container and completes a handshake from the runner.
+
 ## Open items
 
 | Risk | Item | Recommendation |

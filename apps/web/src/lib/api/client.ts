@@ -33,6 +33,8 @@ import type {
   Device,
   DeviceCommand,
   DeviceCommandKind,
+  VpnPeerConfig,
+  VpnStatus,
   Trends,
   Group,
   GroupSharedScan,
@@ -215,6 +217,12 @@ export const api = {
   trends: (days = 30) => request<Trends>("/trends", { query: { days } }),
   breach: {
     email: () => request<BreachResult>("/breach/email"),
+  },
+  vpn: {
+    status: () => request<VpnStatus>("/vpn"),
+    add: (name: string, publicKey: string) =>
+      request<VpnPeerConfig>("/vpn/devices", { method: "POST", json: { name, public_key: publicKey } }),
+    remove: (id: string) => request<void>(`/vpn/devices/${encodeURIComponent(id)}`, { method: "DELETE" }),
   },
   vault: {
     get: () => request<StoredVault & { updated_at: string }>("/vault"),

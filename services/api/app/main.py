@@ -22,6 +22,7 @@ from app.api import (
     trends,
     user,
     vault,
+    vpn,
     webhooks,
 )
 from app.core.config import get_settings
@@ -94,6 +95,7 @@ def create_app() -> FastAPI:
         trends.router,
         devices.router,
         vault.router,
+        vpn.router,
     ):
         app.include_router(router, prefix=API_PREFIX)
     return app

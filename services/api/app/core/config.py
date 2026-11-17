@@ -128,10 +128,23 @@ class Settings(BaseSettings):
     # Vision-capable model for screenshot reading; falls back to openai_model.
     openai_vision_model: str | None = None
 
+    # Self-hosted WireGuard VPN (docker compose --profile vpn). Off until an endpoint is set.
+    # The endpoint is what devices connect to: the server's public name or address and UDP port.
+    vpn_endpoint: str | None = None
+    vpn_subnet: str = "10.13.13.0/24"
+    vpn_dns: str = "1.1.1.1"
+    vpn_max_peers_per_user: int = 5
+    # Shared with the wireguard container, which fetches peers and reports traffic with it.
+    vpn_sync_token: str | None = None
+
     @model_validator(mode="after")
     def _refuse_default_secret_in_production(self) -> "Settings":
         if self.environment == "production" and self.secret_key == DEVELOPMENT_SECRET:
             raise ValueError("SENTINEL_SECRET_KEY must be set to a unique value in production")
+        if self.vpn_endpoint and (not self.vpn_sync_token or len(self.vpn_sync_token) < 32):
+            raise ValueError(
+                "SENTINEL_VPN_SYNC_TOKEN must be at least 32 characters when the VPN is on"
+            )
         if self.environment == "production" and self.rate_limit_multiplier != 1.0:
             raise ValueError("SENTINEL_RATE_LIMIT_MULTIPLIER cannot be used in production")
         return self

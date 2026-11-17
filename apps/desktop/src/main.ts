@@ -20,6 +20,7 @@ import { findClam } from "./engine/clamav";
 import { findSevenZip } from "./engine/formats";
 import { type RansomwareAlert, RansomwareMonitor } from "./engine/ransomware";
 import { isDue, nextSlot } from "./engine/schedule";
+import { type UpdateState, feedUrl, installKind, isNewer, versionFromManifest } from "./engine/updates";
 import {
   type DeviceUse,
   type FirewallStatus,
@@ -76,6 +77,8 @@ let lastStartup: StartupItem[] = [];
 let deviceUses: DeviceUse[] = [];
 const deviceUseLog: { at: string; device: DeviceUse["device"]; app: string }[] = [];
 let privacyTimer: NodeJS.Timeout | null = null;
+let updateState: UpdateState = { state: "idle" };
+const UPDATE_CHECK_MS = 6 * 60 * 60 * 1000;
 
 function send(channel: string, payload: unknown) {
   window?.webContents.send(channel, payload);
@@ -270,6 +273,50 @@ async function runBackup(passwordOverride?: string) {
   }
 }
 
+// --- Updates ---------------------------------------------------------------------
+
+function setUpdateState(next: UpdateState) {
+  updateState = next;
+  send("update-state", next);
+}
+
+async function checkForUpdates(): Promise<UpdateState> {
+  const kind = installKind(process.platform, process.env, app.isPackaged);
+  if (kind === "development") {
+    setUpdateState({ state: "manual", version: app.getVersion(), reason: "development" });
+    return updateState;
+  }
+  setUpdateState({ state: "checking" });
+  if (kind === "deb-rpm") {
+    // Installed by the system package manager: only report that a newer version exists.
+    try {
+      const response = await fetch(`${feedUrl(settings.serverUrl)}/latest-linux.yml`, { signal: AbortSignal.timeout(15_000) });
+      const version = response.ok ? versionFromManifest(await response.text()) : null;
+      if (version && isNewer(version, app.getVersion())) setUpdateState({ state: "manual", version, reason: "package-manager" });
+      else setUpdateState({ state: "none", checkedAt: new Date().toISOString() });
+    } catch (error) {
+      setUpdateState({ state: "error", message: error instanceof Error ? error.message : String(error) });
+    }
+    return updateState;
+  }
+  try {
+    const { autoUpdater } = await import("electron-updater");
+    autoUpdater.setFeedURL({ provider: "generic", url: feedUrl(settings.serverUrl) });
+    autoUpdater.autoDownload = settings.autoUpdate;
+    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.removeAllListeners();
+    autoUpdater.on("update-available", (info) => setUpdateState({ state: "available", version: info.version }));
+    autoUpdater.on("update-not-available", () => setUpdateState({ state: "none", checkedAt: new Date().toISOString() }));
+    autoUpdater.on("download-progress", (p) => setUpdateState({ state: "downloading", percent: Math.round(p.percent) }));
+    autoUpdater.on("update-downloaded", (info) => setUpdateState({ state: "ready", version: info.version }));
+    autoUpdater.on("error", (error) => setUpdateState({ state: "error", message: error.message.slice(0, 300) }));
+    await autoUpdater.checkForUpdates();
+  } catch (error) {
+    setUpdateState({ state: "error", message: error instanceof Error ? error.message : String(error) });
+  }
+  return updateState;
+}
+
 // --- Schedules -------------------------------------------------------------------
 
 async function checkSchedules() {
@@ -382,6 +429,8 @@ async function status() {
     schedule: { nextScan: nextSlot(settings.scanSchedule)?.toISOString() ?? null, nextBackup: nextSlot(settings.backupSchedule)?.toISOString() ?? null },
     backup: { running: backingUp, hasPassword: Boolean(await storedBackupPassword()), keychain: safeStorage.isEncryptionAvailable() },
     privacyWatchSupported: process.platform !== "darwin",
+    update: updateState,
+    installKind: installKind(process.platform, process.env, app.isPackaged),
     platform: process.platform,
     version: app.getVersion(),
     locale: app.getLocale(),
@@ -450,6 +499,12 @@ function registerIpc() {
     await saveSettings(join(dataDir(), "settings.json"), settings);
     await saveAccount(accountFile(), null);
     return status();
+  });
+  ipcMain.handle("update-check", () => checkForUpdates());
+  ipcMain.handle("update-install", async () => {
+    if (updateState.state !== "ready") return;
+    const { autoUpdater } = await import("electron-updater");
+    autoUpdater.quitAndInstall();
   });
   ipcMain.handle("security-check", () => securityCheck());
   ipcMain.handle("startup-acknowledge", async () => {
@@ -635,6 +690,10 @@ async function start() {
   void securityCheck().catch(() => undefined);
   setInterval(() => void checkSchedules(), 60_000).unref();
   setTimeout(() => void checkSchedules(), 15_000).unref();
+  if (app.isPackaged) {
+    setTimeout(() => void checkForUpdates(), 60_000).unref();
+    setInterval(() => void checkForUpdates(), UPDATE_CHECK_MS).unref();
+  }
 }
 
 if (!app.requestSingleInstanceLock()) {

@@ -23,6 +23,7 @@ export function SiteFooter() {
         { href: "/intelligence", label: t.footer.intelligence },
         { href: "/report", label: t.footer.report },
         { href: "/trends", label: t.extra.trends.nav },
+        { href: "/download", label: t.extra.download.nav },
         { href: "/tools/password", label: t.extra.password.nav },
         { href: "/help/scammed", label: t.extra.scammed.nav },
       ],

@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.intel.feeds import FEEDS, parse_sha256_list, parse_urlhaus_csv, sync_feed
+from app.intel.feeds import FEEDS, parse_sha256_list, parse_url_list, parse_urlhaus_csv, sync_feed
 from app.intel.lookup import find_indicators
 from app.models import ThreatIndicator
 from app.models.base import utcnow
@@ -210,3 +210,13 @@ def test_feed_downloads_send_the_abusech_key(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(get_settings(), "urlhaus_auth_key", "abc123")
     assert feeds.download_feed("https://example.org/feed") == "data"
     assert seen == {"Auth-Key": "abc123"}
+
+
+def test_openphish_list_stores_exact_urls_never_hosts() -> None:
+    text = "# comment\nhttps://docs.google.com/forms/d/e/abc/viewform\nnot a url\nhttp://login-paypa1.example.net/x\n\n"
+    indicators = list(parse_url_list(text))
+    assert [i.kind for i in indicators] == ["url", "url"]
+    assert all(i.threat == "phishing" for i in indicators)
+    # The shared host itself is never listed.
+    assert not any(i.value == "docs.google.com" for i in indicators)
+    assert any(f.key == "openphish" for f in FEEDS)

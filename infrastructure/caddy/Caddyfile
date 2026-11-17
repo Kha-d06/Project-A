@@ -8,6 +8,16 @@
 	# the client and sets it to the real client address. The API's per-client rate
 	# limits depend on this, so the web and API containers must only be reachable
 	# through here.
+	# Installers and update feeds for the desktop and Android apps, copied into
+	# ./downloads by scripts/publish-downloads.sh. Served as static files; the
+	# desktop app checks <site>/downloads/desktop/latest*.yml for updates.
+	handle_path /downloads/* {
+		root * /srv/downloads
+		header Cache-Control "no-cache"
+		header X-Content-Type-Options "nosniff"
+		file_server
+	}
+
 	reverse_proxy web:3000
 
 	request_body {

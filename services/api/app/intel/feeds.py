@@ -28,6 +28,7 @@ COMMUNITY = "community"
 URLHAUS = "urlhaus"
 MALWAREBAZAAR = "malwarebazaar"
 THREATFOX = "threatfox"
+OPENPHISH = "openphish"
 # Development-only indicators on reserved domains; see app.cli load-test-fixtures.
 TEST_FIXTURES = "test-fixtures"
 MAX_FEED_BYTES = 80 * 1024 * 1024
@@ -110,6 +111,21 @@ def parse_sha256_list(text: str) -> Iterator[FeedIndicator]:
             yield FeedIndicator("sha256", value, "malware")
 
 
+def parse_url_list(text: str) -> Iterator[FeedIndicator]:
+    """One URL per line (OpenPhish community feed). Only exact URLs are stored, never
+    their hosts: phishing pages often live on shared hosting (cloud storage, form
+    builders), and listing the whole host would block legitimate sites."""
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        try:
+            parsed = parse_url(line)
+        except InvalidUrlError:
+            continue
+        yield FeedIndicator("url", parsed.normalized, "phishing")
+
+
 @dataclass(frozen=True)
 class Feed:
     key: str
@@ -125,6 +141,12 @@ FEEDS = (
         "ThreatFox (abuse.ch)",
         lambda: get_settings().threatfox_feed_url,
         parse_threatfox_csv,
+    ),
+    Feed(
+        OPENPHISH,
+        "OpenPhish community feed",
+        lambda: get_settings().openphish_feed_url,
+        parse_url_list,
     ),
     Feed(
         MALWAREBAZAAR,

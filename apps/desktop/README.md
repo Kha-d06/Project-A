@@ -69,6 +69,31 @@ npm run build && xvfb-run -a node test/e2e.mjs   # end to end in Electron (Linux
 
 Point it at a server with `SENTINEL_SERVER=https://your-sentinel.example npm start`, or in Settings. Data lives in the OS app-data folder; set `SENTINEL_DESKTOP_PROFILE` to use another.
 
+## Installers, Linux packages and updates
+
+```bash
+npm run dist:linux   # AppImage, .deb and .rpm   (rpm needs the rpm tool)
+npm run dist:win     # Windows NSIS installer    (on Windows)
+npm run dist:mac     # macOS .dmg and .zip       (on macOS)
+```
+
+Files land in `release/`. The **Release** GitHub workflow builds all of them on
+the matching operating systems when a `v*` tag is pushed.
+
+**Linux:** the AppImage runs on any 64-bit distribution and updates itself. The
+.deb (Debian, Ubuntu, Mint) and .rpm (Fedora, openSUSE, RHEL) install a menu entry
+and icon and recommend ClamAV and 7-Zip. Their updates come through the package
+manager, so the app only says when a new version exists. All Linux-specific checks
+work: ufw/firewalld firewall state, listening ports from `/proc/net/tcp`, autostart
+entries and systemd user services, camera use from `/dev/video*` and microphone use
+through PipeWire/PulseAudio, Wi-Fi via NetworkManager, and updates via `apt`.
+
+**Updates** come only from your own SENTINEL server
+(`<server>/downloads/desktop/latest*.yml`, published with
+`scripts/publish-downloads.sh`). They are checked every 6 hours and from
+Settings → Updates; electron-updater verifies each download's SHA-512 against
+that manifest. macOS updates need a signed build.
+
 ## Packaging
 
 Installers can be built with electron-builder (`npx electron-builder --win --mac --linux`). Distributing them without security warnings needs the operator's own code-signing certificates: Windows Authenticode and Apple Developer ID with notarisation. That was not possible in this repository.

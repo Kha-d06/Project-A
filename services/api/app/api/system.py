@@ -17,6 +17,7 @@ _FEED_PURPOSE = {
     "urlhaus": "Links known to distribute malware",
     "threatfox": "Malware hosts, links and file fingerprints from many sources",
     "malwarebazaar": "Fingerprints of recently reported malware files",
+    "openphish": "Phishing pages reported in the last few days",
 }
 _NOTHING_SHARED = "Nothing leaves this server during a scan."
 

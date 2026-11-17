@@ -43,6 +43,7 @@ x-api-environment: &api-environment
   SENTINEL_SMTP_PORT: ${SENTINEL_SMTP_PORT:-587}
   SENTINEL_SMTP_USERNAME: ${SENTINEL_SMTP_USERNAME:-}
   SENTINEL_SMTP_PASSWORD: ${SENTINEL_SMTP_PASSWORD:-}
+  SENTINEL_SMTP_STARTTLS: ${SENTINEL_SMTP_STARTTLS:-true}
   SENTINEL_PUBLIC_URL: ${SENTINEL_PUBLIC_URL:-http://localhost:8080}
   SENTINEL_VPN_ENDPOINT: ${SENTINEL_VPN_ENDPOINT:-}
   SENTINEL_VPN_SYNC_TOKEN: ${SENTINEL_VPN_SYNC_TOKEN:-}
@@ -208,6 +209,7 @@ services:
       - "443:443"
     volumes:
       - ./infrastructure/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./downloads:/srv/downloads:ro
       - caddy-data:/data
     depends_on: [web]
 
@@ -234,6 +236,35 @@ services:
       api: { condition: service_healthy }
     restart: unless-stopped
 
+  # Catches every email SENTINEL sends, for local testing: open http://localhost:8025.
+  # Turned on by COMPOSE_PROFILES=devmail (scripts/demo.sh sets it). Never use it in
+  # production: nothing is delivered.
+  mailpit:
+    image: axllent/mailpit:latest
+    profiles: [devmail]
+    ports:
+      - "127.0.0.1:8025:8025"
+    restart: unless-stopped
+
+  # Daily database backups into ./backups (scripts/backup-loop.sh). Turn on with
+  # COMPOSE_PROFILES=backups, and copy ./backups to another machine.
+  backup:
+    image: postgres:16-alpine
+    profiles: [backups]
+    environment:
+      PGHOST: postgres
+      PGUSER: sentinel
+      PGDATABASE: sentinel
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      BACKUP_DAYS: ${BACKUP_DAYS:-14}
+    volumes:
+      - ./backups:/backups
+      - ./scripts/backup-loop.sh:/backup-loop.sh:ro
+    entrypoint: ["sh", "/backup-loop.sh"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: unless-stopped
+
   clamav:
     image: clamav/clamav:stable
     profiles: [clamav]
@@ -251,6 +282,17 @@ services:
     secrets:
       - source: metrics-token
         target: /etc/prometheus/metrics-token
+    depends_on: [api, alertmanager]
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    profiles: [monitoring]
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml", "--storage.path=/alertmanager"]
+    volumes:
+      - ./infrastructure/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    secrets:
+      - source: metrics-token
+        target: /etc/alertmanager/metrics-token
     depends_on: [api]
 
 volumes:

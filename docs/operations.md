@@ -31,6 +31,11 @@ Scale scan capacity with `docker compose up -d --scale worker=3`.
 KEEP=30 ./scripts/backup.sh
 ```
 
+**Automatic daily backups:** add `backups` to `COMPOSE_PROFILES` in `.env` (for
+example `COMPOSE_PROFILES=backups`) and run `docker compose up -d`. The `backup`
+service writes a checked dump to `./backups` every 24 hours and keeps
+`BACKUP_DAYS` days (default 14). Or run the script below from cron.
+
 **Run it daily from cron.** Copy `backups/` to storage on a different machine:
 a backup on the same disk does not survive the disk. The script checks that
 each dump is complete before it rotates old ones out.
@@ -77,8 +82,10 @@ restoring the pre-upgrade backup is the safer rollback.
 Start Prometheus with `docker compose --profile monitoring up -d`; it needs
 `SENTINEL_METRICS_TOKEN` in `.env`. The rules in
 `infrastructure/monitoring/alerts.yml` fire for the situations below.
-Prometheus only evaluates alerts. To be notified, add an Alertmanager with your
-email or chat receiver, or point an uptime service at `/api/v1/system/health`.
+The profile also starts Alertmanager, which sends firing and resolved alerts to
+SENTINEL; SENTINEL emails every administrator using its own mail settings
+(`SENTINEL_SMTP_*`), so email must be configured. You can also point an uptime
+service at `/api/v1/system/health` to learn if the whole server is down.
 
 | Alert | What to do |
 | --- | --- |
@@ -90,6 +97,25 @@ email or chat receiver, or point an uptime service at `/api/v1/system/health`.
 | `ScansFailing` | Check `logs worker` for analyzer errors. Remember that one bad upload can fail on purpose. |
 | `ReportsWaiting` | Ask moderators to review. The admin dashboard shows the workload by age. |
 | `WebhooksFailing` | Usually the receivers are down. If many fail, check outbound network from `tasks`. |
+
+## Releases and app downloads
+
+1. Tag a version: `git tag v0.2.0 && git push origin v0.2.0`. The **Release**
+   workflow builds the Windows installer, macOS disk image, Linux AppImage/.deb/.rpm
+   and the Android APK, and attaches them to a GitHub release with `SHA256SUMS.txt`.
+2. Download the release files and run `./scripts/publish-downloads.sh <folder>`.
+   They are then served at `<site>/downloads/`, listed on `<site>/download`, and
+   the desktop apps update themselves from there.
+
+**Signing.** Without certificates the builds are unsigned: Windows shows a
+SmartScreen warning, macOS asks users to right-click → Open and cannot update
+itself, and Android asks to allow "install unknown apps". To sign, add the
+repository secrets listed at the top of `.github/workflows/release.yml`.
+
+**Email for development.** `scripts/demo.sh` turns on `COMPOSE_PROFILES=devmail`,
+which sends every email to a local Mailpit inbox at `http://localhost:8025`.
+For real delivery set `SENTINEL_EMAIL_BACKEND=smtp` and your provider's
+`SENTINEL_SMTP_*` settings, and remove `devmail` from `COMPOSE_PROFILES`.
 
 ## Load and capacity
 

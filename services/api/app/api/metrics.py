@@ -5,19 +5,24 @@ workers (separate processes) report one consistent picture. Disabled unless
 SENTINEL_METRICS_TOKEN is set; Prometheus must send it as a bearer token.
 """
 
+import contextlib
 import hmac
 from datetime import timedelta
 
 import redis
 from fastapi import APIRouter, Request
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from app.api.deps import Db
+from app.core import rate_limit
 from app.core.config import get_settings
 from app.core.errors import ApiError
+from app.core.rate_limit import RateLimit
 from app.models import CommunityReport, ExtensionInstallation, ScanJob, ThreatSource, User, Webhook
 from app.models.base import utcnow
+from app.notify.email import EmailUnavailableError, email_enabled, send_email
 
 router = APIRouter(tags=["System"])
 
@@ -114,3 +119,60 @@ def metrics(request: Request, db: Db) -> str:
             length = -1
         lines.append(_line("sentinel_queue_length", float(length), {"queue": queue}))
     return "\n".join(lines) + "\n"
+
+
+class _Alert(BaseModel):
+    status: str = Field(max_length=20)
+    labels: dict[str, str] = Field(default_factory=dict)
+    annotations: dict[str, str] = Field(default_factory=dict)
+    startsAt: str | None = Field(default=None, max_length=40)  # noqa: N815 - Alertmanager's name
+
+
+class _AlertBatch(BaseModel):
+    status: str = Field(max_length=20)
+    alerts: list[_Alert] = Field(default_factory=list, max_length=200)
+
+
+ALERT_LIMIT = RateLimit("monitoring-alerts", max_requests=120, window_seconds=3600)
+
+
+@router.post("/system/alerts", status_code=204, include_in_schema=False)
+def receive_alerts(body: _AlertBatch, request: Request, db: Db) -> None:
+    """Alertmanager webhook: emails the administrators about firing or resolved
+    alerts, through SENTINEL's own mail settings. Authenticated with the same
+    bearer token as /system/metrics."""
+    token = get_settings().metrics_token
+    supplied = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    if not token or not hmac.compare_digest(supplied, token):
+        raise ApiError(404, "not_found", "Not Found")
+    rate_limit.enforce(ALERT_LIMIT, "alertmanager")
+    if not body.alerts or not email_enabled():
+        return
+    firing = [a for a in body.alerts if a.status == "firing"]
+    resolved = [a for a in body.alerts if a.status != "firing"]
+    lines: list[str] = []
+    for title, group in (("Firing", firing), ("Resolved", resolved)):
+        if not group:
+            continue
+        lines.append(f"{title}:")
+        for alert in group:
+            name = alert.labels.get("alertname", "alert")[:80]
+            severity = alert.labels.get("severity", "")[:20]
+            summary = (
+                alert.annotations.get("summary") or alert.annotations.get("description") or ""
+            )[:300]
+            lines.append(f"  - {name}{f' ({severity})' if severity else ''}: {summary}")
+        lines.append("")
+    lines.append("What to do for each alert: docs/operations.md, section 'Monitoring and alerts'.")
+    subject = (
+        f"[SENTINEL] {len(firing)} alert(s) firing"
+        if firing
+        else f"[SENTINEL] {len(resolved)} alert(s) resolved"
+    )
+    admins = db.scalars(
+        select(User.email).where(User.role == "admin", User.disabled_at.is_(None))
+    ).all()
+    for address in admins:
+        # One unreachable mailbox must not stop the others.
+        with contextlib.suppress(EmailUnavailableError):
+            send_email(db, address, subject, "\n".join(lines))

@@ -61,11 +61,25 @@ As an administrator you can reach everything:
 | Family & teams | `/dashboard/groups` |
 | Scanners (link, message, file, QR, website, APK, screenshot) | `/dashboard/scan` |
 
+| Download the desktop and Android apps | `/download` |
+| Test inbox (every email SENTINEL sends) | <http://localhost:8025> |
+
 The admin account already has the **site assessment** feature enabled. To turn
 it on for another account, open **Admin → Accounts** and use the **Site
 assessment** toggle in that account's row.
 
-## Run the desktop app on your laptop
+## Install the desktop app from a package
+
+Each CI run uploads a Linux AppImage and .deb (artifact `sentinel-desktop-linux`),
+and tagged releases include Windows and macOS installers too. On Linux:
+
+```bash
+sudo apt install ./SENTINEL-Desktop-0.2.0-amd64.deb     # Debian, Ubuntu, Mint
+sudo dnf install ./SENTINEL-Desktop-0.2.0-x86_64.rpm    # Fedora, openSUSE, RHEL
+chmod +x SENTINEL-Desktop-0.2.0-x86_64.AppImage && ./SENTINEL-Desktop-0.2.0-x86_64.AppImage
+```
+
+## Run the desktop app on your laptop (from source)
 
 You need Node.js 22 or newer from <https://nodejs.org>. With the website running
 (step 3):
@@ -93,7 +107,7 @@ Everything runs with no external accounts. These optional integrations stay off
 until you add a key in `.env` (the file the script created) and restart:
 
 - Live threat feeds beyond the bundled test data, Google Web Risk, VirusTotal, Have I Been Pwned.
-- Sending email (verification, weekly summaries): set `SENTINEL_EMAIL_BACKEND` and SMTP settings.
+- Email is caught by the local test inbox at <http://localhost:8025>. To send real email, set `SENTINEL_SMTP_HOST` and the other `SENTINEL_SMTP_*` settings in `.env`, then `docker compose up -d`.
 - AI explanations: `SENTINEL_OPENAI_API_KEY`.
 - The VPN server: `docker compose --profile vpn up -d` after setting `SENTINEL_VPN_ENDPOINT` and `SENTINEL_VPN_SYNC_TOKEN` (see `docs/vpn.md`).
 

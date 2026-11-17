@@ -13,7 +13,7 @@ from app.core import rate_limit
 from app.core.config import get_settings
 from app.core.errors import ApiError
 from app.core.rate_limit import RateLimit, client_address
-from app.intel.feeds import COMMUNITY, MALWAREBAZAAR, THREATFOX, URLHAUS
+from app.intel.feeds import COMMUNITY, MALWAREBAZAAR, OPENPHISH, THREATFOX, URLHAUS
 from app.intel.lookup import IndicatorMatch, find_by_host, find_indicators
 from app.models import CommunityReport, ThreatIndicator, ThreatSource
 from app.models.base import utcnow
@@ -101,7 +101,7 @@ def lookup_domain(domain: str, request: Request, db: Db) -> LookupResult:
         host,
         "domain",
         find_by_host(db, host),
-        _sources(db, (URLHAUS, THREATFOX, COMMUNITY)),
+        _sources(db, (URLHAUS, THREATFOX, OPENPHISH, COMMUNITY)),
     )
 
 
@@ -119,7 +119,7 @@ def lookup_ip(ip: str, request: Request, db: Db) -> LookupResult:
         query,
         "ip",
         find_by_host(db, query),
-        _sources(db, (URLHAUS, THREATFOX, COMMUNITY)),
+        _sources(db, (URLHAUS, THREATFOX, OPENPHISH, COMMUNITY)),
     )
 
 
@@ -227,4 +227,4 @@ def hash_list(request: Request, db: Db) -> HashList:
 
 @router.get("/sources", response_model=list[SourceFreshness])
 def list_sources(db: Db) -> list[SourceFreshness]:
-    return _sources(db, (URLHAUS, THREATFOX, MALWAREBAZAAR, COMMUNITY))
+    return _sources(db, (URLHAUS, THREATFOX, OPENPHISH, MALWAREBAZAAR, COMMUNITY))

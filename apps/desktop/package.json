@@ -1,6 +1,6 @@
 {
   "name": "@sentinel/desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "SENTINEL Desktop: on-demand and Downloads-folder malware scanning with quarantine",
   "main": "dist/main.js",
@@ -9,13 +9,103 @@
     "start": "npm run build && electron .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "npm run build && node test/e2e.mjs"
+    "test:e2e": "npm run build && node test/e2e.mjs",
+    "dist": "npm run build && electron-builder --publish never",
+    "dist:linux": "npm run build && electron-builder --linux --publish never",
+    "dist:win": "npm run build && electron-builder --win --publish never",
+    "dist:mac": "npm run build && electron-builder --mac --publish never"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
     "electron": "^44.10.1",
+    "electron-builder": "26.18.1",
+    "electron-updater": "6.8.12",
     "esbuild": "^0.28.2",
     "typescript": "^5.9.3",
     "vitest": "^5.1.0"
-  }
+  },
+  "author": {
+    "name": "SENTINEL"
+  },
+  "homepage": "https://github.com/Kha-d06/Project-A",
+  "build": {
+    "appId": "app.sentinel.desktop",
+    "productName": "SENTINEL Desktop",
+    "copyright": "SENTINEL",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json",
+      "!**/*.map"
+    ],
+    "asar": true,
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://sentinel.example.org/downloads/desktop"
+      }
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ],
+      "category": "Security",
+      "icon": "build/icon.png",
+      "synopsis": "Malware scanning, ransomware watch and security checks",
+      "maintainer": "SENTINEL <security@sentinel.example.org>",
+      "desktop": {
+        "entry": {
+          "StartupWMClass": "sentinel-desktop",
+          "Name": "SENTINEL Desktop",
+          "Comment": "Malware scanning and security checks"
+        }
+      },
+      "executableName": "sentinel-desktop",
+      "syncDesktopName": true
+    },
+    "deb": {
+      "depends": [
+        "libnotify4",
+        "libsecret-1-0"
+      ],
+      "recommends": [
+        "clamav",
+        "p7zip-full"
+      ]
+    },
+    "rpm": {
+      "depends": [
+        "libnotify",
+        "libsecret"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.utilities",
+      "icon": "build/icon.png",
+      "hardenedRuntime": true
+    },
+    "executableName": "sentinel-desktop",
+    "artifactName": "SENTINEL-Desktop-${version}-${arch}.${ext}"
+  },
+  "desktopName": "sentinel-desktop.desktop"
 }

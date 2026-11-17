@@ -26,7 +26,20 @@ interface Status {
   backup: { running: boolean; hasPassword: boolean; keychain: boolean };
   privacyWatchSupported: boolean;
   platform: string;
+  version: string;
+  update: UpdateView;
+  installKind: string;
 }
+
+type UpdateView =
+  | { state: "idle" }
+  | { state: "checking" }
+  | { state: "none"; checkedAt: string }
+  | { state: "available"; version: string }
+  | { state: "downloading"; percent: number }
+  | { state: "ready"; version: string }
+  | { state: "manual"; version: string; reason: string }
+  | { state: "error"; message: string };
 
 interface SecurityResult {
   firewall: { state: "on" | "off" | "partial" | "unknown"; detail: string | null; source: string | null };
@@ -392,7 +405,53 @@ function settingsView() {
       ),
     ),
     accountPanel(),
+    appUpdatesPanel(),
   ];
+}
+
+function updateText(update: UpdateView): string {
+  const u = t.updates;
+  switch (update.state) {
+    case "checking": return u.checking;
+    case "none": return u.none(date(update.checkedAt));
+    case "available": return u.available(update.version);
+    case "downloading": return u.downloading(update.percent);
+    case "ready": return u.ready(update.version);
+    case "manual": return update.reason === "development" ? u.development : u.packageManager(update.version);
+    case "error": return u.error(update.message);
+    default: return "";
+  }
+}
+
+function appUpdatesPanel() {
+  const u = t.updates;
+  const s = status.settings;
+  return h(
+    "section",
+    { class: "panel", id: "updates-panel" },
+    h("h2", {}, u.heading),
+    h("p", { class: "muted" }, u.version(status.version)),
+    toggle(u.auto, s.autoUpdate, (value) => change({ autoUpdate: value }), u.autoHint, "auto-update"),
+    h("p", { id: "update-state", "aria-live": "polite" }, updateText(status.update)),
+    h(
+      "div",
+      { class: "row" },
+      h("button", {
+        type: "button",
+        class: "secondary",
+        id: "update-check",
+        disabled: status.update.state === "checking" || status.update.state === "downloading",
+        onclick: async () => {
+          const next = await guard(() => api.updateCheck() as Promise<UpdateView>);
+          if (next) {
+            status = { ...status, update: next };
+            void render();
+          }
+        },
+      }, u.check),
+      status.update.state === "ready" ? h("button", { type: "button", id: "update-install", onclick: () => api.updateInstall() }, u.restart) : null,
+    ),
+  );
 }
 
 function accountPanel() {
@@ -825,6 +884,10 @@ api.on("schedule-ran", () => {
     status = next as Status;
     if (tab === "security") void render();
   });
+});
+api.on("update-state", (payload) => {
+  status = { ...status, update: payload as UpdateView };
+  if (tab === "settings") void render();
 });
 api.on("scan-progress", (payload) => {
   const { scanned, malicious, suspicious } = payload as { scanned: number; malicious: number; suspicious: number };

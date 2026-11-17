@@ -30,9 +30,25 @@ android {
         )
     }
 
+    // Release signing is optional: pass -PsigningStore=<keystore> and set
+    // ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD
+    // (the release workflow does this from repository secrets).
+    val signingStore = project.findProperty("signingStore") as String?
+    if (signingStore != null) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(signingStore)
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (signingStore != null) signingConfig = signingConfigs.getByName("release")
         }
     }
 

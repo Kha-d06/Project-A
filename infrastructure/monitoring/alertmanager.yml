@@ -1,0 +1,19 @@
+# Sends Prometheus alerts to SENTINEL, which emails every administrator through
+# its own mail settings (SENTINEL_SMTP_*). No separate mail credentials needed.
+# The bearer token is SENTINEL_METRICS_TOKEN, passed in by Compose as a file.
+route:
+  receiver: sentinel-admins
+  group_by: ["alertname"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: sentinel-admins
+    webhook_configs:
+      - url: http://api:8000/api/v1/system/alerts
+        send_resolved: true
+        http_config:
+          authorization:
+            type: Bearer
+            credentials_file: /etc/alertmanager/metrics-token

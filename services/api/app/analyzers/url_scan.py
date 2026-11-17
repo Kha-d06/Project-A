@@ -9,7 +9,7 @@ from app.analyzers.types import Check, FindingData, Outcome
 from app.analyzers.url_heuristics import analyze_url_text
 from app.analyzers.urls import InvalidUrlError, ParsedUrl, parse_url
 from app.intel import providers
-from app.intel.feeds import COMMUNITY, THREATFOX, URLHAUS
+from app.intel.feeds import COMMUNITY, OPENPHISH, THREATFOX, URLHAUS
 from app.intel.lookup import IndicatorMatch, find_indicators, fresh_sources
 from app.models.base import utcnow
 
@@ -90,7 +90,7 @@ def _local_feed_check(db: Session, url: ParsedUrl, outcome: Outcome) -> None:
     # Stored indicators are evidence even if the feed is stale, so always look.
     # Whether a miss means anything depends on the feed being fresh.
     outcome.findings += indicator_findings(db, url)
-    sources = fresh_sources(db, (URLHAUS, THREATFOX))
+    sources = fresh_sources(db, (URLHAUS, THREATFOX, OPENPHISH))
     if not sources:
         outcome.checks.append(
             Check(

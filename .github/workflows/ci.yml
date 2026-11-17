@@ -105,6 +105,14 @@ jobs:
           xvfb-run -a node test/e2e.mjs
       - name: Dependency vulnerability scan
         run: npm audit --audit-level=high
+      - name: Package for Linux (AppImage and .deb)
+        run: npx electron-builder --linux AppImage deb --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-desktop-linux
+          path: |
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
 
   # Builds and starts the real Compose stack (Caddy, web, API, scan worker,
   # task worker, scheduler, PostgreSQL, Redis) and checks it end to end,

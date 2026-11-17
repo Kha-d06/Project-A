@@ -249,6 +249,7 @@ def test_admin_overview_and_scan_monitoring_hide_scan_targets(db: Session) -> No
         "URLhaus (abuse.ch)",
         "ThreatFox (abuse.ch)",
         "MalwareBazaar (abuse.ch)",
+        "OpenPhish community feed",
     }
 
     scans = admin.get("/api/v1/admin/scans").json()

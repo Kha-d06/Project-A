@@ -18,6 +18,8 @@ const api = {
   addProtectedFolder: () => ipcRenderer.invoke("add-protected-folder"),
   wifi: () => ipcRenderer.invoke("wifi"),
   updates: () => ipcRenderer.invoke("updates"),
+  updateCheck: () => ipcRenderer.invoke("update-check"),
+  updateInstall: () => ipcRenderer.invoke("update-install"),
   securityCheck: () => ipcRenderer.invoke("security-check"),
   startupAcknowledge: () => ipcRenderer.invoke("startup-acknowledge"),
   scanProgram: (id: string) => ipcRenderer.invoke("scan-program", id),
@@ -30,7 +32,7 @@ const api = {
   accountLink: (code: string) => ipcRenderer.invoke("account-link", code),
   accountUnlink: () => ipcRenderer.invoke("account-unlink"),
   pathOf: (file: File) => webUtils.getPathForFile(file),
-  on: (channel: "scan-result" | "scan-progress" | "ransomware-alert" | "remote-activity" | "device-use" | "backup-progress" | "schedule-ran", listener: (payload: unknown) => void) => {
+  on: (channel: "scan-result" | "scan-progress" | "ransomware-alert" | "remote-activity" | "device-use" | "backup-progress" | "schedule-ran" | "update-state", listener: (payload: unknown) => void) => {
     const wrapped = (_event: unknown, payload: unknown) => listener(payload);
     ipcRenderer.on(channel, wrapped);
     return () => ipcRenderer.removeListener(channel, wrapped);

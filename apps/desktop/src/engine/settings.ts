@@ -32,6 +32,8 @@ export interface DesktopSettings {
   backupKeep: number;
   lastBackup: { at: string; file: string; files: number; bytes: number } | null;
   lastBackupError: string | null;
+  /** Download and install updates from the SENTINEL server automatically. */
+  autoUpdate: boolean;
 }
 
 export function defaultSettings(downloads: string, protectedFolders: string[] = [], deviceName = "This computer"): DesktopSettings {
@@ -58,6 +60,7 @@ export function defaultSettings(downloads: string, protectedFolders: string[] = 
     backupKeep: 5,
     lastBackup: null,
     lastBackupError: null,
+    autoUpdate: true,
   };
 }
 
@@ -98,7 +101,7 @@ export function sanitizeChanges(changes: unknown): Partial<DesktopSettings> {
   if (backup) out.backupSchedule = backup;
   if (input.scheduledScanKind === "quick" || input.scheduledScanKind === "full") out.scheduledScanKind = input.scheduledScanKind;
   if (Number.isInteger(input.backupKeep) && (input.backupKeep as number) >= 1 && (input.backupKeep as number) <= 50) out.backupKeep = input.backupKeep as number;
-  for (const key of ["watchEnabled", "autoQuarantine", "useClamav", "cloudLookup", "ransomwareWatch", "allowRemote", "privacyWatch"] as const) {
+  for (const key of ["watchEnabled", "autoQuarantine", "useClamav", "cloudLookup", "ransomwareWatch", "allowRemote", "privacyWatch", "autoUpdate"] as const) {
     if (typeof input[key] === "boolean") out[key] = input[key];
   }
   if (input.language === "auto" || input.language === "en" || input.language === "ar") out.language = input.language;

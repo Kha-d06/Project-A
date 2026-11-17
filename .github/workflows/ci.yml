@@ -105,3 +105,44 @@ jobs:
           xvfb-run -a node test/e2e.mjs
       - name: Dependency vulnerability scan
         run: npm audit --audit-level=high
+
+  # Builds and starts the real Compose stack (Caddy, web, API, scan worker,
+  # task worker, scheduler, PostgreSQL, Redis) and checks it end to end,
+  # including the browser extension against it.
+  stack:
+    runs-on: ubuntu-latest
+    needs: [api, web, extension]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start the stack
+        run: ./scripts/up.sh --fixtures
+      - name: Scan through Caddy and the isolated scan worker
+        run: |
+          id=$(curl -fsS -X POST http://localhost:8080/api/v1/scans/url \
+            -H 'content-type: application/json' \
+            -d '{"url":"http://malware.example.net/payload.exe"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          for _ in $(seq 1 30); do
+            status=$(curl -fsS "http://localhost:8080/api/v1/scans/$id" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
+            [ "$status" = completed ] || [ "$status" = inconclusive ] && break
+            sleep 2
+          done
+          curl -fsS "http://localhost:8080/api/v1/scans/$id" | python3 -c 'import json,sys; s=json.load(sys.stdin); print(s["status"], s["risk"]); assert s["risk"] == "known_malicious"'
+      - name: The scan worker cannot read accounts
+        run: |
+          set -a; . ./.env; set +a
+          ! docker compose exec -T postgres psql "postgresql://sentinel_worker:${WORKER_DB_PASSWORD}@localhost/sentinel" -c 'select count(*) from users'
+          docker compose exec -T worker sh -c 'env | grep -q "^SENTINEL_DATABASE_URL=postgresql+psycopg://sentinel_worker:"'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Extension end to end against the stack
+        working-directory: apps/extension
+        run: |
+          npm ci
+          npm install --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
+          SENTINEL_SERVER=http://localhost:8080 npm run build
+          SENTINEL_SERVER=http://localhost:8080 node test/e2e.mjs
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --tail=200

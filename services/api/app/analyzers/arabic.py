@@ -417,3 +417,262 @@ def translate_finding(finding: FindingData) -> bool:
 
 def translate_check(check: Check) -> None:
     check.label = CHECK_LABELS_AR.get(check.key, check.label)
+
+
+# --- Check details and limitations ----------------------------------------------------
+# Applied sentence by sentence with re.sub, so composite texts are covered too.
+# Dynamic values (numbers, domains, dates, names) are kept from the English text.
+
+SENTENCES_AR: tuple[tuple[re.Pattern[str], str], ...] = tuple(
+    (re.compile(pattern), replacement)
+    for pattern, replacement in (
+        # Link scans
+        (
+            r"Checked for look-alike domains, brand impersonation and deceptive address tricks\.",
+            "فُحص العنوان بحثًا عن النطاقات المقلِّدة وانتحال العلامات التجارية وحيل العناوين المضللة.",
+        ),
+        (
+            r"Compared against ([\d,]+) indicators, all updated since (.+?) UTC\.",
+            r"قورن بـ\1 مؤشرًا، حُدّثت جميعها منذ \2 بالتوقيت العالمي.",
+        ),
+        (
+            r"No recently synchronised threat feed is available on this server\.",
+            "لا يتوفر على هذا الخادم مصدر معلومات تهديدات مُحدَّث.",
+        ),
+        (
+            r"No recently synchronised malware hash feed is available on this server\.",
+            "لا يتوفر على هذا الخادم مصدر بصمات برمجيات ضارة مُحدَّث.",
+        ),
+        (r"Listed as a malware distribution address\.", "مدرج كعنوان لتوزيع البرمجيات الضارة."),
+        (r"Listed as dangerous\.", "مدرج على أنه خطير."),
+        (r"^Not listed\.$", "غير مدرج."),
+        (r"Followed (\d+) redirects?\.", r"تُتُبّعت \1 عملية إعادة توجيه."),
+        (r"No redirects\.", "لا توجد إعادة توجيه."),
+        (
+            r"Valid certificate issued by (.+?)\. A valid certificate encrypts the connection; it does not show the site is trustworthy\.",
+            r"شهادة صالحة صادرة عن \1. الشهادة الصالحة تشفّر الاتصال، لكنها لا تثبت أن الموقع جدير بالثقة.",
+        ),
+        (r"The site does not use TLS\.", "لا يستخدم الموقع التشفير (TLS)."),
+        (r"(\S+) was registered on (\d{4}-\d{2}-\d{2})\.", r"سُجّل النطاق \1 في \2."),
+        (
+            r"The first logged certificate for (\S+) was issued on (\d{4}-\d{2}-\d{2})\.",
+            r"صدرت أول شهادة مسجّلة للنطاق \1 في \2.",
+        ),
+        (
+            r"No publicly logged certificates were found for this domain\.",
+            "لم يُعثر على شهادات مسجّلة علنًا لهذا النطاق.",
+        ),
+        (r"IP addresses have no history\.", "عناوين IP ليس لها سجل."),
+        (r"IP addresses have no registration\.", "عناوين IP ليس لها تسجيل."),
+        (r"The domain does not exist or has no address\.", "النطاق غير موجود أو ليس له عنوان."),
+        (
+            r"The site's security certificate could not be verified\.",
+            "تعذّر التحقق من شهادة أمان الموقع.",
+        ),
+        (r"The site did not respond\.", "لم يستجب الموقع."),
+        (r"The site took too long to respond\.", "استغرق الموقع وقتًا طويلًا للرد."),
+        (r"The link redirects in a loop\.", "يعيد الرابط التوجيه في حلقة مفرغة."),
+        (
+            r"The link redirects more times than we follow\.",
+            "يعيد الرابط التوجيه مرات أكثر مما نتتبّعه.",
+        ),
+        (
+            r"The link leads to a private or internal network address\.",
+            "يؤدي الرابط إلى عنوان شبكة خاصة أو داخلية.",
+        ),
+        (
+            r"The link redirects to something that is not a web page\.",
+            "يعيد الرابط التوجيه إلى شيء ليس صفحة ويب.",
+        ),
+        (r"The destination could not be reached\.", "تعذّر الوصول إلى الوجهة."),
+        (
+            r"We could not reach the destination, so redirects were not fully checked\.",
+            "تعذّر الوصول إلى الوجهة، لذا لم تُفحص إعادة التوجيه بالكامل.",
+        ),
+        (
+            r"Page content was not downloaded or inspected\. This scan looks at the address, its reputation, where it redirects and how it is registered\. Use the website analyzer to inspect the page itself\.",
+            "لم يُنزَّل محتوى الصفحة ولم يُفحص. يفحص هذا الفحص العنوان وسمعته ووجهة إعادة توجيهه وتسجيله. استخدم محلل المواقع لفحص الصفحة نفسها.",
+        ),
+        # Provider availability
+        (
+            r"(.+?) needs an API key, which is not configured\.",
+            r"تحتاج خدمة \1 إلى مفتاح API غير مُعدّ على هذا الخادم.",
+        ),
+        (
+            r"Live URLhaus lookups need a free abuse\.ch Auth-Key, which is not configured\.",
+            "يتطلب البحث المباشر في URLhaus مفتاح abuse.ch مجانيًا غير مُعدّ.",
+        ),
+        (r"The registry lookup did not answer \((\w+)\)\.", r"لم يُجب سجل النطاقات (\1)."),
+        (r"(\S+) did not answer \((\w+)\)\.", r"لم تُجب خدمة \1 (\2)."),
+        (r"The DNS lookup did not answer\.", "لم يُجب استعلام DNS."),
+        # Website scans
+        (
+            r"Read (\d+) KB of HTML and inspected its forms, scripts and frames without running anything\.",
+            r"قُرئ \1 كيلوبايت من HTML وفُحصت النماذج والنصوص البرمجية والإطارات دون تشغيل أي شيء.",
+        ),
+        (r"Looked up (.+?) records for (\S+)\.", r"بُحث عن سجلات \1 للنطاق \2."),
+        (
+            r"This domain publishes no SPF or DMARC policy\.",
+            "لا ينشر هذا النطاق سياسة SPF أو DMARC.",
+        ),
+        (
+            r"SPF or DMARC is published, but forged mail is not rejected\.",
+            "سياسة SPF أو DMARC منشورة، لكن البريد المزوّر لا يُرفض.",
+        ),
+        (
+            r"SPF and an enforcing DMARC policy are published\.",
+            "سياسة SPF وسياسة DMARC صارمة منشورتان.",
+        ),
+        (r"The destination did not return an HTML page\.", "لم تُرجع الوجهة صفحة HTML."),
+        (r"The page itself was not inspected\.", "لم تُفحص الصفحة نفسها."),
+        (r"Only the first 2 MB of the page were inspected\.", "فُحص أول 2 ميغابايت فقط من الصفحة."),
+        (
+            r"The page was read as text; scripts were not run, so content that a script would load or change was not seen\.",
+            "قُرئت الصفحة كنص دون تشغيل النصوص البرمجية، لذا لم يُرَ المحتوى الذي تحمّله أو تغيّره.",
+        ),
+        (r"Isolated browser inspection is not enabled\.", "الفحص بالمتصفح المعزول غير مفعّل."),
+        (
+            r"The page loaded more resources than the isolated browser allows, so it was only partly rendered\.",
+            "حمّلت الصفحة موارد أكثر مما يسمح به المتصفح المعزول، فعُرضت جزئيًا فقط.",
+        ),
+        (
+            r"Opened the page in an isolated browser with no access to private networks and inspected it after scripts ran \((\d+) resources loaded(?:, (\d+) requests refused)?\)\.",
+            r"فُتحت الصفحة في متصفح معزول لا يصل إلى الشبكات الخاصة وفُحصت بعد تشغيل نصوصها البرمجية (حُمّل \1 موردًا).",
+        ),
+        # Messages
+        (
+            r"Compared the text against (\d+) manipulation patterns in English and Arabic\.",
+            r"قورن النص بـ\1 نمطًا من أساليب التلاعب بالعربية والإنجليزية.",
+        ),
+        (
+            r"Inspected the address of (\d+) links? without opening (?:it|them)\.",
+            r"فُحص عنوان \1 رابط دون فتحه.",
+        ),
+        (
+            r"Compared the links against the local threat feed\.",
+            "قورنت الروابط بمصدر التهديدات المحلي.",
+        ),
+        (
+            r"Links in the message were not opened\. Run a link scan on any of them to check redirects, certificates and domain age\.",
+            "لم تُفتح الروابط الموجودة في الرسالة. افحص أيًّا منها بفاحص الروابط للتحقق من إعادة التوجيه والشهادات وعمر النطاق.",
+        ),
+        (
+            r"The message contains (\d+) links; only the first (\d+) were inspected\.",
+            r"تحتوي الرسالة على \1 رابطًا؛ فُحص أول \2 منها فقط.",
+        ),
+        (
+            r"This analysis recognises common scam wording\. A well-written or unusual scam may not match any pattern, and a genuine message can occasionally match one\.",
+            "يتعرف هذا التحليل على صياغات الاحتيال الشائعة. قد لا تطابق رسالة احتيال متقنة أو غير مألوفة أي نمط، وقد تطابق رسالة حقيقية أحيانًا أحد الأنماط.",
+        ),
+        (
+            r"The model's view: (.+?)\. Links, emails and numbers were masked before sending\.",
+            r"رأي النموذج: \1. أُخفيت الروابط وعناوين البريد والأرقام قبل الإرسال.",
+        ),
+        # Files
+        (r"Identified from its content as an? (.+?)\.", r"حُدّد نوعه من محتواه: \1."),
+        (
+            r"Looked for disguised file types, macros, risky archive contents and, for Windows programs, their capabilities\.",
+            "بُحث عن أنواع الملفات المتنكرة ووحدات الماكرو ومحتويات الأرشيف الخطرة، وقدرات برامج ويندوز.",
+        ),
+        (
+            r"Compared the SHA-256 fingerprint against ([\d,]+) recently reported samples\. Only recent samples are covered\.",
+            r"قورنت بصمة SHA-256 بـ\1 عينة مُبلغ عنها حديثًا. تغطي المقارنة العينات الحديثة فقط.",
+        ),
+        (r"No signature matched\.", "لم يطابق أي توقيع."),
+        (r"Detected: (.+?)\.$", r"اكتُشف: \1."),
+        (
+            r"Matched against (\d+) rules(.*?): none matched\.",
+            r"قورن بـ\1 قاعدة: لم تطابق أي قاعدة.",
+        ),
+        (r"Matched against (\d+) rules(.*?): (\d+) matched\.", r"قورن بـ\1 قاعدة: طابقت \3 منها."),
+        (
+            r"Known to VirusTotal: (\d+) of (\d+) engines flag it\.",
+            r"معروف لدى VirusTotal: \1 من أصل \2 محركًا يصنّفه ضارًا.",
+        ),
+        (
+            r"VirusTotal has never seen this file\. That is common for personal documents and new files; it says nothing about safety\.",
+            "لم يرَ VirusTotal هذا الملف من قبل، وهذا شائع في المستندات الشخصية والملفات الجديدة، ولا يدل على أنه آمن.",
+        ),
+        (
+            r"This is static analysis: the file was inspected, never opened or run\. Behaviour that only shows when a file executes cannot be detected this way\.",
+            "هذا تحليل ثابت: فُحص الملف دون فتحه أو تشغيله، ولا يمكن بهذه الطريقة اكتشاف سلوك لا يظهر إلا عند التشغيل.",
+        ),
+        (
+            r"Only the first (\d+) MB of the file were searched for suspicious content\.",
+            r"بُحث عن المحتوى المريب في أول \1 ميغابايت فقط من الملف.",
+        ),
+        (
+            r"Encrypted archive entries could not be inspected\.",
+            "تعذّر فحص محتويات الأرشيف المشفّرة.",
+        ),
+        (
+            r"The archive is damaged and its contents could not be listed\.",
+            "الأرشيف تالف وتعذّر عرض محتوياته.",
+        ),
+        (
+            r"Only part of the archive's contents was inspected because of size limits\.",
+            "فُحص جزء فقط من محتويات الأرشيف بسبب حدود الحجم.",
+        ),
+        (
+            r"The archive holds ([\d,]+) entries; only the first ([\d,]+) were listed\.",
+            r"يحتوي الأرشيف على \1 عنصرًا؛ عُرض أول \2 منها فقط.",
+        ),
+        # QR and apps
+        (r"Decoded the code\.", "فُكّ الرمز."),
+        (
+            r"The image contains (\d+) codes; the first was checked\.",
+            r"تحتوي الصورة على \1 رموز؛ فُحص أولها.",
+        ),
+        (
+            r"No QR code could be read\. Try a sharper, well-lit photo showing the whole code\.",
+            "تعذّرت قراءة رمز QR. جرّب صورة أوضح وجيدة الإضاءة تُظهر الرمز كاملًا.",
+        ),
+        (
+            r"No QR code was found in the image, so nothing was checked\.",
+            "لم يُعثر على رمز QR في الصورة، لذا لم يُفحص شيء.",
+        ),
+        (
+            r"The QR code's content was checked; who created or placed the code cannot be verified\.",
+            "فُحص محتوى رمز QR، لكن لا يمكن التحقق ممن أنشأه أو وضعه.",
+        ),
+        (
+            r"The linked page's content was not inspected\. Use the website analyzer for that\.",
+            "لم يُفحص محتوى الصفحة المرتبطة. استخدم محلل المواقع لذلك.",
+        ),
+        (r"This is not an Android app package \(APK\)\.", "هذا ليس حزمة تطبيق أندرويد (APK)."),
+        (r"The manifest could not be read\.", "تعذّرت قراءة ملف بيان التطبيق."),
+        (
+            r"Read the manifest: (\d+) permissions, (\d+) components\.",
+            r"قُرئ ملف البيان: \1 إذنًا و\2 مكوّنًا.",
+        ),
+        (
+            r"Found (\d+) web address host\(s\) and (\d+) known SDK\(s\) in the code\.",
+            r"عُثر في الشيفرة على \1 مضيف ويب و\2 حزمة تطوير معروفة.",
+        ),
+        (
+            r"This is static analysis: the app was not installed or run, so behaviour that only appears at runtime \(for example code downloaded later\) cannot be seen\.",
+            "هذا تحليل ثابت: لم يُثبَّت التطبيق ولم يُشغَّل، لذا لا يمكن رؤية السلوك الذي يظهر أثناء التشغيل فقط (مثل شيفرة تُنزَّل لاحقًا).",
+        ),
+        (
+            r"Use the file scanner for files that are not Android apps\.",
+            "استخدم فاحص الملفات للملفات التي ليست تطبيقات أندرويد.",
+        ),
+    )
+)
+
+_LATIN_WORD = re.compile(r"[A-Za-z]{3,}")
+
+
+def translate_text(text: str) -> str:
+    for pattern, replacement in SENTENCES_AR:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+def mostly_translated(text: str) -> bool:
+    """True when what is left in Latin letters is names, not sentences."""
+    return len(_LATIN_WORD.findall(text)) <= 4
+
+
+def translate_check_detail(check: Check) -> None:
+    check.detail = translate_text(check.detail)

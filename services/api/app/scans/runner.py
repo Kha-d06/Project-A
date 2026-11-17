@@ -7,7 +7,13 @@ from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.orm import Session
 
 from app.analyzers.apk_scan import analyze_apk
-from app.analyzers.arabic import translate_check, translate_finding
+from app.analyzers.arabic import (
+    mostly_translated,
+    translate_check,
+    translate_check_detail,
+    translate_finding,
+    translate_text,
+)
 from app.analyzers.file_scan import analyze_file
 from app.analyzers.message_scan import analyze_message
 from app.analyzers.qr_scan import analyze_qr
@@ -59,6 +65,11 @@ def _arabic(outcome: Outcome) -> None:
             untranslated += 1
     for check in outcome.checks:
         translate_check(check)
+        translate_check_detail(check)
+        if not mostly_translated(check.detail):
+            untranslated += 1
+    outcome.limitations = [translate_text(item) for item in outcome.limitations]
+    untranslated += sum(1 for item in outcome.limitations if not mostly_translated(item))
     outcome.details["findings_language"] = "ar" if untranslated == 0 else "mixed"
 
 

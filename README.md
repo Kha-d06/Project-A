@@ -168,7 +168,9 @@ docs/                     Architecture, security and design notes; the original 
 ### With Docker Compose
 
 ```bash
-cp .env.example .env     # set SENTINEL_SECRET_KEY and POSTGRES_PASSWORD
+./scripts/up.sh          # creates .env with random secrets the first time, builds, starts and waits
+# or by hand:
+cp .env.example .env     # set SENTINEL_SECRET_KEY, POSTGRES_PASSWORD, WORKER_DB_PASSWORD, WORKER_SECRET_KEY
 docker compose up --build
 # optional: add ClamAV (needs about 1 GB of RAM and a few minutes to load signatures)
 #   set SENTINEL_CLAMAV_HOST=clamav in .env, then: docker compose --profile clamav up --build

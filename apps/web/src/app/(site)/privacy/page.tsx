@@ -88,6 +88,14 @@ export default async function PrivacyPage() {
         </ul>
       </section>
       <section>
+        <h2>Website security assessment</h2>
+        <ul>
+          <li>This feature works only on domains you have proven you own, by a DNS record or a file on the site. SENTINEL re-checks that proof before every scan and refuses any domain you have not verified.</li>
+          <li>The checks are read-only: SENTINEL requests pages from your own site the way any visitor would, and records the findings (missing security headers, exposed files, and so on). It does not attack your site or store its content.</li>
+          <li>Only an administrator can turn this feature on for an account.</li>
+        </ul>
+      </section>
+      <section>
         <h2>VPN</h2>
         <ul>
           <li>If this server offers the VPN, each device you add gets a key pair made in your browser. SENTINEL stores only the public key, the device name and its address inside the VPN, never the private key.</li>

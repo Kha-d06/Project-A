@@ -6,6 +6,7 @@ from app.api import (
     account,
     admin,
     api_keys,
+    assess,
     auth,
     breach,
     channels,
@@ -96,6 +97,7 @@ def create_app() -> FastAPI:
         devices.router,
         vault.router,
         vpn.router,
+        assess.router,
     ):
         app.include_router(router, prefix=API_PREFIX)
     return app

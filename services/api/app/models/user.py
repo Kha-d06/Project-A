@@ -23,6 +23,15 @@ class User(Base):
     # Authenticator-app secret, encrypted with a key derived from SENTINEL_SECRET_KEY.
     totp_secret_encrypted: Mapped[str | None] = mapped_column(String(255))
     totp_enabled_at: Mapped[datetime | None]
+    # Security-assessment (owned-site scanning) entitlement, granted by an admin.
+    # Null means the feature is off for this account.
+    assessment_enabled_at: Mapped[datetime | None]
+    assessment_domain_limit: Mapped[int] = mapped_column(default=3)
+    assessment_monthly_limit: Mapped[int] = mapped_column(default=20)
+
+    @property
+    def assessment_enabled(self) -> bool:
+        return self.assessment_enabled_at is not None
 
     settings: Mapped["UserSettings"] = relationship(
         back_populates="user", cascade="all, delete-orphan", uselist=False

@@ -23,6 +23,15 @@ def scan_finished_task(scan_id: str) -> None:
         after_scan(db, uuid.UUID(scan_id))
 
 
+@celery_app.task(name="sentinel.run_assessment")  # type: ignore[untyped-decorator]
+def run_assessment_task(assessment_id: str) -> None:
+    """Runs on the "scans" queue, in the isolated scan worker."""
+    from app.assess.runner import run_assessment
+
+    with get_worker_session_factory()() as db:
+        run_assessment(db, uuid.UUID(assessment_id))
+
+
 @celery_app.task(name="sentinel.sync_feeds")  # type: ignore[untyped-decorator]
 def sync_feeds_task() -> None:
     with get_session_factory()() as db:

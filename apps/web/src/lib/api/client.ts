@@ -4,6 +4,10 @@ import type {
   AdminOverview,
   AdminScan,
   AdminUser,
+  AssessedDomain,
+  AssessmentDetail,
+  AssessmentStatus,
+  VerificationInstructions,
   AuditEntry,
   CommunityReport,
   LookupResult,
@@ -353,12 +357,33 @@ export const api = {
       request<CommunityReport>(`/admin/reports/${encodeURIComponent(id)}/review`, { method: "POST", json: body }),
   },
   adminStats: (days = 30) => request<AdminStats>("/admin/stats", { query: { days } }),
+  assess: {
+    status: () => request<AssessmentStatus>("/assess"),
+    addDomain: (domain: string) =>
+      request<VerificationInstructions>("/assess/domains", { method: "POST", json: { domain } }),
+    verify: (domainId: string) =>
+      request<AssessedDomain>(`/assess/domains/${encodeURIComponent(domainId)}/verify`, { method: "POST" }),
+    removeDomain: (domainId: string) =>
+      request<void>(`/assess/domains/${encodeURIComponent(domainId)}`, { method: "DELETE" }),
+    scan: (domainId: string) =>
+      request<AssessmentDetail>(`/assess/domains/${encodeURIComponent(domainId)}/scan`, { method: "POST" }),
+    assessment: (id: string) =>
+      request<AssessmentDetail>(`/assess/assessments/${encodeURIComponent(id)}`),
+  },
   admin: {
     overview: () => request<AdminOverview>("/admin/overview"),
     users: (query?: string, page = 1) =>
       request<{ items: AdminUser[]; total: number }>("/admin/users", { query: { query, page } }),
-    updateUser: (id: string, body: { role?: AdminUser["role"]; disabled?: boolean }) =>
-      request<AdminUser>(`/admin/users/${encodeURIComponent(id)}`, { method: "PATCH", json: body }),
+    updateUser: (
+      id: string,
+      body: {
+        role?: AdminUser["role"];
+        disabled?: boolean;
+        assessment_enabled?: boolean;
+        assessment_domain_limit?: number;
+        assessment_monthly_limit?: number;
+      },
+    ) => request<AdminUser>(`/admin/users/${encodeURIComponent(id)}`, { method: "PATCH", json: body }),
     scans: (status?: string) => request<AdminScan[]>("/admin/scans", { query: { status } }),
     audit: (page = 1) =>
       request<{ items: AuditEntry[]; total: number; page: number }>("/admin/audit", { query: { page } }),

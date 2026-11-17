@@ -130,7 +130,10 @@ function Users() {
 
   useEffect(load, [load]);
 
-  const update = async (user: AdminUser, body: { role?: AdminUser["role"]; disabled?: boolean }) => {
+  const update = async (
+    user: AdminUser,
+    body: { role?: AdminUser["role"]; disabled?: boolean; assessment_enabled?: boolean },
+  ) => {
     try {
       await api.admin.updateUser(user.id, body);
       notify("success", s.userUpdated(user.email));
@@ -167,6 +170,7 @@ function Users() {
               <th scope="col" className="px-3 py-2 text-start font-medium">{s.joined}</th>
               <th scope="col" className="px-3 py-2 text-start font-medium">{s.scans}</th>
               <th scope="col" className="px-3 py-2 text-start font-medium">{s.role}</th>
+              <th scope="col" className="px-3 py-2 text-start font-medium">{s.assessment}</th>
               <th scope="col" className="px-5 py-2 text-start font-medium">{s.access}</th>
             </tr>
           </thead>
@@ -187,6 +191,17 @@ function Users() {
                     <option value="moderator">{s.roles.moderator}</option>
                     <option value="admin">{s.roles.admin}</option>
                   </Select>
+                </td>
+                <td className="px-3 py-2.5">
+                  <Button
+                    size="sm"
+                    variant={user.assessment_enabled ? "secondary" : "ghost"}
+                    aria-label={s.assessmentFor(user.email)}
+                    aria-pressed={user.assessment_enabled}
+                    onClick={() => update(user, { assessment_enabled: !user.assessment_enabled })}
+                  >
+                    {user.assessment_enabled ? s.assessmentOn : s.assessmentOff}
+                  </Button>
                 </td>
                 <td className="px-5 py-2.5">
                   <Button size="sm" variant={user.disabled ? "secondary" : "danger"} onClick={() => update(user, { disabled: !user.disabled })}>

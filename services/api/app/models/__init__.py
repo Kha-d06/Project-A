@@ -1,5 +1,6 @@
 from app.models.account import AccountToken, BackupCode, OutboxEmail
 from app.models.api_key import ApiKey
+from app.models.assessment import Assessment, VerifiedDomain
 from app.models.audit import AuditEvent
 from app.models.base import Base
 from app.models.community import CommunityReport
@@ -18,6 +19,8 @@ __all__ = [
     "BackupCode",
     "OutboxEmail",
     "ApiKey",
+    "Assessment",
+    "VerifiedDomain",
     "AuditEvent",
     "Base",
     "CommunityReport",

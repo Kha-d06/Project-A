@@ -24,3 +24,9 @@ GRANT USAGE ON SCHEMA public TO sentinel_worker;
 GRANT SELECT, UPDATE ON scan_jobs TO sentinel_worker;
 GRANT SELECT, INSERT, DELETE ON findings TO sentinel_worker;
 GRANT SELECT ON threat_indicators, threat_sources TO sentinel_worker;
+
+-- Security assessments of owned domains also run in the isolated worker: it
+-- re-checks ownership and writes findings about the owner's own site. It still
+-- cannot read users, sessions, API keys or audit logs.
+GRANT SELECT, UPDATE ON assessments TO sentinel_worker;
+GRANT SELECT, UPDATE ON verified_domains TO sentinel_worker;

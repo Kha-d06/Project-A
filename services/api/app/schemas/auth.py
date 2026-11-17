@@ -37,6 +37,8 @@ class UserOut(BaseModel):
     role: str
     created_at: datetime
     email_verified_at: datetime | None = None
+    # Whether an admin has enabled the security-assessment feature for this account.
+    assessment_enabled: bool = False
 
 
 class SessionOut(BaseModel):

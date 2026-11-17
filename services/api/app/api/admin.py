@@ -131,6 +131,21 @@ def overview(db: Db, admin: AdminUser) -> AdminOverview:
     )
 
 
+def _admin_user_out(user: User, scans: int) -> AdminUserOut:
+    return AdminUserOut(
+        id=user.id,
+        email=user.email,
+        display_name=user.display_name,
+        role=user.role,
+        created_at=user.created_at,
+        disabled=user.disabled_at is not None,
+        scans=scans,
+        assessment_enabled=user.assessment_enabled_at is not None,
+        assessment_domain_limit=user.assessment_domain_limit,
+        assessment_monthly_limit=user.assessment_monthly_limit,
+    )
+
+
 @router.get("/users", response_model=AdminUserPage)
 def list_users(
     db: Db,
@@ -152,18 +167,7 @@ def list_users(
         .limit(page_size)
     ).all()
     return AdminUserPage(
-        items=[
-            AdminUserOut(
-                id=user.id,
-                email=user.email,
-                display_name=user.display_name,
-                role=user.role,
-                created_at=user.created_at,
-                disabled=user.disabled_at is not None,
-                scans=count,
-            )
-            for user, count in rows
-        ],
+        items=[_admin_user_out(user, count) for user, count in rows],
         total=db.scalar(select(func.count()).select_from(User).where(*conditions)) or 0,
     )
 
@@ -195,19 +199,26 @@ def update_user(
             "admin_account_disabled" if body.disabled else "admin_account_enabled",
             user.email,
         )
+    if body.assessment_enabled is not None and body.assessment_enabled != (
+        user.assessment_enabled_at is not None
+    ):
+        user.assessment_enabled_at = utcnow() if body.assessment_enabled else None
+        record_event(
+            db,
+            request,
+            admin,
+            "assessment_enabled" if body.assessment_enabled else "assessment_disabled",
+            user.email,
+        )
+    if body.assessment_domain_limit is not None:
+        user.assessment_domain_limit = body.assessment_domain_limit
+    if body.assessment_monthly_limit is not None:
+        user.assessment_monthly_limit = body.assessment_monthly_limit
     db.commit()
     count = (
         db.scalar(select(func.count()).select_from(ScanJob).where(ScanJob.user_id == user.id)) or 0
     )
-    return AdminUserOut(
-        id=user.id,
-        email=user.email,
-        display_name=user.display_name,
-        role=user.role,
-        created_at=user.created_at,
-        disabled=user.disabled_at is not None,
-        scans=count,
-    )
+    return _admin_user_out(user, count)
 
 
 @router.get("/scans", response_model=list[AdminScan])

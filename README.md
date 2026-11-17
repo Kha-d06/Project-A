@@ -154,6 +154,8 @@ python -m app.cli add-brand-reference emiratesnbd emiratesnbd.com https://<the b
 
 **Password manager.** Dashboard → Passwords is an end-to-end encrypted vault. It is encrypted in the browser with a master password the server never sees. It includes a generator, a health report (reused, weak, old and breached passwords) and CSV import/export.
 
+**Website security assessment.** An admin-enabled feature (Dashboard → Site assessment) that runs read-only security checks — TLS, security headers, cookie flags, exposed files, SPF/DMARC — against websites the account has **verified it owns**. Ownership is re-checked at scan time, and unverified domains are refused. See [docs/assessment.md](docs/assessment.md).
+
 **VPN.** An optional self-hosted WireGuard server (`docker compose --profile vpn`). Devices are added from Dashboard → VPN with keys made in the browser. See [docs/vpn.md](docs/vpn.md).
 
 **Android.** `apps/android` is a Trusted Web Activity for Google Play. See [apps/android/README.md](apps/android/README.md).

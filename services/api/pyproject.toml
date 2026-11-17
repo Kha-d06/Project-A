@@ -75,6 +75,8 @@ ignore = [
 "app/models/device.py" = ["E501"]
 "app/api/devices.py" = ["E501"]
 "app/api/vpn.py" = ["E501"]
+"app/assess/checks.py" = ["E501"]  # long human-readable finding text
+"app/api/assess.py" = ["E501"]
 # Load generator: random choice of test URLs, long report lines.
 "scripts/loadtest.py" = ["E501", "S311"]
 "app/analyzers/arabic.py" = ["E501"]

@@ -125,6 +125,8 @@ class Hop:
     location: str | None = None
     tls: dict[str, Any] | None = None
     headers: dict[str, str] = field(default_factory=dict)
+    # Header pairs in order, duplicates kept (needed for multiple Set-Cookie).
+    raw_headers: list[tuple[str, str]] = field(default_factory=list)
     body: bytes | None = None
     body_truncated: bool = False
     error: str | None = None
@@ -210,7 +212,9 @@ def _request_hop(url: str, read_body: bool = False, any_type: bool = False) -> H
         response = connection.getresponse()
         hop.status = response.status
         hop.location = response.getheader("Location")
-        hop.headers = {name.lower(): value[:500] for name, value in response.getheaders()[:60]}
+        pairs = response.getheaders()[:60]
+        hop.raw_headers = [(name.lower(), value[:500]) for name, value in pairs]
+        hop.headers = {name.lower(): value[:500] for name, value in pairs}
         content_type = hop.headers.get("content-type", "").lower()
         is_redirect = hop.status in (301, 302, 303, 307, 308)
         if read_body and not is_redirect and (any_type or content_type.startswith(_HTML_TYPES)):

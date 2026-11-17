@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -41,6 +41,9 @@ class AdminUser(BaseModel):
     created_at: datetime
     disabled: bool
     scans: int
+    assessment_enabled: bool = False
+    assessment_domain_limit: int = 3
+    assessment_monthly_limit: int = 20
 
 
 class AdminUserPage(BaseModel):
@@ -51,6 +54,10 @@ class AdminUserPage(BaseModel):
 class UserUpdate(BaseModel):
     role: Literal["user", "moderator", "admin"] | None = None
     disabled: bool | None = None
+    # Security-assessment entitlement ("subscription"), set per account by an admin.
+    assessment_enabled: bool | None = None
+    assessment_domain_limit: Annotated[int, Field(ge=1, le=100)] | None = None
+    assessment_monthly_limit: Annotated[int, Field(ge=1, le=500)] | None = None
 
 
 class AdminScan(BaseModel):

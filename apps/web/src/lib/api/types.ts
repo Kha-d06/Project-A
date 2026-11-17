@@ -18,6 +18,7 @@ export interface User {
   role: string;
   created_at: string;
   email_verified_at?: string | null;
+  assessment_enabled?: boolean;
 }
 
 export interface SessionInfo {
@@ -230,6 +231,9 @@ export interface AdminUser {
   created_at: string;
   disabled: boolean;
   scans: number;
+  assessment_enabled: boolean;
+  assessment_domain_limit: number;
+  assessment_monthly_limit: number;
 }
 
 export interface AdminScan {
@@ -458,4 +462,68 @@ export interface VpnPeerConfig {
   server_public_key: string;
   endpoint: string;
   allowed_ips: string;
+}
+
+export interface AssessedDomain {
+  id: string;
+  domain: string;
+  verified: boolean;
+  verified_method: "dns" | "file" | null;
+  verified_at: string | null;
+  created_at: string;
+}
+
+export interface VerificationInstructions {
+  domain: AssessedDomain;
+  token: string;
+  dns_name: string;
+  dns_type: string;
+  dns_value: string;
+  file_url: string;
+  file_content: string;
+}
+
+export type AssessmentResult = "critical" | "high" | "medium" | "low" | "no_issues" | "inconclusive";
+
+export interface AssessmentFinding {
+  severity: "critical" | "high" | "medium" | "low" | "info";
+  category: string;
+  title: string;
+  explanation: string;
+  recommendation: string;
+  evidence: Record<string, unknown>;
+}
+
+export interface AssessmentCheck {
+  key: string;
+  label: string;
+  status: string;
+  detail: string;
+}
+
+export interface AssessmentSummary {
+  id: string;
+  domain: string;
+  status: "queued" | "running" | "completed" | "failed";
+  result: AssessmentResult | null;
+  summary: string | null;
+  finding_count: number;
+  pages_checked: number;
+  created_at: string;
+  finished_at: string | null;
+}
+
+export interface AssessmentDetail extends AssessmentSummary {
+  findings: AssessmentFinding[];
+  checks: AssessmentCheck[];
+  error: string | null;
+}
+
+export interface AssessmentStatus {
+  enabled: boolean;
+  domain_limit: number;
+  monthly_limit: number;
+  used_this_month: number;
+  domains: AssessedDomain[];
+  recent: AssessmentSummary[];
 }

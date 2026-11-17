@@ -8,6 +8,7 @@ import {
   Users,
   Gavel,
   Globe,
+  Crosshair,
   History,
   LayoutDashboard,
   LogOut,
@@ -55,6 +56,16 @@ const STAFF_NAV: { href: string; key: NavKey; icon: typeof History; roles: strin
   { href: "/dashboard/admin", key: "admin", icon: ShieldCheck, roles: ["admin"] },
 ];
 
+// Shown only to accounts an admin has granted the security-assessment feature.
+const GATED_NAV: { href: string; key: NavKey; icon: typeof History; show: (role: string, enabled: boolean) => boolean }[] = [
+  {
+    href: "/dashboard/assessment",
+    key: "extra.assess",
+    icon: Crosshair,
+    show: (role, enabled) => enabled || role === "admin",
+  },
+];
+
 const SCANNERS: ScanType[] = ["url", "message", "file", "qr", "website", "apk", "screenshot"];
 
 function isCurrent(pathname: string, href: string) {
@@ -73,6 +84,9 @@ function SidebarNav() {
         <ul className="space-y-0.5">
           {[
             ...NAV,
+            ...GATED_NAV.filter(
+              (item) => session.status === "signed-in" && item.show(session.user.role, Boolean(session.user.assessment_enabled)),
+            ),
             ...STAFF_NAV.filter((item) => session.status === "signed-in" && item.roles.includes(session.user.role)),
           ].map((item) => {
             const current = isCurrent(pathname, item.href);

@@ -106,6 +106,15 @@ Scope: the API (`services/api`), web app (`apps/web`), browser extension
   - IPv6 is routed into the tunnel and dropped to prevent leaks.
   - CI starts the real container and completes a handshake from the runner.
 
+- **Website security assessment (owned-site scanning).**
+  - Off until an admin enables it per account; domain and monthly limits are enforced server-side.
+  - A domain cannot be scanned until ownership is verified (DNS TXT or a well-known file), and **ownership is re-verified at the start of every scan** — a lapsed domain fails the gate and no request is made to the site (a test asserts `pages_checked == 0`).
+  - Domains are normalised and validated; IPs, `localhost`, and reserved TLDs (`.local`, `.internal`, `.test`, `.example`, …) are rejected.
+  - All checks are read-only GETs through the SSRF-protected fetcher (private/reserved addresses refused); no crafted input, no active exploitation.
+  - Assessments run in the isolated scan worker, whose DB role is granted only `assessments` and `verified_domains` (plus the existing scan tables) — it still cannot read users, sessions, API keys or audit logs.
+  - Each user sees only their own domains and assessments (ownership checks on every endpoint; a cross-account test covers 404s).
+  - The report never claims a site is "secure"; the best result is "no issues found by the checks that ran".
+
 ## Open items
 
 | Risk | Item | Recommendation |

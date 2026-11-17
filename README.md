@@ -160,6 +160,8 @@ python -m app.cli add-brand-reference emiratesnbd emiratesnbd.com https://<the b
 
 **Android.** `apps/android` is a Trusted Web Activity for Google Play. See [apps/android/README.md](apps/android/README.md).
 
+**Try it on your laptop.** `./scripts/demo.sh` starts everything in Docker and creates an administrator account. See [TESTING.md](TESTING.md).
+
 **Operations.** Backups, restore, upgrades, alerts, capacity and key rotation are covered in [docs/operations.md](docs/operations.md).
 
 **Integrations:** Telegram and WhatsApp bots, scan-by-email, signed webhooks and a bulk API. See [docs/integrations.md](docs/integrations.md).

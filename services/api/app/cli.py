@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.db import get_session_factory
+from app.core.security import hash_password
 from app.intel.feeds import (
     TEST_FIXTURES,
     FeedIndicator,
@@ -15,7 +16,7 @@ from app.intel.feeds import (
     store_indicators,
     sync_all_feeds,
 )
-from app.models import User
+from app.models import User, UserSettings
 from app.models.base import utcnow
 
 # Indicators on reserved example domains (RFC 2606), so they can never match a real
@@ -65,6 +66,29 @@ def set_role(db: Session, email: str, role: str) -> int:
     user.role = role
     db.commit()
     print(f"{user.email} is now {role}.")
+    return 0
+
+
+def create_admin(db: Session, email: str, password: str) -> int:
+    """Create (or promote) an account, make it an administrator, and turn on the
+    site-assessment feature. For setting up a test or first-run instance."""
+    if len(password) < 10 or len(set(password)) < 4:  # noqa: PLR2004
+        print("Use a password of at least 10 characters with some variety.", file=sys.stderr)
+        return 1
+    email = email.lower().strip()
+    user = db.scalar(select(User).where(User.email == email))
+    if user is None:
+        user = User(email=email, password_hash=hash_password(password), settings=UserSettings())
+        db.add(user)
+        action = "created"
+    else:
+        user.password_hash = hash_password(password)
+        action = "updated"
+    user.role = "admin"
+    user.email_verified_at = utcnow()  # so email-gated features work without a mail server
+    user.assessment_enabled_at = utcnow()
+    db.commit()
+    print(f"Admin account {action}: {email} (role=admin, site assessment enabled).")
     return 0
 
 
@@ -119,6 +143,11 @@ def main() -> int:
     role = commands.add_parser("set-role", help="Give an account the user, moderator or admin role")
     role.add_argument("email")
     role.add_argument("role")
+    admin = commands.add_parser(
+        "create-admin", help="Create or promote an admin account (for a test or first-run instance)"
+    )
+    admin.add_argument("email")
+    admin.add_argument("password")
     reference = commands.add_parser(
         "add-brand-reference", help="Store the look of a brand's real sign-in page"
     )
@@ -134,6 +163,8 @@ def main() -> int:
     with get_session_factory()() as db:
         if args.command == "set-role":
             return set_role(db, args.email, args.role)
+        if args.command == "create-admin":
+            return create_admin(db, args.email, args.password)
         return COMMANDS[args.command](db)
 
 

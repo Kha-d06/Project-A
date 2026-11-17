@@ -31,6 +31,8 @@ class MessageScanRequest(BaseModel):
     # Opt-in: send the text (with links, emails and numbers masked) to the AI model
     # for a second opinion. The verdict never depends on it.
     ai_consent: bool = False
+    # Optional: the sender name or number exactly as the phone showed it.
+    sender: str | None = Field(default=None, max_length=60)
 
     @field_validator("content")
     @classmethod

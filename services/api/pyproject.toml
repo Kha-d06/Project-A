@@ -27,6 +27,7 @@ dependencies = [
     "pyaxmlparser>=0.3.31",
     "pyotp>=2.9",
     "cryptography>=43",
+    "pywebpush>=2.0",
 ]
 
 [project.optional-dependencies]
@@ -63,6 +64,10 @@ ignore = [
 "app/ai/classify.py" = ["E501"]
 "app/ai/assistant.py" = ["E501"]
 "app/ai/vision.py" = ["E501"]
+"app/notify/summary.py" = ["E501"]
+"app/notify/push.py" = ["E501"]
+"app/api/push.py" = ["E501"]
+"app/api/trends.py" = ["E501"]
 "app/analyzers/arabic.py" = ["E501"]
 "app/analyzers/visual.py" = ["E501"]
 "app/analyzers/screenshot_scan.py" = ["E501"]

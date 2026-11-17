@@ -33,7 +33,7 @@ export interface SessionStatus {
 
 export interface Profile {
   user: User;
-  settings: { save_scan_history: boolean; sync_extension_events: boolean };
+  settings: { save_scan_history: boolean; sync_extension_events: boolean; weekly_summary?: boolean; breach_monitoring?: boolean };
 }
 
 export interface Finding {
@@ -365,4 +365,14 @@ export interface BreachResult {
   email: string;
   breaches: { name: string; title: string; domain: string | null; breach_date: string | null; data_classes: string[]; verified: boolean }[];
   checked_at: string;
+}
+
+export interface Trends {
+  days: number;
+  generated_at: string;
+  techniques: Record<string, number>;
+  verdicts: Partial<Record<RiskLevel, number>>;
+  verified_reports_by_category: Record<string, number>;
+  verified_reports_by_country: Record<string, number>;
+  minimum_count: number;
 }

@@ -22,6 +22,8 @@ export function SiteFooter() {
         { href: "/browser-protection", label: t.nav.browserProtection },
         { href: "/intelligence", label: t.footer.intelligence },
         { href: "/report", label: t.footer.report },
+        { href: "/trends", label: t.extra.trends.nav },
+        { href: "/help/scammed", label: t.extra.scammed.nav },
       ],
     },
     {

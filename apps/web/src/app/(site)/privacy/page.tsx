@@ -74,6 +74,9 @@ export default async function PrivacyPage() {
           <li><strong>Telegram, WhatsApp and scan-by-email</strong> work without an account. Your chat ID, phone number or email address is kept only until the reply is sent. Messages pass through Telegram, Meta or the operator’s mail provider under their own privacy terms.</li>
           <li><strong>Breach checks</strong> send your own account email address to Have I Been Pwned. Password checks never leave your browser except for the first five characters of the password’s SHA-1 fingerprint.</li>
           <li><strong>Webhooks</strong> send your own scan results to the address you set up.</li>
+          <li><strong>Browser notifications</strong> go through your browser maker’s push service (for example Google or Mozilla). They contain only a title, a sentence and a link back to SENTINEL, never what you scanned.</li>
+          <li><strong>The weekly summary</strong> and <strong>breach monitoring</strong> are off until you turn them on in settings.</li>
+          <li><strong>The public trends page</strong> shows only totals across everyone, and hides anything seen fewer than three times.</li>
         </ul>
       </section>
       <section>

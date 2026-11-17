@@ -113,6 +113,7 @@ export function MessageScanForm({ reportBase, initialText = "" }: { reportBase: 
   // Prefilled (never auto-submitted) when text is shared to SENTINEL from another app.
   const [content, setContent] = useState(initialText);
   const [aiConsent, setAiConsent] = useState(false);
+  const [sender, setSender] = useState("");
   const [localError, setLocalError] = useState<string>();
 
   const onSubmit = (event: FormEvent) => {
@@ -122,7 +123,7 @@ export function MessageScanForm({ reportBase, initialText = "" }: { reportBase: 
       return;
     }
     setLocalError(undefined);
-    void submit(() => api.scans.message(content, { aiConsent }));
+    void submit(() => api.scans.message(content, { aiConsent, sender }));
   };
 
   return (
@@ -145,6 +146,19 @@ export function MessageScanForm({ reportBase, initialText = "" }: { reportBase: 
             placeholder={t.scan.message.placeholder}
             value={content}
             onChange={(event) => setContent(event.target.value)}
+          />
+        )}
+      </Field>
+      <Field label={t.extra.sender.label} hint={t.extra.sender.hint}>
+        {(props) => (
+          <Input
+            {...props}
+            name="sender"
+            dir="auto"
+            maxLength={60}
+            placeholder={t.extra.sender.placeholder}
+            value={sender}
+            onChange={(event) => setSender(event.target.value)}
           />
         )}
       </Field>

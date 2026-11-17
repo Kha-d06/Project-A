@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Download, Printer, Share2, Trash2 } from "lucide-react";
+import { ArrowLeft, Download, Megaphone, Printer, Share2, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -24,6 +24,7 @@ import { FindingsList } from "./findings";
 import { ScanDetails } from "./scan-details";
 import { ScanProgress } from "./scan-progress";
 import { ShareDialog } from "./share-dialog";
+import { WarningCardDialog } from "./warning-card";
 import { Verdict } from "./verdict";
 
 function downloadReport(scan: Scan) {
@@ -50,6 +51,8 @@ function ReportActions({ scan, backHref }: { scan: Scan; backHref: string }) {
   const notify = useToast();
   const [deleting, setDeleting] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [card, setCard] = useState(false);
+  const risky = scan.risk === "known_malicious" || scan.risk === "suspicious";
   const canDelete = session.status === "signed-in" && scan.saved_to_history;
 
   const remove = async () => {
@@ -73,6 +76,15 @@ function ReportActions({ scan, backHref }: { scan: Scan; backHref: string }) {
             {t.extra.share.button}
           </Button>
           <ShareDialog scanId={scan.id} open={sharing} onClose={() => setSharing(false)} />
+        </>
+      )}
+      {risky && (
+        <>
+          <Button variant="secondary" size="sm" onClick={() => setCard(true)}>
+            <Megaphone aria-hidden className="size-4" />
+            {t.extra.cards.button}
+          </Button>
+          <WarningCardDialog scan={scan} open={card} onClose={() => setCard(false)} />
         </>
       )}
       {/* The browser's own "Save as PDF" keeps Arabic text shaped and laid out correctly. */}
@@ -135,6 +147,13 @@ function ReportBody({ scan, backHref, newScanHref }: { scan: Scan; backHref: str
             <div className="space-y-6">
               <Panel>
                 <PanelHeader title={t.report.nextSteps} />
+                {(scan.risk === "known_malicious" || scan.risk === "suspicious") && (
+                  <p className="border-b border-line px-5 py-3 text-sm">
+                    <Link href="/help/scammed" className="font-medium text-danger underline underline-offset-4">
+                      {t.extra.scammed.title} →
+                    </Link>
+                  </p>
+                )}
                 <ul className="space-y-3 px-5 py-4 text-sm leading-relaxed text-ink">
                   {scan.recommendations.map((item) => (
                     <li key={item} className="flex gap-2.5" dir="auto">

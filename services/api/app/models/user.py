@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -41,6 +42,12 @@ class UserSettings(Base):
     save_scan_history: Mapped[bool] = mapped_column(default=True)
     # Off by default: linked extensions only record warnings to the account if asked to.
     sync_extension_events: Mapped[bool] = mapped_column(default=False, server_default="false")
+    # Opt-in: a weekly email summarising warnings and scans.
+    weekly_summary: Mapped[bool] = mapped_column(default=False, server_default="false")
+    # Opt-in: re-check the account's email address for new breaches every week.
+    breach_monitoring: Mapped[bool] = mapped_column(default=False, server_default="false")
+    # Names of breaches already reported, so only new ones are announced.
+    known_breaches: Mapped[list[Any]] = mapped_column(default=list)
 
     user: Mapped[User] = relationship(back_populates="settings")
 

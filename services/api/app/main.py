@@ -13,10 +13,12 @@ from app.api import (
     groups,
     intelligence,
     metrics,
+    push,
     reports,
     scans,
     sharing,
     system,
+    trends,
     user,
     webhooks,
 )
@@ -86,6 +88,8 @@ def create_app() -> FastAPI:
         webhooks.router,
         channels.router,
         breach.router,
+        push.router,
+        trends.router,
     ):
         app.include_router(router, prefix=API_PREFIX)
     return app

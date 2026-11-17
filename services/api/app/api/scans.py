@@ -90,7 +90,7 @@ def scan_message(body: MessageScanRequest, request: Request, db: Db, user: Optio
         db,
         scan_type="message",
         target=excerpt,
-        payload={"content": body.content, "ai_consent": body.ai_consent},
+        payload={"content": body.content, "ai_consent": body.ai_consent, "sender": body.sender},
         user=user,
         locale=request_locale(request),
     )

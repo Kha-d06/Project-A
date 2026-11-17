@@ -49,7 +49,12 @@ def update_settings(body: SettingsUpdate, user: SessionUser, db: Db) -> ProfileO
     changes = body.model_dump(exclude_unset=True)
     if "display_name" in changes:
         user.display_name = (changes["display_name"] or "").strip() or None
-    for setting in ("save_scan_history", "sync_extension_events"):
+    for setting in (
+        "save_scan_history",
+        "sync_extension_events",
+        "weekly_summary",
+        "breach_monitoring",
+    ):
         if changes.get(setting) is not None:
             setattr(user.settings, setting, changes[setting])
     db.commit()

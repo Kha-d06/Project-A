@@ -29,6 +29,14 @@ def sync_feeds_task() -> None:
         sync_all_feeds(db)
 
 
+@celery_app.task(name="sentinel.weekly_summaries")  # type: ignore[untyped-decorator]
+def weekly_summaries_task() -> None:
+    from app.notify.summary import send_weekly_summaries
+
+    with get_session_factory()() as db:
+        send_weekly_summaries(db)
+
+
 @celery_app.task(name="sentinel.purge_expired")  # type: ignore[untyped-decorator]
 def purge_expired_task() -> None:
     with get_session_factory()() as db:

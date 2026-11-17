@@ -90,6 +90,27 @@ def add_brand_reference(brand: str, domains: str, url: str) -> int:
     return 0
 
 
+def generate_vapid_keys() -> int:
+    """Print a new VAPID key pair for Web Push, in the format the settings expect."""
+    import base64
+
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    private = key.private_numbers().private_value.to_bytes(32, "big")
+    public = key.public_key().public_bytes(
+        serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
+    )
+
+    def b64(raw: bytes) -> str:
+        return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+    print(f"SENTINEL_VAPID_PUBLIC_KEY={b64(public)}")
+    print(f"SENTINEL_VAPID_PRIVATE_KEY={b64(private)}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -104,7 +125,10 @@ def main() -> int:
     reference.add_argument("brand")
     reference.add_argument("domains", help="Comma-separated domains the brand owns")
     reference.add_argument("url", help="Address of the real sign-in page")
+    commands.add_parser("generate-vapid-keys", help="Create a key pair for Web Push")
     args = parser.parse_args()
+    if args.command == "generate-vapid-keys":
+        return generate_vapid_keys()
     if args.command == "add-brand-reference":
         return add_brand_reference(args.brand, args.domains, args.url)
     with get_session_factory()() as db:

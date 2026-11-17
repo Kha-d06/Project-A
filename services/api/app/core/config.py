@@ -87,6 +87,11 @@ class Settings(BaseSettings):
     virustotal_api_key: str | None = None
     crtsh_base_url: str = "https://crt.sh"
 
+    # Web Push (VAPID). Generate a key pair once: python -m app.cli generate-vapid-keys
+    vapid_public_key: str | None = None
+    vapid_private_key: str | None = None
+    vapid_subject: str = "mailto:security@localhost"
+
     # Have I Been Pwned (breached-account search). Pwned Passwords needs no key and
     # is queried from the browser with k-anonymity, never through this server.
     hibp_api_key: str | None = None

@@ -29,6 +29,7 @@ import type {
   SessionInfo,
   SessionStatus,
   BreachResult,
+  Trends,
   Group,
   GroupSharedScan,
   InviteCreated,
@@ -197,6 +198,14 @@ export const api = {
       request<Webhook>(`/user/webhooks/${encodeURIComponent(id)}`, { method: "PATCH", query: { active: String(active) } }),
     remove: (id: string) => request<void>(`/user/webhooks/${encodeURIComponent(id)}`, { method: "DELETE" }),
   },
+  push: {
+    key: () => request<{ public_key: string | null }>("/push/key"),
+    subscribe: (subscription: PushSubscriptionJSON) =>
+      request<{ subscribed: boolean }>("/push/subscriptions", { method: "POST", json: subscription }),
+    unsubscribe: (endpoint: string) => request<void>("/push/subscriptions", { method: "DELETE", json: { endpoint } }),
+    test: () => request<{ delivered: number }>("/push/test", { method: "POST" }),
+  },
+  trends: (days = 30) => request<Trends>("/trends", { query: { days } }),
   breach: {
     email: () => request<BreachResult>("/breach/email"),
   },
@@ -218,8 +227,11 @@ export const api = {
   },
   scans: {
     url: (url: string) => request<Scan>("/scans/url", { method: "POST", json: { url } }),
-    message: (content: string, options: { aiConsent?: boolean } = {}) =>
-      request<Scan>("/scans/message", { method: "POST", json: { content, ai_consent: options.aiConsent ?? false } }),
+    message: (content: string, options: { aiConsent?: boolean; sender?: string } = {}) =>
+      request<Scan>("/scans/message", {
+        method: "POST",
+        json: { content, ai_consent: options.aiConsent ?? false, sender: options.sender?.trim() || undefined },
+      }),
     file: (file: File, options: { virustotalConsent?: boolean } = {}) =>
       uploadScan("/scans/file", file, options.virustotalConsent ? { virustotal_consent: "true" } : {}),
     qr: (image: File) => uploadScan("/scans/qr", image),
@@ -253,6 +265,8 @@ export const api = {
       display_name?: string | null;
       save_scan_history?: boolean;
       sync_extension_events?: boolean;
+      weekly_summary?: boolean;
+      breach_monitoring?: boolean;
     }) =>
       request<Profile>("/user/settings", { method: "PATCH", json: body }),
     changePassword: (body: { current_password: string; new_password: string }) =>

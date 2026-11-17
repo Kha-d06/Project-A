@@ -12,7 +12,7 @@ from app.analyzers.message_patterns import (
     MessageRule,
 )
 from app.analyzers.types import Check, FindingData, Outcome
-from app.analyzers.url_heuristics import analyze_url_text
+from app.analyzers.url_heuristics import BRAND_DOMAINS, analyze_url_text, brand_name
 from app.analyzers.url_scan import community_finding, indicator_findings
 from app.analyzers.urls import InvalidUrlError, ParsedUrl, parse_url
 from app.intel.feeds import COMMUNITY, THREATFOX, URLHAUS
@@ -76,6 +76,46 @@ def _extract_phones(text: str) -> list[str]:
         if len(digits) >= _MIN_PHONE_DIGITS:
             phones.append(match.group().strip())
     return list(dict.fromkeys(phones))
+
+
+# Words that show a message claims to come from an institution.
+_INSTITUTION = re.compile(
+    r"\b(bank|banking|ministry|government|police|customs|post|courier|tax|visa|immigration|"
+    r"absher|uae ?pass|nafath|salik|aramex|dhl|fedex)\b|بنك|مصرف|وزارة|شرطة|الجمارك|البريد|"
+    r"الضريبة|الجوازات|أبشر|ابشر|نفاذ|سالك",
+    re.IGNORECASE,
+)
+
+
+def _sender_check(sender: str, text: str, db: Session, outcome: Outcome) -> None:
+    """Banks and government bodies in the Gulf send SMS from registered sender names
+    (such as AD-ENBD), not from personal mobile numbers."""
+    digits = re.sub(r"\D", "", sender)
+    outcome.details["sender"] = sender
+    if len(digits) < 7:
+        return
+    phone = normalize_phone(sender)
+    claim = _INSTITUTION.search(text)
+    brand = next(
+        (b for b in BRAND_DOMAINS if len(b) >= 4 and b in text.lower().replace(" ", "")), None
+    )
+    if claim or brand:
+        named = brand_name(brand) if brand else claim.group(0) if claim else "an organisation"
+        outcome.findings.append(
+            FindingData(
+                "medium",
+                "personal_number_sender",
+                f"Claims to be from {named} but was sent from a personal phone number",
+                "Banks, couriers and government services send text messages from registered "
+                "sender names, not from ordinary mobile numbers. A message like this from a "
+                "personal number is a common scam pattern.",
+                SOURCE,
+                {"sender": sender[:60]},
+            )
+        )
+    for match in find_indicators(db, "phone", phone):
+        if match.source_key == COMMUNITY:
+            outcome.findings.append(community_finding(match, f"The sender {sender[:30]}"))
 
 
 def _ai_check(text: str, outcome: Outcome) -> None:
@@ -183,6 +223,9 @@ def analyze_message(payload: dict[str, Any], db: Session) -> Outcome:
         "phone_numbers": phones,
     }
     outcome.details["character_count"] = len(text)
+    sender = str(payload.get("sender") or "").strip()
+    if sender:
+        _sender_check(sender, text, db, outcome)
     if payload.get("ai_consent"):
         _ai_check(text, outcome)
     outcome.limitations.append(

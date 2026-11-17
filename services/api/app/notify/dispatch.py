@@ -30,3 +30,14 @@ def after_scan(db: Session, scan_id: uuid.UUID) -> None:
         db.commit()
     if scan.status != "failed":
         deliver_for_scan(db, scan)
+    if scan.user_id and scan.risk in ("known_malicious", "suspicious"):
+        from app.notify.push import send_push
+
+        label = "Known threat" if scan.risk == "known_malicious" else "Suspicious"
+        send_push(
+            db,
+            scan.user_id,
+            f"SENTINEL: {label}",
+            scan.summary or "",
+            f"/dashboard/scans/{scan.id}",
+        )

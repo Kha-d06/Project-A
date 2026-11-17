@@ -56,6 +56,8 @@ class SettingsOut(BaseModel):
 
     save_scan_history: bool
     sync_extension_events: bool
+    weekly_summary: bool = False
+    breach_monitoring: bool = False
 
 
 class ProfileOut(BaseModel):
@@ -67,6 +69,8 @@ class SettingsUpdate(BaseModel):
     display_name: str | None = Field(default=None, max_length=80)
     save_scan_history: bool | None = None
     sync_extension_events: bool | None = None
+    weekly_summary: bool | None = None
+    breach_monitoring: bool | None = None
 
 
 class PasswordChange(BaseModel):

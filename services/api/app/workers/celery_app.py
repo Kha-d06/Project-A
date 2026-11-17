@@ -24,4 +24,9 @@ if settings.feed_sync_enabled:
     celery_app.conf.beat_schedule = {
         "sync-threat-feeds": {"task": "sentinel.sync_feeds", "schedule": crontab(minute=7)},
         "purge-expired-data": {"task": "sentinel.purge_expired", "schedule": crontab(minute=37)},
+        # Mondays 05:23 UTC: morning in the Gulf.
+        "weekly-summaries": {
+            "task": "sentinel.weekly_summaries",
+            "schedule": crontab(day_of_week=1, hour=5, minute=23),
+        },
     }

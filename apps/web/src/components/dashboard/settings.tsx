@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 
 import { PageTitle } from "@/components/dashboard/dashboard-shell";
+import { NotificationsSection } from "@/components/dashboard/notifications";
 import { WebhooksSection } from "@/components/dashboard/webhooks";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -501,6 +502,7 @@ export function Settings() {
         <div className="space-y-6">
           <ProfileSection profile={profile} onSaved={setProfile} />
           <PrivacySection profile={profile} onSaved={setProfile} />
+          <NotificationsSection profile={profile} onSaved={setProfile} />
           <PasswordSection />
           <SecuritySection />
           <ApiKeysSection />

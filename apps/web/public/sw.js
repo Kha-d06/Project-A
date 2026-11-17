@@ -25,3 +25,31 @@ self.addEventListener("fetch", (event) => {
   if (event.request.mode !== "navigate") return;
   event.respondWith(fetch(event.request).catch(() => caches.match(OFFLINE_URL)));
 });
+
+// Web Push: notifications carry only a title, a sentence and a link back to
+// SENTINEL, never anything that was scanned.
+self.addEventListener("push", (event) => {
+  let data = { title: "SENTINEL", body: "", url: "/dashboard" };
+  try {
+    data = { ...data, ...event.data.json() };
+  } catch {
+    // keep the defaults
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      data: { url: data.url },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const path = event.notification.data?.url ?? "/dashboard";
+  // Only ever open pages on this site.
+  const target = new URL(path, self.location.origin);
+  if (target.origin !== self.location.origin) return;
+  event.waitUntil(self.clients.openWindow(target.href));
+});

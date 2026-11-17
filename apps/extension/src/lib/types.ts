@@ -8,7 +8,7 @@ export type ServerVerdict =
   | "skipped";
 
 /** Local outcomes the server never returns. */
-export type Verdict = ServerVerdict | "blocked_by_you" | "allowed_by_you";
+export type Verdict = ServerVerdict | "blocked_by_you" | "blocked_by_family" | "allowed_by_you";
 
 export interface Reason {
   severity: string;

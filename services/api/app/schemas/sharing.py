@@ -112,6 +112,8 @@ class GroupOut(BaseModel):
     created_at: datetime
     my_role: str
     my_share_activity: bool
+    my_apply_blocklist: bool = False
+    blocklist: list[str] = []
     members: list[GroupMemberOut]
     pending_invites: list[dict[str, Any]]
 
@@ -136,6 +138,26 @@ class AcceptInvite(BaseModel):
 class MemberUpdate(BaseModel):
     role: Literal["admin", "member"] | None = None
     share_activity: bool | None = None
+    apply_blocklist: bool | None = None
+
+
+class GroupBlocklist(BaseModel):
+    domains: list[str] = Field(max_length=500)
+
+    @field_validator("domains")
+    @classmethod
+    def _domains(cls, values: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        for value in values:
+            try:
+                host = parse_url(f"http://{value.strip().lower().lstrip('*.')}/").host
+            except InvalidUrlError as exc:
+                raise ValueError(f"“{value[:60]}” is not a domain name.") from exc
+            if "." not in host:
+                raise ValueError(f"“{value[:60]}” is not a domain name.")
+            if host not in cleaned:
+                cleaned.append(host)
+        return cleaned
 
 
 class GroupSharedScan(BaseModel):

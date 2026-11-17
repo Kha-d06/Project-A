@@ -25,6 +25,10 @@ if settings.feed_sync_enabled:
         "sync-threat-feeds": {"task": "sentinel.sync_feeds", "schedule": crontab(minute=7)},
         "purge-expired-data": {"task": "sentinel.purge_expired", "schedule": crontab(minute=37)},
         # Mondays 05:23 UTC: morning in the Gulf.
+        "breach-monitoring": {
+            "task": "sentinel.breach_monitoring",
+            "schedule": crontab(day_of_week=3, hour=4, minute=41),
+        },
         "weekly-summaries": {
             "task": "sentinel.weekly_summaries",
             "schedule": crontab(day_of_week=1, hour=5, minute=23),

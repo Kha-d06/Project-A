@@ -54,6 +54,7 @@ function GroupCard({ group, myId, onChange }: { group: Group; myId: string; onCh
   const [email, setEmail] = useState("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [domains, setDomains] = useState((group.blocklist ?? []).join("\n"));
   const manager = group.my_role === "owner" || group.my_role === "admin";
 
   const run = async (action: () => Promise<Group | void>) => {
@@ -154,6 +155,49 @@ function GroupCard({ group, myId, onChange }: { group: Group; myId: string; onCh
               <span className="block text-xs text-ink-muted">{g.shareActivityHint}</span>
             </span>
           </label>
+          <div className="space-y-2 rounded-control border border-line p-3">
+            <p className="text-sm font-semibold text-ink">{g.blocklist}</p>
+            <p className="text-xs text-ink-muted">{g.blocklistHint}</p>
+            {manager && (
+              <>
+                <textarea
+                  aria-label={g.blocklist}
+                  dir="ltr"
+                  rows={4}
+                  className="w-full rounded-control border border-line-strong bg-surface p-2 font-mono text-xs text-ink"
+                  placeholder={g.blocklistPlaceholder}
+                  value={domains}
+                  onChange={(event) => setDomains(event.target.value)}
+                />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() =>
+                    run(async () => {
+                      const saved = await api.groups.setBlocklist(group.id, domains.split(/[\n,]/).map((d) => d.trim()).filter(Boolean));
+                      setDomains((saved.blocklist ?? []).join("\n"));
+                      notify("success", g.blocklistSaved);
+                      return saved;
+                    })
+                  }
+                >
+                  {g.saveBlocklist}
+                </Button>
+              </>
+            )}
+            <label className="flex items-start gap-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1 size-4 accent-[var(--accent)]"
+                checked={Boolean(group.my_apply_blocklist)}
+                onChange={(event) => run(() => api.groups.updateMember(group.id, myId, { apply_blocklist: event.target.checked }))}
+              />
+              <span>
+                <span className="text-ink">{g.applyBlocklist}</span>
+                <span className="block text-xs text-ink-muted">{g.applyBlocklistHint((group.blocklist ?? []).length)}</span>
+              </span>
+            </label>
+          </div>
           {manager && (
             <form onSubmit={invite} className="space-y-2">
               <Field label={g.invite}>

@@ -16,6 +16,14 @@ export interface Settings {
   /** On-screen assistant: needs optional page and cookie permissions; off by default. */
   assistant: boolean;
   language: LanguageSetting;
+  /** Optional: block well-known advertising and analytics trackers on other sites. */
+  blockTrackers: boolean;
+  /** Optional: mark dangerous results on Google, Bing and DuckDuckGo search pages. */
+  searchBadges: boolean;
+  /** From the linked account: domains a family or organisation group asked to block,
+   * applied only because the account holder chose to. */
+  familyBlocklist: string[];
+  familyGroups: string[];
   keepLocalAlerts: boolean;
   allowlist: string[];
   blocklist: string[];
@@ -33,10 +41,24 @@ export const DEFAULT_SETTINGS: Settings = {
   preloadBlocking: true,
   assistant: false,
   language: "auto",
+  blockTrackers: false,
+  searchBadges: false,
+  familyBlocklist: [],
+  familyGroups: [],
   keepLocalAlerts: true,
   allowlist: [],
   blocklist: [],
 };
+
+/** Search pages where result badges can be shown (requested only when turned on). */
+export const SEARCH_ORIGINS = [
+  "https://www.google.com/*",
+  "https://www.google.ae/*",
+  "https://www.google.com.sa/*",
+  "https://www.google.co.uk/*",
+  "https://www.bing.com/*",
+  "https://duckduckgo.com/*",
+];
 
 const KEY = "settings";
 

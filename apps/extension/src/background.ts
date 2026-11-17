@@ -13,7 +13,7 @@ import { clearCache } from "./lib/cache";
 import { initLanguage, language, t } from "./lib/i18n";
 import type { Request, Response, Status } from "./lib/messages";
 import { allowForSession, assessDownload, assessUrl, isAllowedForSession } from "./lib/protection";
-import { loadSettings, saveSettings, type Settings } from "./lib/settings";
+import { SEARCH_ORIGINS, loadSettings, saveSettings, type Settings } from "./lib/settings";
 import type { CheckResult, ProtectionState, Verdict } from "./lib/types";
 import { detectTrackers, siteOf } from "./lib/trackers";
 import { checkableUrl } from "./lib/urls";
@@ -27,11 +27,13 @@ const NEW_TAB_URL = IS_FIREFOX ? "about:blank" : "chrome://newtab/";
 const ACCOUNT_KEY = "account";
 const HOVER_SCRIPT_ID = "sentinel-hover";
 const ASSISTANT_SCRIPT_ID = "sentinel-assistant";
+const SEARCH_SCRIPT_ID = "sentinel-search";
+
 const BLOCKLIST_ALARM = "sentinel-blocklist";
 const MAX_COOKIE_SITES = 20;
 const MENU_LINK = "sentinel-scan-link";
 const MENU_PAGE = "sentinel-scan-page";
-const WARNING_VERDICTS = new Set(["dangerous", "suspicious", "caution", "blocked_by_you"]);
+const WARNING_VERDICTS = new Set(["dangerous", "suspicious", "caution", "blocked_by_you", "blocked_by_family"]);
 
 /** Last result per tab, for the popup. Lost if the worker restarts; the popup then re-checks. */
 const tabResults = new Map<number, { url: string; result: CheckResult | null }>();
@@ -49,6 +51,7 @@ async function refreshAccount(settings: Settings): Promise<api.AccountLink | nul
   try {
     const account = await api.accountLink(settings.serverUrl);
     await chrome.storage.local.set({ [ACCOUNT_KEY]: account });
+    await applyFamilyList(account);
     return account;
   } catch {
     return cachedAccount();
@@ -57,7 +60,7 @@ async function refreshAccount(settings: Settings): Promise<api.AccountLink | nul
 
 /** Maps local outcomes onto the verdicts the API records; null means "nothing to record". */
 function eventVerdict(verdict: Verdict): string | null {
-  if (verdict === "blocked_by_you") return "dangerous";
+  if (verdict === "blocked_by_you" || verdict === "blocked_by_family") return "dangerous";
   if (verdict === "skipped" || verdict === "allowed_by_you") return null;
   return verdict;
 }
@@ -107,6 +110,17 @@ async function notify(id: string, title: string, message: string, buttons?: { ti
   await chrome.notifications.create(id, options);
 }
 
+/** A group's block list is applied only because the account holder chose to. */
+async function applyFamilyList(account: api.AccountLink | null) {
+  const familyBlocklist = account?.linked ? (account.family_blocklist ?? []) : [];
+  const familyGroups = account?.linked ? (account.family_groups ?? []) : [];
+  const current = await loadSettings();
+  if (JSON.stringify(current.familyBlocklist) === JSON.stringify(familyBlocklist)) return;
+  const next = await saveSettings({ familyBlocklist, familyGroups });
+  await clearCache();
+  await applyRules(next);
+}
+
 // --- Page navigation ------------------------------------------------------------------
 
 // The last page each tab opened without a warning: where "Go back to safety" goes.
@@ -142,7 +156,7 @@ async function handleNavigation(tabId: number, url: string, committed = false) {
   tabResults.set(tabId, { url, result });
   await setBadge(tabId, result);
   const interrupt = result !== null && shouldInterrupt(result.verdict, settings.warnOnSuspicious);
-  if (!result || !interrupt || (result.verdict !== "blocked_by_you" && (await isAllowedForSession(result.host)))) {
+  if (!result || !interrupt || (result.verdict !== "blocked_by_you" && result.verdict !== "blocked_by_family" && (await isAllowedForSession(result.host)))) {
     if (committed && url.startsWith("http")) await rememberSafePage(tabId, url);
     return;
   }
@@ -207,7 +221,7 @@ chrome.downloads.onCreated.addListener((item) => {
     const settings = await loadSettings();
     const source = item.finalUrl || item.url;
     const result = await assessDownload(source, fileNameOf(item), settings);
-    if (!result || !["dangerous", "suspicious", "blocked_by_you"].includes(result.verdict)) return;
+    if (!result || !["dangerous", "suspicious", "blocked_by_you", "blocked_by_family"].includes(result.verdict)) return;
 
     // Pausing is best effort: small files may already be complete.
     await chrome.downloads.pause(item.id).catch(() => undefined);
@@ -261,12 +275,10 @@ chrome.contextMenus.onClicked.addListener((info) => {
 
 // --- Hover checks (optional content script) -------------------------------------------
 
-async function syncScript(id: string, file: string, wanted: boolean) {
+async function syncScript(id: string, file: string, wanted: boolean, matches = ["http://*/*", "https://*/*"]) {
   const registered = await chrome.scripting.getRegisteredContentScripts({ ids: [id] });
   if (wanted && registered.length === 0) {
-    await chrome.scripting.registerContentScripts([
-      { id, js: [file], matches: ["http://*/*", "https://*/*"], runAt: "document_idle" },
-    ]);
+    await chrome.scripting.registerContentScripts([{ id, js: [file], matches, runAt: "document_idle" }]);
   } else if (!wanted && registered.length > 0) {
     await chrome.scripting.unregisterContentScripts({ ids: [id] });
   }
@@ -276,6 +288,7 @@ async function syncContentScripts(settings: Settings) {
   if (!chrome.scripting) return; // optional permission not granted
   await syncScript(HOVER_SCRIPT_ID, "hover.js", settings.hoverChecks && !settings.paused);
   await syncScript(ASSISTANT_SCRIPT_ID, "assistant.js", settings.assistant && !settings.paused);
+  await syncScript(SEARCH_SCRIPT_ID, "search.js", settings.searchBadges && !settings.paused, SEARCH_ORIGINS);
 }
 
 // --- Verdicts that also know about the in-browser blocklist ---------------------------
@@ -284,7 +297,7 @@ async function syncContentScripts(settings: Settings) {
  * even when the server cannot be reached (it was blocked before loading). */
 async function verdictFor(url: string, settings: Settings): Promise<CheckResult | null> {
   const result = await assessUrl(url, { ...settings, paused: false });
-  if (!result || result.verdict === "dangerous" || result.verdict === "blocked_by_you") return result;
+  if (!result || result.verdict === "dangerous" || result.verdict === "blocked_by_you" || result.verdict === "blocked_by_family") return result;
   if (!(await onServerBlocklist(result.host))) return result;
   await initLanguage();
   const w = t().warning;
@@ -378,6 +391,13 @@ async function handle(request: Request, sender: chrome.runtime.MessageSender): P
         return { answer: builtInAnswer(question, summary, language()), source: "builtin" };
       }
     }
+    case "search-check": {
+      if (!sender.tab || !Array.isArray(request.urls)) return [];
+      // Cached and throttled like page checks; only warnings are shown.
+      return Promise.all(
+        request.urls.slice(0, 20).map((url) => (typeof url === "string" ? assessUrl(url, settings) : Promise.resolve(null))),
+      );
+    }
     case "hover": {
       // Hover lookups must never be slower than the hover itself; cached or quick only.
       const result = await assessUrl(request.href, settings);
@@ -405,11 +425,13 @@ async function handle(request: Request, sender: chrome.runtime.MessageSender): P
     case "link": {
       const account = await api.link(settings.serverUrl, request.code);
       await chrome.storage.local.set({ [ACCOUNT_KEY]: account });
+      await applyFamilyList(account);
       return account;
     }
     case "unlink": {
       const account = await api.unlink(settings.serverUrl);
       await chrome.storage.local.set({ [ACCOUNT_KEY]: account });
+      await applyFamilyList(account);
       return account;
     }
     case "refresh-account":
@@ -463,7 +485,12 @@ chrome.permissions.onRemoved.addListener(() => {
 });
 
 chrome.alarms?.onAlarm.addListener((alarm) => {
-  if (alarm.name === BLOCKLIST_ALARM) void loadSettings().then((settings) => refreshBlocklist(settings, true));
+  if (alarm.name === BLOCKLIST_ALARM) {
+    void loadSettings().then(async (settings) => {
+      await refreshBlocklist(settings, true);
+      await refreshAccount(settings);
+    });
+  }
 });
 
 // --- Startup --------------------------------------------------------------------------

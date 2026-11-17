@@ -2,14 +2,15 @@ import type { AccountLink } from "../lib/api";
 import { byId, el } from "../lib/dom";
 import { initLanguage, localizeDocument, t, type LanguageSetting } from "../lib/i18n";
 import { ask, type Status } from "../lib/messages";
-import { normalizeHostEntry, type Settings } from "../lib/settings";
+import { SEARCH_ORIGINS, normalizeHostEntry, type Settings } from "../lib/settings";
 
-const SWITCHES = ["paused", "warnOnSuspicious", "preloadBlocking", "downloadChecks", "keepLocalAlerts", "hoverChecks", "assistant"] as const;
+const SWITCHES = ["paused", "warnOnSuspicious", "preloadBlocking", "blockTrackers", "searchBadges", "downloadChecks", "keepLocalAlerts", "hoverChecks", "assistant"] as const;
 // Optional permissions, requested from the click that turns a feature on.
 const PAGE_ORIGINS = ["http://*/*", "https://*/*"];
 const FEATURE_PERMISSIONS: Partial<Record<(typeof SWITCHES)[number], chrome.permissions.Permissions>> = {
   hoverChecks: { permissions: ["scripting"], origins: PAGE_ORIGINS },
   assistant: { permissions: ["scripting", "cookies"], origins: PAGE_ORIGINS },
+  searchBadges: { permissions: ["scripting"], origins: SEARCH_ORIGINS },
 };
 
 function flash(message: string) {

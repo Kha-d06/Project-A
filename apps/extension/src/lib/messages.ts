@@ -10,6 +10,7 @@ export type Request =
   | { type: "proceed"; url: string; tabId?: number }
   | { type: "go-back"; url: string; verdict: Verdict }
   | { type: "hover"; href: string }
+  | { type: "search-check"; urls: string[] }
   | { type: "assistant-summary"; url: string; resourceHosts: string[] }
   | { type: "assistant-ask"; url: string; question: string; hasPasswordField: boolean }
   | { type: "enroll"; linkCode?: string }

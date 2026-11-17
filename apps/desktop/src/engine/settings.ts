@@ -9,9 +9,12 @@ export interface DesktopSettings {
   /** Off by default: sends each scanned file's SHA-256 to the server. */
   cloudLookup: boolean;
   language: "auto" | "en" | "ar";
+  /** Watch these folders for mass encryption (detection only). */
+  ransomwareWatch: boolean;
+  protectedFolders: string[];
 }
 
-export function defaultSettings(downloads: string): DesktopSettings {
+export function defaultSettings(downloads: string, protectedFolders: string[] = []): DesktopSettings {
   return {
     serverUrl: "http://localhost:8080",
     watchFolders: [downloads],
@@ -20,6 +23,8 @@ export function defaultSettings(downloads: string): DesktopSettings {
     useClamav: true,
     cloudLookup: false,
     language: "auto",
+    ransomwareWatch: true,
+    protectedFolders,
   };
 }
 
@@ -50,7 +55,10 @@ export function sanitizeChanges(changes: unknown): Partial<DesktopSettings> {
     out.serverUrl = url.origin;
   }
   if (Array.isArray(input.watchFolders)) out.watchFolders = input.watchFolders.filter((f): f is string => typeof f === "string").slice(0, 20);
-  for (const key of ["watchEnabled", "autoQuarantine", "useClamav", "cloudLookup"] as const) {
+  if (Array.isArray(input.protectedFolders)) {
+    out.protectedFolders = input.protectedFolders.filter((f): f is string => typeof f === "string").slice(0, 20);
+  }
+  for (const key of ["watchEnabled", "autoQuarantine", "useClamav", "cloudLookup", "ransomwareWatch"] as const) {
     if (typeof input[key] === "boolean") out[key] = input[key];
   }
   if (input.language === "auto" || input.language === "en" || input.language === "ar") out.language = input.language;

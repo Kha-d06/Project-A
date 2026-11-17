@@ -14,6 +14,9 @@ The SENTINEL browser extension (Chrome and Microsoft Edge, Manifest V3).
   - the site's cookies (names, owning domain, first or third party, lifetime; never values) and known advertising and analytics trackers it loaded;
   - questions answered by the server's AI provider (`POST /extension/assistant`, sending only the domain, verdict, warning titles, cookie names and tracker names) or, if none is configured, built-in answers grounded in the same facts.
   Turning it on requests `scripting`, `cookies` and access to web pages.
+- **Search-result labels (optional).** On Google, Bing and DuckDuckGo, results with warning signs get a SENTINEL label. Clean results are left alone.
+- **Tracker blocking (optional).** Blocks about 45 well-known advertising and analytics domains when they load as third parties.
+- **Family block lists.** When the linked account applies a family or organisation group's list, those domains are blocked before loading. The warning page names the group and offers no way to proceed.
 - **English and Arabic.** Follows the browser's language, or the choice in settings; Arabic is laid out right to left.
 - **Hover checks (optional, off by default).** Shows a warning next to dangerous links. Turning it on requests the `scripting` permission and access to web pages.
 - **Popup.** Shows protection state, the current site's verdict and when it was checked, recent alerts, pause and resume, a full-scan shortcut, and links to settings and the dashboard.

@@ -56,6 +56,9 @@ const TRACKERS: Record<string, Tracker> = {
   "adjust.com": { name: "Adjust", category: "advertising" },
 };
 
+/** Tracker domains, for optional blocking with declarativeNetRequest. */
+export const TRACKER_DOMAINS = Object.keys(TRACKERS);
+
 export function trackerFor(host: string): Tracker | null {
   const lower = host.toLowerCase();
   const parts = lower.split(".");

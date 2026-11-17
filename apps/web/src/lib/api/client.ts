@@ -115,7 +115,7 @@ async function readError(response: Response): Promise<ApiError> {
 }
 
 interface RequestOptions {
-  method?: "GET" | "POST" | "PATCH" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   json?: unknown;
   form?: FormData;
   query?: Record<string, string | number | undefined | null>;
@@ -184,7 +184,9 @@ export const api = {
     invite: (groupId: string, email: string, role: "admin" | "member") =>
       request<InviteCreated>(`/groups/${encodeURIComponent(groupId)}/invites`, { method: "POST", json: { email, role } }),
     accept: (token: string) => request<Group>("/groups/invites/accept", { method: "POST", json: { token } }),
-    updateMember: (groupId: string, userId: string, changes: { role?: "admin" | "member"; share_activity?: boolean }) =>
+    setBlocklist: (groupId: string, domains: string[]) =>
+      request<Group>(`/groups/${encodeURIComponent(groupId)}/blocklist`, { method: "PUT", json: { domains } }),
+    updateMember: (groupId: string, userId: string, changes: { role?: "admin" | "member"; share_activity?: boolean; apply_blocklist?: boolean }) =>
       request<Group>(`/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`, { method: "PATCH", json: changes }),
     removeMember: (groupId: string, userId: string) =>
       request<void>(`/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`, { method: "DELETE" }),

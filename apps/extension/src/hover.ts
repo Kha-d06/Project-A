@@ -22,7 +22,7 @@ function showTooltip(anchor: HTMLAnchorElement, result: CheckResult) {
   const root = host.attachShadow({ mode: "closed" });
   const box = document.createElement("div");
   box.setAttribute("role", "status");
-  const danger = result.verdict === "dangerous" || result.verdict === "blocked_by_you";
+  const danger = result.verdict === "dangerous" || result.verdict === "blocked_by_you" || result.verdict === "blocked_by_family";
   box.style.cssText = `position:fixed;z-index:2147483647;max-width:320px;padding:8px 12px;border-radius:8px;font:13px/1.4 system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.2);background:${danger ? "#fdecea" : "#fdf3e2"};color:#0c1424;border:1px solid ${danger ? "#b42318" : "#a15c07"}`;
   const title = document.createElement("strong");
   title.textContent = `SENTINEL: ${danger ? "Dangerous link" : "Suspicious link"} (${result.host})`;

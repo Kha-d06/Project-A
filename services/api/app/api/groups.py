@@ -34,6 +34,7 @@ from app.models.base import utcnow
 from app.notify.email import EmailUnavailableError, email_enabled, send_email
 from app.schemas.sharing import (
     AcceptInvite,
+    GroupBlocklist,
     GroupCreate,
     GroupMemberOut,
     GroupOut,
@@ -132,6 +133,8 @@ def _group_out(db: Session, group: Group, me: GroupMember) -> GroupOut:
         created_at=group.created_at,
         my_role=me.role,
         my_share_activity=me.share_activity,
+        my_apply_blocklist=me.apply_blocklist,
+        blocklist=list(group.blocklist or []),
         members=members,
         pending_invites=invites,
     )
@@ -251,17 +254,34 @@ def update_member(
     target = db.get(GroupMember, (group_id, member_id))
     if target is None:
         raise ApiError(404, "member_not_found", "That person is not in this group.")
-    if body.share_activity is not None:
-        # Only the member themselves decides whether their activity is visible.
+    if body.share_activity is not None or body.apply_blocklist is not None:
+        # Only the member themselves decides what is shared or applied to them.
         if member_id != user.id:
             raise ApiError(403, "not_your_setting", "Only that member can change this.")
-        target.share_activity = body.share_activity
+        if body.share_activity is not None:
+            target.share_activity = body.share_activity
+        if body.apply_blocklist is not None:
+            target.apply_blocklist = body.apply_blocklist
     if body.role is not None:
         _require_manager(me)
         if target.role == "owner":
             raise ApiError(409, "owner_role", "The owner's role cannot be changed.")
         target.role = body.role
         record_event(db, request, user, "group_role_changed", f"{group.name}: {body.role}")
+    db.commit()
+    return _group_out(db, group, me)
+
+
+@router.put("/{group_id}/blocklist", response_model=GroupOut)
+def set_blocklist(
+    group_id: uuid.UUID, body: GroupBlocklist, request: Request, db: Db, user: SessionUser
+) -> GroupOut:
+    """Owners and admins suggest domains to block. Each member decides whether to
+    apply the list in their own browsers; it is never forced on anyone."""
+    group, me = _membership(db, group_id, user)
+    _require_manager(me)
+    group.blocklist = body.domains
+    record_event(db, request, user, "group_blocklist", f"{group.name}: {len(body.domains)} domains")
     db.commit()
     return _group_out(db, group, me)
 

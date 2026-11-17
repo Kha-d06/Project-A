@@ -37,6 +37,14 @@ def weekly_summaries_task() -> None:
         send_weekly_summaries(db)
 
 
+@celery_app.task(name="sentinel.breach_monitoring")  # type: ignore[untyped-decorator]
+def breach_monitoring_task() -> None:
+    from app.notify.breaches import check_breaches
+
+    with get_session_factory()() as db:
+        check_breaches(db)
+
+
 @celery_app.task(name="sentinel.purge_expired")  # type: ignore[untyped-decorator]
 def purge_expired_task() -> None:
     with get_session_factory()() as db:

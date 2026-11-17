@@ -64,6 +64,9 @@ export async function assessUrl(raw: string, settings: Settings): Promise<CheckR
   const url = checkableUrl(raw);
   if (!url) return null;
   if (matchesHostList(url.hostname, settings.blocklist)) return localResult("blocked_by_you", url.hostname);
+  if (matchesHostList(url.hostname, settings.familyBlocklist)) {
+    return { ...localResult("blocked_by_family", url.hostname), sources: settings.familyGroups };
+  }
   if (matchesHostList(url.hostname, settings.allowlist)) return localResult("allowed_by_you", url.hostname);
 
   const sent = urlForMode(url, settings.privacyMode);

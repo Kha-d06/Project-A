@@ -126,3 +126,30 @@ describe("built-in answers", () => {
     expect(builtInAnswer("ملفات تعريف الارتباط؟", summary("caution"), "ar")).toContain("2");
   });
 });
+
+describe("family lists and tracker blocking", () => {
+  it("adds a family rule and a third-party tracker rule only when turned on", () => {
+    const off = buildRules({ ...DEFAULT_SETTINGS }, []);
+    expect(off).toEqual([]);
+    const rules = buildRules({ ...DEFAULT_SETTINGS, blockTrackers: true, familyBlocklist: ["casino.example"] }, []);
+    const family = rules.find((r) => r.id === 5)!;
+    expect(family.condition.requestDomains).toEqual(["casino.example"]);
+    const trackers = rules.find((r) => r.id === 4)!;
+    expect(trackers.condition.domainType).toBe("thirdParty");
+    expect(trackers.condition.requestDomains).toContain("google-analytics.com");
+    expect(trackers.condition.resourceTypes).not.toContain("main_frame");
+  });
+
+  it("reports family-blocked sites with the group's name", async () => {
+    const { assessUrl } = await import("../src/lib/protection");
+    const result = await assessUrl("https://www.casino.example/play", {
+      ...DEFAULT_SETTINGS,
+      familyBlocklist: ["casino.example"],
+      familyGroups: ["Home"],
+    });
+    expect(result?.verdict).toBe("blocked_by_family");
+    expect(result?.sources).toEqual(["Home"]);
+    setLanguage("en");
+    expect(VERDICTS.blocked_by_family.interrupts).toBe("always");
+  });
+});

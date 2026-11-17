@@ -55,3 +55,5 @@ code { font: 12px ui-monospace, Menlo, Consolas, monospace; overflow-wrap: anywh
 .toast.error { background: var(--danger); color: #fff; } .toast.hidden { display: none; }
 @media (max-width: 760px) { body { grid-template-columns: 1fr; } aside { flex-direction: row; overflow-x: auto; } nav { display: flex; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+.panel.alert { border-color: var(--danger); background: var(--danger-soft); }
+.warning-text { color: var(--warning); font-weight: 600; }

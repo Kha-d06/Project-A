@@ -25,7 +25,7 @@ function verdictBlock(result: CheckResult) {
       el("strong", {}, presentation.label),
       el("p", {}, reason ? reason.title : presentation.detail),
       result.limitations[0] ? el("p", { class: "faint" }, result.limitations[0]) : null,
-      result.verdict !== "skipped" && result.verdict !== "allowed_by_you" && result.verdict !== "blocked_by_you"
+      result.verdict !== "skipped" && result.verdict !== "allowed_by_you" && result.verdict !== "blocked_by_you" && result.verdict !== "blocked_by_family"
         ? el("p", { class: "faint" }, t().popup.checked(relativeTime(result.checkedAt)))
         : null,
     ),

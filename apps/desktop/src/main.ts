@@ -13,6 +13,8 @@ import { BrowserWindow, Menu, Notification, Tray, app, dialog, ipcMain, nativeIm
 
 import { findClam } from "./engine/clamav";
 import { findSevenZip } from "./engine/formats";
+import { type RansomwareAlert, RansomwareMonitor } from "./engine/ransomware";
+import { pendingUpdates, wifiStatus } from "./engine/system";
 import { Quarantine } from "./engine/quarantine";
 import { type ScanContext, scanFile } from "./engine/scanner";
 import { fetchSignatures, lookupHash, uploadForFullScan } from "./engine/server";
@@ -39,6 +41,8 @@ let tray: Tray | null = null;
 let history: ScanResult[] = [];
 let watcher: FolderWatcher;
 let lastSignatureError: string | null = null;
+let ransomware: RansomwareMonitor;
+let lastRansomwareAlert: (RansomwareAlert & { at: string }) | null = null;
 
 function send(channel: string, payload: unknown) {
   window?.webContents.send(channel, payload);
@@ -113,8 +117,22 @@ async function updateSignatures(): Promise<void> {
   }
 }
 
+function onRansomware(alert: RansomwareAlert) {
+  lastRansomwareAlert = { ...alert, at: new Date().toISOString() };
+  send("ransomware-alert", lastRansomwareAlert);
+  if (Notification.isSupported()) {
+    new Notification({
+      title: "Possible ransomware activity",
+      body: `${alert.reasons[0]}. Disconnect this computer from the network and check your files.`,
+      urgency: "critical",
+    }).show();
+  }
+  window?.show();
+}
+
 function applyWatching() {
   watcher.set(settings.watchEnabled ? settings.watchFolders : []);
+  ransomware.set(settings.ransomwareWatch ? settings.protectedFolders : []);
   tray?.setToolTip(settings.watchEnabled ? "SENTINEL Desktop: watching for new files" : "SENTINEL Desktop: watching paused");
 }
 
@@ -124,6 +142,7 @@ async function status() {
     signatures: { count: signatures.size, ...(signatures.meta ?? {}), error: lastSignatureError },
     clamav: { available: Boolean(clamBinary), path: clamBinary },
     watching: watcher.folders,
+    ransomwareAlert: lastRansomwareAlert,
     quarantineCount: (await quarantine.list()).length,
     platform: process.platform,
     version: app.getVersion(),
@@ -174,6 +193,17 @@ function registerIpc() {
     settings = { ...settings, ...sanitizeChanges(changes) };
     await saveSettings(join(dataDir(), "settings.json"), settings);
     applyWatching();
+    return status();
+  });
+  ipcMain.handle("wifi", () => wifiStatus());
+  ipcMain.handle("updates", () => pendingUpdates());
+  ipcMain.handle("add-protected-folder", async () => {
+    const result = await dialog.showOpenDialog(window!, { properties: ["openDirectory"] });
+    if (!result.canceled && result.filePaths[0]) {
+      settings = { ...settings, protectedFolders: [...new Set([...settings.protectedFolders, result.filePaths[0]])] };
+      await saveSettings(join(dataDir(), "settings.json"), settings);
+      applyWatching();
+    }
     return status();
   });
   ipcMain.handle("add-watch-folder", async () => {
@@ -230,7 +260,8 @@ function createTray() {
 
 async function start() {
   const dir = dataDir();
-  settings = await loadSettings(join(dir, "settings.json"), defaultSettings(app.getPath("downloads")));
+  const personal = (["documents", "desktop", "pictures"] as const).map((name) => app.getPath(name));
+  settings = await loadSettings(join(dir, "settings.json"), defaultSettings(app.getPath("downloads"), personal));
   if (process.env.SENTINEL_SERVER) settings.serverUrl = new URL(process.env.SENTINEL_SERVER).origin;
   signatures = new SignatureStore(join(dir, "signatures.json"));
   await signatures.open();
@@ -242,6 +273,7 @@ async function start() {
   }
   clamBinary = await findClam();
   sevenZip = await findSevenZip();
+  ransomware = new RansomwareMonitor(onRansomware);
   watcher = new FolderWatcher((path) => {
     void scanFile(path, context()).then((result) => record(result, true));
   });
@@ -269,5 +301,8 @@ if (!app.requestSingleInstanceLock()) {
     if (!tray || !settings?.watchEnabled) app.quit();
   });
   app.on("activate", () => window ?? createWindow());
-  app.on("before-quit", () => watcher?.close());
+  app.on("before-quit", () => {
+    watcher?.close();
+    ransomware?.close();
+  });
 }

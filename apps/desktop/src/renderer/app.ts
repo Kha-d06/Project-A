@@ -13,6 +13,7 @@ declare global {
 }
 
 interface Status {
+  ransomwareAlert: { reasons: string[]; examples: string[]; at: string } | null;
   settings: DesktopSettings;
   signatures: { count: number; updatedAt?: string; error: string | null };
   clamav: { available: boolean; path: string | null };
@@ -30,6 +31,8 @@ let t = DICTS.en;
 let status: Status;
 let tab: Tab = "scan";
 const results: Entry[] = [];
+// Kept separately so a status refresh that started earlier cannot hide it.
+let ransomwareAlert: Status["ransomwareAlert"] = null;
 
 type Child = Node | string | null | undefined | false;
 function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, unknown> = {}, ...children: Child[]): HTMLElementTagNameMap[K] {
@@ -202,11 +205,62 @@ async function change(changes: Partial<DesktopSettings>) {
   }
 }
 
+function wifiPanel() {
+  const p = t.protection;
+  const text = h("p", { id: "wifi-status", class: "muted" }, "…");
+  void api.wifi().then((wifi: { ssid: string | null; security: string | null; risk: string }) => {
+    const ssid = wifi.ssid ?? "?";
+    text.textContent =
+      wifi.risk === "open" ? p.wifiOpen(ssid)
+      : wifi.risk === "weak" ? p.wifiWeak(ssid)
+      : wifi.risk === "ok" ? p.wifiOk(ssid, wifi.security ?? "")
+      : wifi.risk === "none" ? p.wifiNone
+      : p.wifiUnknown;
+    text.className = wifi.risk === "open" || wifi.risk === "weak" ? "warning-text" : "muted";
+  });
+  return h("section", { class: "panel" }, h("h2", {}, p.wifi), text);
+}
+
+function updatesPanel() {
+  const p = t.protection;
+  const list = h("div", { id: "updates" });
+  const check = async () => {
+    list.replaceChildren(h("p", { class: "muted" }, "…"));
+    const result = (await api.updates()) as { updates: { name: string; current: string | null; available: string | null }[]; source: string } | null;
+    if (!result) return list.replaceChildren(h("p", { class: "muted" }, p.updatesUnavailable));
+    if (!result.updates.length) return list.replaceChildren(h("p", {}, p.upToDate));
+    list.replaceChildren(
+      h("p", { class: "warning-text" }, p.updatesCount(result.updates.length)),
+      h("ul", { class: "folders" }, ...result.updates.slice(0, 50).map((u) => h("li", {}, h("code", {}, u.name), u.available ? h("span", { class: "muted small" }, ` → ${u.available}`) : null))),
+    );
+  };
+  return h(
+    "section",
+    { class: "panel" },
+    h("h2", {}, p.updates),
+    h("p", { class: "muted" }, p.updatesHint),
+    h("div", {}, h("button", { type: "button", class: "secondary", onclick: check }, p.checkUpdates)),
+    list,
+  );
+}
+
 function protectionView() {
   const s = status.settings;
   const p = t.protection;
+  const alert = ransomwareAlert ?? status.ransomwareAlert;
   return [
     h("h1", {}, p.heading),
+    alert
+      ? h(
+          "section",
+          { class: "panel alert", role: "alert" },
+          h("h2", {}, p.ransomwareAlert),
+          ...alert.reasons.map((reason) => h("p", {}, reason)),
+          h("p", { class: "muted small" }, alert.examples.join(" · ")),
+          h("p", {}, h("strong", {}, p.ransomwareAdvice)),
+        )
+      : null,
+    wifiPanel(),
     h(
       "section",
       { class: "panel" },
@@ -240,6 +294,25 @@ function protectionView() {
       h("p", {}, p.heuristics),
       h("p", {}, status.clamav.available ? p.clamOn(status.clamav.path ?? "") : p.clamOff),
     ),
+    h(
+      "section",
+      { class: "panel" },
+      toggle(p.ransomware, s.ransomwareWatch, (value) => change({ ransomwareWatch: value }), p.ransomwareHint, "ransomware-watch"),
+      h(
+        "ul",
+        { class: "folders" },
+        ...s.protectedFolders.map((folder) =>
+          h(
+            "li",
+            { class: "row spread" },
+            h("code", { dir: "ltr" }, folder),
+            h("button", { type: "button", class: "link", onclick: () => change({ protectedFolders: s.protectedFolders.filter((f) => f !== folder) }) }, p.remove),
+          ),
+        ),
+      ),
+      h("button", { type: "button", class: "secondary", onclick: async () => { const next = await guard(() => api.addProtectedFolder()); if (next) { status = next as Status; render(); } } }, p.addFolder),
+    ),
+    updatesPanel(),
     h("section", { class: "panel subtle" }, h("h2", {}, p.limits), h("p", { class: "muted" }, p.limitsBody)),
   ];
 }
@@ -305,7 +378,10 @@ function settingsView() {
   ];
 }
 
+let renderToken = 0;
+
 async function render() {
+  const token = ++renderToken;
   lang = resolve(status.settings.language, status.locale);
   t = DICTS[lang];
   document.documentElement.lang = lang;
@@ -324,14 +400,17 @@ async function render() {
   );
   document.getElementById("brand")!.textContent = t.title;
   const main = document.getElementById("main")!;
-  const views: Record<Tab, () => Node[] | Promise<Node[]>> = {
+  const views: Record<Tab, () => (Node | null)[] | Promise<(Node | null)[]>> = {
     scan: scanView,
     protection: protectionView,
     quarantine: quarantineView,
     history: historyView,
     settings: settingsView,
   };
-  main.replaceChildren(...(await views[tab]()));
+  const nodes = await views[tab]();
+  // A slower render that started earlier must not replace a newer one.
+  if (token !== renderToken) return;
+  main.replaceChildren(...nodes.filter((node): node is Node => node !== null));
 }
 
 async function refresh() {
@@ -348,6 +427,11 @@ api.on("scan-result", (payload) => {
     if (list) list.prepend(resultRow(payload as Entry));
     else void render();
   }
+});
+api.on("ransomware-alert", (payload) => {
+  ransomwareAlert = payload as Status["ransomwareAlert"];
+  tab = "protection";
+  void render();
 });
 api.on("scan-progress", (payload) => {
   const { scanned, malicious, suspicious } = payload as { scanned: number; malicious: number; suspicious: number };

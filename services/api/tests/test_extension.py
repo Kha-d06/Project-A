@@ -52,6 +52,8 @@ def test_anonymous_enrollment_gives_working_credentials(client: TestClient) -> N
         "linked": False,
         "account_email": None,
         "sync_events": False,
+        "family_blocklist": [],
+        "family_groups": [],
     }
 
 

@@ -24,7 +24,7 @@ export interface PageSummary {
   cookiesAvailable: boolean;
 }
 
-const WARNING: Verdict[] = ["dangerous", "suspicious", "caution", "blocked_by_you"];
+const WARNING: Verdict[] = ["dangerous", "suspicious", "caution", "blocked_by_you", "blocked_by_family"];
 
 export function isWarning(verdict: Verdict | undefined): boolean {
   return !!verdict && WARNING.includes(verdict);

@@ -18,6 +18,7 @@ const HOST_ID = "sentinel-assistant-root";
 const TONE: Record<string, string> = {
   dangerous: "#b42318",
   blocked_by_you: "#b42318",
+  blocked_by_family: "#b42318",
   suspicious: "#a15c07",
   caution: "#a15c07",
   no_known_threat: "#1d6b52",

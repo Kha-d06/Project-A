@@ -47,7 +47,7 @@ await build({
 await build({
   ...shared,
   format: "iife",
-  entryPoints: { hover: join(root, "src/hover.ts"), assistant: join(root, "src/assistant.ts") },
+  entryPoints: { hover: join(root, "src/hover.ts"), assistant: join(root, "src/assistant.ts"), search: join(root, "src/search.ts") },
   outdir: out,
 });
 

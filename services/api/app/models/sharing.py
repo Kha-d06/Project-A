@@ -52,6 +52,9 @@ class Group(Base):
     name: Mapped[str] = mapped_column(String(80))
     kind: Mapped[str] = mapped_column(String(20))
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    # Domains the owners and admins suggest blocking. Applied only in the browsers
+    # of members who turned it on themselves.
+    blocklist: Mapped[list[Any]] = mapped_column(default=list)
 
 
 class GroupMember(Base):
@@ -68,6 +71,8 @@ class GroupMember(Base):
     # Opt-in, by the member themselves: let the group's owners and admins see
     # counts of this member's warnings (never the sites or messages).
     share_activity: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Opt-in, by the member: apply the group's block list in their linked browsers.
+    apply_blocklist: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     joined_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 

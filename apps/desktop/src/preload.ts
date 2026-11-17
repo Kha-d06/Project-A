@@ -15,8 +15,11 @@ const api = {
   fullScan: (path: string) => ipcRenderer.invoke("full-scan", path),
   settings: (changes: Record<string, unknown>) => ipcRenderer.invoke("settings", changes),
   addWatchFolder: () => ipcRenderer.invoke("add-watch-folder"),
+  addProtectedFolder: () => ipcRenderer.invoke("add-protected-folder"),
+  wifi: () => ipcRenderer.invoke("wifi"),
+  updates: () => ipcRenderer.invoke("updates"),
   pathOf: (file: File) => webUtils.getPathForFile(file),
-  on: (channel: "scan-result" | "scan-progress", listener: (payload: unknown) => void) => {
+  on: (channel: "scan-result" | "scan-progress" | "ransomware-alert", listener: (payload: unknown) => void) => {
     const wrapped = (_event: unknown, payload: unknown) => listener(payload);
     ipcRenderer.on(channel, wrapped);
     return () => ipcRenderer.removeListener(channel, wrapped);

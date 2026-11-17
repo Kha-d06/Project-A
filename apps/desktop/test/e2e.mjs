@@ -37,10 +37,11 @@ const work = await mkdtemp(join(tmpdir(), "sentinel-desktop-e2e-"));
 const profile = join(work, "profile");
 const downloads = join(work, "Downloads");
 const files = join(work, "files");
-await Promise.all([mkdir(profile), mkdir(downloads), mkdir(files)]);
+const documents = join(work, "Documents");
+await Promise.all([mkdir(profile), mkdir(downloads), mkdir(files), mkdir(documents)]);
 await writeFile(
   join(profile, "settings.json"),
-  JSON.stringify({ serverUrl: "http://localhost:8799", watchFolders: [downloads], watchEnabled: true, autoQuarantine: true, useClamav: true, cloudLookup: false, language: "en" }),
+  JSON.stringify({ serverUrl: "http://localhost:8799", watchFolders: [downloads], watchEnabled: true, autoQuarantine: true, useClamav: true, cloudLookup: false, language: "en", ransomwareWatch: true, protectedFolders: [documents] }),
 );
 await writeFile(join(files, "eicar.com"), EICAR);
 await writeFile(join(files, "sample.bin"), SAMPLE);
@@ -96,6 +97,13 @@ for (let i = 0; i < 25; i++) {
 }
 await stat(join(files, "invoice.pdf"));
 step("restore puts the file back where it was");
+
+// Ransomware watch: many files renamed with a ransomware extension raise an alert.
+for (let i = 0; i < 9; i++) await writeFile(join(documents, `invoice-${i}.docx.lockbit`), Buffer.alloc(2048, i));
+await page.waitForSelector("text=Possible ransomware activity", { timeout: 10000 });
+await page.waitForSelector("#wifi-status");
+await shot(page, "desktop-ransomware");
+step("ransomware watch alerts on mass renames with a ransomware extension");
 
 await page.click('[data-tab="settings"]');
 await page.selectOption("#language", "ar");

@@ -11,14 +11,20 @@
  *   1      server blocklist (feeds + verified community reports)
  *   2      the user's own block list
  *   3      the user's allow list (higher priority, so it wins)
+ *   4      optional tracker blocking (third-party requests only)
+ *   5      a family or organisation group's list, when the user applies it
  *   1000+  session allowances from "Continue anyway"
  */
 import { fetchBlocklist } from "./api";
+import { TRACKER_DOMAINS } from "./trackers";
 import type { Settings } from "./settings";
 
 export const RULE_SERVER = 1;
 export const RULE_USER_BLOCK = 2;
 export const RULE_USER_ALLOW = 3;
+export const RULE_TRACKERS = 4;
+export const RULE_FAMILY = 5;
+const TRACKER_TYPES = ["script", "xmlhttprequest", "image", "ping", "sub_frame"] as chrome.declarativeNetRequest.ResourceType[];
 const SESSION_RULE_BASE = 1000;
 const STORE_KEY = "blocklist";
 export const REFRESH_MINUTES = 6 * 60;
@@ -55,6 +61,19 @@ export function buildRules(settings: Settings, serverHosts: string[]): chrome.de
   if (settings.paused) return rules;
   if (settings.preloadBlocking && serverHosts.length) rules.push(rule(RULE_SERVER, 1, "block", serverHosts));
   if (settings.blocklist.length) rules.push(rule(RULE_USER_BLOCK, 1, "block", settings.blocklist));
+  if (settings.familyBlocklist.length) rules.push(rule(RULE_FAMILY, 1, "block", settings.familyBlocklist));
+  if (settings.blockTrackers) {
+    rules.push({
+      id: RULE_TRACKERS,
+      priority: 1,
+      action: { type: "block" as chrome.declarativeNetRequest.RuleActionType },
+      condition: {
+        requestDomains: TRACKER_DOMAINS,
+        resourceTypes: TRACKER_TYPES,
+        domainType: "thirdParty" as chrome.declarativeNetRequest.DomainType,
+      },
+    });
+  }
   if (settings.allowlist.length) rules.push(rule(RULE_USER_ALLOW, 2, "allow", settings.allowlist));
   return rules;
 }
@@ -63,7 +82,7 @@ export async function applyRules(settings: Settings): Promise<void> {
   if (!hasDnr()) return;
   const list = await storedBlocklist();
   await chrome.declarativeNetRequest.updateDynamicRules({
-    removeRuleIds: [RULE_SERVER, RULE_USER_BLOCK, RULE_USER_ALLOW],
+    removeRuleIds: [RULE_SERVER, RULE_USER_BLOCK, RULE_USER_ALLOW, RULE_TRACKERS, RULE_FAMILY],
     addRules: buildRules(settings, list?.hosts ?? []),
   });
 }

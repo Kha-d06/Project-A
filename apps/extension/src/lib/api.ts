@@ -56,6 +56,8 @@ export interface AccountLink {
   linked: boolean;
   account_email: string | null;
   sync_events: boolean;
+  family_blocklist?: string[];
+  family_groups?: string[];
 }
 
 function browserName(): string {

@@ -328,6 +328,8 @@ export interface Group {
   created_at: string;
   my_role: GroupRole;
   my_share_activity: boolean;
+  my_apply_blocklist?: boolean;
+  blocklist?: string[];
   members: GroupMember[];
   pending_invites: { email: string; role: GroupRole; expires_at: string }[];
 }

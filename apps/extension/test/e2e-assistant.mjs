@@ -22,6 +22,7 @@ const step = (text) => console.log(`✓ ${text}`);
 const { server, seen } = await startMockServer(8787, {
   verdicts: { "paypa1-login.example.com": "suspicious" },
   blocklist: ["preload-evil.example"],
+  family: { domains: ["casino.example"], groups: ["Home"] },
 });
 
 const context = await chromium.launchPersistentContext(await mkdtemp(join(tmpdir(), "sentinel-e2e-")), {
@@ -111,7 +112,55 @@ assert.ok(seen.assistantContexts.length === 1 && !sent.includes("SECRET-SESSION-
 assert.equal(seen.assistantContexts[0].context.host, "paypa1-login.example.com");
 step("questions go to the server with a summary only, and fall back to built-in answers");
 
-// 4. Arabic.
+// 4. A family group's block list, applied by the linked account holder.
+const familyPage = await context.newPage();
+await familyPage.goto(`chrome-extension://${extensionId}/options.html`);
+await familyPage.evaluate(() => chrome.runtime.sendMessage({ type: "refresh-account" }));
+await familyPage.goto("https://www.casino.example/").catch(() => undefined);
+for (let i = 0; i < 50 && !familyPage.url().includes("warning.html"); i++) await new Promise((r) => setTimeout(r, 200));
+await familyPage.waitForSelector("text=Home blocks this site");
+assert.equal(await familyPage.locator("summary").count(), 0, "no way to proceed past a family block");
+await shot(familyPage, "ext-family-block");
+step("family block list applied: warning names the group, no proceed option");
+
+// 5. Tracker blocking and search-result badges.
+let trackerLoads = 0;
+await context.route(/google-analytics\.com/, (route) => {
+  trackerLoads += 1;
+  return route.fulfill({ contentType: "text/javascript", body: "" });
+});
+await context.route(/^https:\/\/www\.bing\.com\//, (route) =>
+  route.fulfill({
+    contentType: "text/html",
+    body: `<html><body><ol id="b_results">
+      <li><h2><a href="https://paypa1-login.example.com/">PayPal login</a></h2></li>
+      <li><h2><a href="https://news.example.org/">News</a></h2></li></ol></body></html>`,
+  }),
+);
+const settingsPage = await context.newPage();
+await settingsPage.goto(`chrome-extension://${extensionId}/options.html`);
+await settingsPage.evaluate(() => chrome.runtime.sendMessage({ type: "settings", changes: { blockTrackers: true, searchBadges: true } }));
+const search = await context.newPage();
+await search.goto("https://www.bing.com/search?q=paypal");
+const flagged = search.locator("#b_results li", { hasText: "PayPal login" });
+await search.waitForFunction(() => document.querySelectorAll("[data-sentinel-checked]").length === 2, null, { timeout: 10000 });
+await search.waitForTimeout(500);
+const badgeText = await search.evaluate(() => document.querySelectorAll("#b_results li")[0].querySelector("span") !== null);
+assert.ok(badgeText, "a badge was added to the suspicious result");
+assert.equal(await search.evaluate(() => document.querySelectorAll("#b_results li")[1].querySelector("span")), null, "clean results are left alone");
+await shot(search, "ext-search-badges");
+step("search results with warning signs are labelled; others untouched");
+const before = trackerLoads;
+const article = await context.newPage();
+await context.route(/^https:\/\/news\.example\.org\//, (route) =>
+  route.fulfill({ contentType: "text/html", body: `<html><body>News<script src="https://www.google-analytics.com/analytics.js"></script></body></html>` }),
+);
+await article.goto("https://news.example.org/");
+await article.waitForTimeout(800);
+assert.equal(trackerLoads, before, "the tracker request never left the browser");
+step("third-party tracker blocked when tracker blocking is on");
+
+// 6. Arabic.
 const options2 = await context.newPage();
 await options2.goto(`chrome-extension://${extensionId}/options.html`);
 await options2.evaluate(() => chrome.runtime.sendMessage({ type: "settings", changes: { language: "ar" } }));

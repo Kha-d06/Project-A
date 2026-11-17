@@ -23,6 +23,9 @@ Verdicts use the same words as the website: **Known malicious**, **Suspicious**,
 - **Downloads watcher.** New files in the watched folders are scanned once they stop changing. Partial downloads (`.crdownload`, `.part`, …) are skipped until the browser finishes them.
 - **Automatic quarantine** of known-malicious files (on by default). Suspicious files are reported, and you can quarantine them yourself.
 - **Quarantine.** Files are encrypted with AES-256-GCM (a random key per file) into the app's private folder, and the original is deleted. Restore puts the file back where it was, or next to it if the name is taken.
+- **Ransomware watch** (detection only, on by default for Documents, Desktop and Pictures). Alerts when many files are renamed with extensions that ransomware uses, when many documents are rewritten with random-looking contents within a minute, or when ransom notes appear. It cannot stop encryption, so keep backups.
+- **Wi-Fi check.** Warns when the current network is open or uses WEP. It reads `nmcli`, `netsh` or `system_profiler`.
+- **Software updates.** Lists pending updates from `winget`, `softwareupdate` or `apt`. Installing them is left to the system's own tools.
 - **Tray icon.** Watching continues after the window closes. Quit from the tray menu.
 
 ## What it does not do

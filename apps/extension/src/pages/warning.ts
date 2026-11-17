@@ -25,9 +25,15 @@ function headline(verdict: CheckResult["verdict"]): string | undefined {
   return { dangerous: w.headlineDangerous, suspicious: w.headlineSuspicious, blocked_by_you: w.headlineBlocked }[verdict as string];
 }
 
+function familyHeadline(result: CheckResult): string | undefined {
+  return result.verdict === "blocked_by_family" ? t().warning.headlineFamily(result.sources.join(", ") || "Your group") : undefined;
+}
+
 function advice(verdict: CheckResult["verdict"]): string {
   const w = t().warning;
-  return { dangerous: w.adviceDangerous, suspicious: w.adviceSuspicious, blocked_by_you: w.adviceBlocked }[verdict as string] ?? "";
+  return (
+    { dangerous: w.adviceDangerous, suspicious: w.adviceSuspicious, blocked_by_you: w.adviceBlocked, blocked_by_family: w.adviceFamily }[verdict as string] ?? ""
+  );
 }
 
 function goBack(target: string, verdict: CheckResult["verdict"]) {
@@ -39,7 +45,7 @@ function render(target: string, result: CheckResult) {
   const presentation = VERDICTS[result.verdict];
   const w = t().warning;
   document.title = `${w.stopped}: ${result.host}`;
-  const proceedAllowed = result.verdict !== "blocked_by_you";
+  const proceedAllowed = result.verdict !== "blocked_by_you" && result.verdict !== "blocked_by_family";
 
   const sections: (HTMLElement | null)[] = [
     el(
@@ -49,7 +55,7 @@ function render(target: string, result: CheckResult) {
       el(
         "div",
         { class: "stack" },
-        el("h1", {}, headline(result.verdict) ?? presentation.label),
+        el("h1", {}, familyHeadline(result) ?? headline(result.verdict) ?? presentation.label),
         el("p", { class: "host mono" }, result.host),
         el("p", { class: "muted" }, `${w.riskLevel(presentation.label)} ${advice(result.verdict)}`),
       ),

@@ -26,6 +26,8 @@ from app.models import (
     ExtensionEvent,
     ExtensionInstallation,
     ExtensionLinkCode,
+    Group,
+    GroupMember,
     ThreatIndicator,
     User,
 )
@@ -180,11 +182,24 @@ def unlink_installation(installation: CurrentInstallation, db: Db) -> ExtensionS
 @router.get("/settings", response_model=ExtensionSettings)
 def extension_settings(installation: CurrentInstallation, db: Db) -> ExtensionSettings:
     user = db.get(User, installation.user_id) if installation.user_id else None
+    domains: set[str] = set()
+    groups: list[str] = []
+    if user:
+        for group in db.scalars(
+            select(Group)
+            .join(GroupMember, GroupMember.group_id == Group.id)
+            .where(GroupMember.user_id == user.id, GroupMember.apply_blocklist.is_(True))
+        ):
+            if group.blocklist:
+                domains.update(group.blocklist)
+                groups.append(group.name)
     return ExtensionSettings(
         installation_id=installation.id,
         linked=user is not None,
         account_email=user.email if user else None,
         sync_events=bool(user and user.settings.sync_extension_events),
+        family_blocklist=sorted(domains)[:2000],
+        family_groups=groups,
     )
 
 

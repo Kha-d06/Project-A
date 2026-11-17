@@ -45,6 +45,11 @@ const BASE: Record<Verdict, Omit<VerdictPresentation, "label" | "detail">> = {
     badge: "",
     interrupts: "never",
   },
+  blocked_by_family: {
+    tone: "danger",
+    badge: "×",
+    interrupts: "always",
+  },
   blocked_by_you: {
     tone: "danger",
     badge: "×",

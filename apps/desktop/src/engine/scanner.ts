@@ -10,6 +10,20 @@
 import { open, stat } from "node:fs/promises";
 import { basename } from "node:path";
 
+import {
+  combineIndicators,
+  htmlFindings,
+  isOleFile,
+  macroFindings,
+  oneNoteFindings,
+  ooxmlPartFindings,
+  peFindings,
+  readableText,
+  rtfFindings,
+  scriptRuleFindings,
+  shortcutFindings,
+  stringFindings,
+} from "./analysis";
 import { clamScan } from "./clamav";
 import {
   archiveKind,
@@ -26,6 +40,7 @@ import {
   disguiseFindings,
   executableKind,
   extensionOf,
+  isScript,
   nameFindings,
   pdfFindings,
   scriptFindings,
@@ -74,6 +89,20 @@ function contentFindings(name: string, content: Buffer, signatures: SignatureSto
   }
   findings.push(...tag(nameFindings(name)), ...tag(disguiseFindings(name, content.subarray(0, 8))));
   findings.push(...tag(scriptFindings(name, content)), ...tag(pdfFindings(content)), ...tag(lnkFindings(content)));
+
+  // Deeper analysis (analysis.ts).
+  const kind = executableKind(content.subarray(0, 8));
+  const script = isScript(name, content);
+  const web = htmlFindings(name, content);
+  if (kind === "Windows program") findings.push(...tag(peFindings(content)));
+  if (kind || script || web.length || /\.(hta|html?|svg)$/i.test(name)) findings.push(...tag(stringFindings(content, readableText(content))));
+  if (script) findings.push(...tag(scriptRuleFindings(content)));
+  if (isOleFile(content) || name.toLowerCase() === "vbaproject.bin") {
+    // The archive check already reports that a .docx/.xlsx has macros; here only what they do.
+    findings.push(...tag(macroFindings(content).filter((f) => !(member && f.rule === "office_macros"))));
+  }
+  findings.push(...tag(rtfFindings(content)), ...tag(web), ...tag(oneNoteFindings(name, content)), ...tag(shortcutFindings(name, content)));
+  if (member) findings.push(...tag(ooxmlPartFindings(member, content)));
   return findings;
 }
 
@@ -224,6 +253,7 @@ export async function scanFile(path: string, context: ScanContext): Promise<Scan
         findings.push(unreadableArchive(otherArchive));
       }
     }
+    findings.push(...combineIndicators(findings));
     if (info.size > MAX_CONTENT_BYTES) {
       findings.push({
         severity: "info",

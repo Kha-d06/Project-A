@@ -14,7 +14,12 @@ const DOCUMENT_EXTENSIONS = new Set([
 const RUNNABLE_EXTENSIONS = new Set([
   "exe", "scr", "com", "pif", "bat", "cmd", "msi", "dll", "cpl", "vbs", "vbe", "js", "jse", "wsf", "wsh", "hta", "ps1", "lnk", "jar", "reg", "app", "dmg", "pkg", "apk", "iso", "img",
 ]);
-const SCRIPT_EXTENSIONS = new Set(["ps1", "bat", "cmd", "vbs", "vbe", "js", "jse", "wsf", "hta", "sh", "lnk"]);
+const SCRIPT_EXTENSIONS = new Set(["ps1", "psm1", "bat", "cmd", "vbs", "vbe", "js", "jse", "wsf", "hta", "sh", "zsh", "command", "py", "pl", "lnk"]);
+
+/** A script by name, or a file starting with "#!". */
+export function isScript(name: string, content: Buffer): boolean {
+  return SCRIPT_EXTENSIONS.has(extensionOf(name)) || content.subarray(0, 2).toString("latin1") === "#!";
+}
 
 export function extensionOf(name: string): string {
   const base = name.split(/[\\/]/).pop() ?? name;
@@ -84,10 +89,7 @@ function textOf(buffer: Buffer): string {
 }
 
 export function scriptFindings(name: string, content: Buffer): Finding[] {
-  const extension = extensionOf(name);
-  const head = content.subarray(0, 2);
-  const shebang = head.toString("latin1") === "#!";
-  if (!SCRIPT_EXTENSIONS.has(extension) && !shebang) return [];
+  if (!isScript(name, content)) return [];
   const text = textOf(content.subarray(0, 2 * 1024 * 1024));
   return SCRIPT_PATTERNS.filter(({ pattern }) => pattern.test(text)).map(({ rule, title }) => ({
     severity: "high" as const,

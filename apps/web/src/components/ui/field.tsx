@@ -3,8 +3,9 @@ import { useId, type ComponentProps, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
 const control =
-  "w-full rounded-control border bg-surface px-3 text-ink placeholder:text-ink-faint " +
-  "transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-0 " +
+  "w-full rounded-control border bg-surface px-3.5 text-ink placeholder:text-ink-faint shadow-[inset_0_1px_2px_rgb(0_0_0/0.04)] " +
+  "transition-[border-color,box-shadow] duration-200 focus-visible:outline-none focus-visible:border-accent " +
+  "focus-visible:shadow-[0_0_0_4px_color-mix(in_srgb,var(--accent)_18%,transparent)] " +
   "disabled:opacity-60";
 
 function controlClasses(invalid: boolean, className?: string) {

@@ -11,10 +11,9 @@ const { chromium } = createRequire(import.meta.url)("playwright");
 
 const out = join(dirname(fileURLToPath(import.meta.url)), "..", "static", "icons");
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <path d="M16 2.5 4.5 6.8v8.4c0 7.1 4.9 12.4 11.5 14.3 6.6-1.9 11.5-7.2 11.5-14.3V6.8L16 2.5Z" fill="#0c1424"/>
-  <path d="M16 6.4 8.3 9.3v5.9c0 4.9 3.2 8.7 7.7 10.3 4.5-1.6 7.7-5.4 7.7-10.3V9.3L16 6.4Z" fill="#f5f6f8"/>
-  <rect x="6.5" y="14.2" width="19" height="2.6" rx="1.3" fill="#0b9488"/>
-  <circle cx="16" cy="15.5" r="2.4" fill="#0c1424"/></svg>`;
+  <path d="M3 29V5h3v2h2V5h3v6h2v2h2v-2h2v2h2v-2h2V5h3v2h2V5h3v24H3Z" fill="#121726"/>
+  <path d="M13 29v-6.5a3 3 0 0 1 6 0V29h-6Z" fill="#f7f4ee"/>
+  <path d="m16 14.6 2.6 2.6-2.6 2.6-2.6-2.6 2.6-2.6Z" fill="#d69832"/></svg>`;
 
 const browser = await chromium.launch();
 const page = await browser.newPage();

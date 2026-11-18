@@ -2,13 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'none'" />
   <title>Qalaa Desktop</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <aside>
-    <div class="brand"><img src="icon.png" alt="" width="28" height="28" /><span id="brand">Qalaa Desktop</span></div>
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><path class="mark-body" d="M3 29V5h3v2h2V5h3v6h2v2h2v-2h2v2h2v-2h2V5h3v2h2V5h3v24H3Z"/><path class="mark-gate" d="M13 29v-6.5a3 3 0 0 1 6 0V29h-6Z"/><path class="mark-key" d="m16 15.4 2 2-2 2-2-2 2-2Z"/></svg>
+      <span class="brand-text"><span id="brand">Qalaa Desktop</span></span>
+    </div>
     <nav id="nav"></nav>
   </aside>
   <main id="main"></main>

@@ -1,6 +1,7 @@
 "use client";
 
 import { Menu, X } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -53,6 +54,15 @@ export function SiteHeader() {
   const [openOn, setOpenOn] = useState<string | null>(null);
   const menuOpen = openOn === pathname;
   const setMenuOpen = (open: boolean) => setOpenOn(open ? pathname : null);
+  const [scrolled, setScrolled] = useState(false);
+  const [hovered, setHovered] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -62,20 +72,37 @@ export function SiteHeader() {
   });
 
   return (
-    <header className="sticky top-0 z-40 print:hidden border-b border-line bg-canvas/85 backdrop-blur-md">
+    <header
+      className={cn(
+        "sticky top-0 z-40 border-b transition-[background-color,border-color,box-shadow] duration-300 print:hidden",
+        scrolled || menuOpen
+          ? "border-line bg-canvas/80 shadow-[0_8px_30px_-18px_rgb(0_0_0/0.35)] backdrop-blur-xl backdrop-saturate-150"
+          : "border-transparent bg-transparent",
+      )}
+    >
       <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 sm:px-6">
         <Link href="/" aria-label={t.nav.home} className="rounded-control">
           <Logo />
         </Link>
 
         <nav aria-label={t.nav.main} className="hidden flex-1 lg:block">
-          <ul className="flex items-center gap-1">
+          <ul className="flex items-center gap-0.5" onMouseLeave={() => setHovered(null)}>
             {NAV.map((item) => (
-              <li key={item.href}>
+              <li key={item.href} className="relative">
+                {(hovered ?? (NAV.some((n) => n.href === pathname) ? pathname : null)) === item.href && (
+                  <motion.span
+                    layoutId="nav-pill"
+                    aria-hidden
+                    className="absolute inset-0 rounded-full border border-line-strong/60 bg-surface-raised/80"
+                    transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                  />
+                )}
                 <Link
                   href={item.href}
+                  onMouseEnter={() => setHovered(item.href)}
+                  onFocus={() => setHovered(item.href)}
                   className={cn(
-                    "rounded-control px-3 py-2 text-sm transition-colors",
+                    "relative block rounded-full px-3.5 py-2 text-sm transition-colors",
                     pathname === item.href ? "text-ink" : "text-ink-muted hover:text-ink",
                   )}
                 >
@@ -103,8 +130,16 @@ export function SiteHeader() {
         </button>
       </div>
 
+      <AnimatePresence>
       {menuOpen && (
-        <div id="mobile-menu" className="animate-fade-up border-t border-line bg-canvas lg:hidden">
+        <motion.div
+          id="mobile-menu"
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={{ duration: 0.28, ease: [0.2, 0.8, 0.2, 1] }}
+          className="overflow-hidden border-t border-line bg-canvas lg:hidden"
+        >
           <nav aria-label={t.nav.main} className="mx-auto max-w-6xl px-4 py-4 sm:px-6">
             <ul className="space-y-1">
               {NAV.map((item) => (
@@ -123,8 +158,9 @@ export function SiteHeader() {
               <AccountActions stacked />
             </div>
           </nav>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </header>
   );
 }

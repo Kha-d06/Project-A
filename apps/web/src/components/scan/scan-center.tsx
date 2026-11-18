@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "motion/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useRef, type KeyboardEvent } from "react";
 
@@ -43,7 +44,11 @@ export function ScanCenter({ reportBase }: { reportBase: string }) {
 
   return (
     <div className="overflow-hidden rounded-panel border border-line bg-surface shadow-raised">
-      <div role="tablist" aria-label={t.scan.tablist} className="grid grid-cols-3 border-b border-line sm:grid-cols-6">
+      <div
+        role="tablist"
+        aria-label={t.scan.tablist}
+        className="flex gap-1 overflow-x-auto border-b border-line bg-surface-sunken/60 p-1.5 [scrollbar-width:none]"
+      >
         {SCAN_TABS.map((tab, index) => {
           const selected = tab.type === active;
           return (
@@ -61,19 +66,20 @@ export function ScanCenter({ reportBase }: { reportBase: string }) {
               onClick={() => select(tab.type)}
               onKeyDown={(event) => onKeyDown(event, index)}
               className={cn(
-                "relative flex items-center justify-center gap-2 px-2 py-3.5 text-sm font-medium whitespace-nowrap transition-colors",
+                "relative flex shrink-0 grow items-center justify-center gap-2 rounded-control px-3 py-2.5 text-sm font-medium whitespace-nowrap transition-colors",
                 selected ? "text-ink" : "text-ink-muted hover:text-ink",
               )}
             >
-              <tab.icon aria-hidden className={cn("size-4", selected && "text-accent")} />
-              {t.scanTypes[tab.type]}
-              <span
-                aria-hidden
-                className={cn(
-                  "absolute inset-x-3 -bottom-px h-0.5 rounded-full bg-accent transition-transform duration-200",
-                  selected ? "scale-x-100" : "scale-x-0",
-                )}
-              />
+              {selected && (
+                <motion.span
+                  layoutId="scan-tab"
+                  aria-hidden
+                  className="absolute inset-0 rounded-control border border-line-strong/70 bg-surface shadow-raised"
+                  transition={{ type: "spring", stiffness: 480, damping: 38 }}
+                />
+              )}
+              <tab.icon aria-hidden className={cn("relative size-4", selected ? "text-accent" : "text-ink-faint")} />
+              <span className="relative">{t.scanTypes[tab.type]}</span>
             </button>
           );
         })}

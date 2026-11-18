@@ -1,5 +1,6 @@
-import "@fontsource-variable/inter";
-import "@fontsource-variable/manrope";
+import "@fontsource-variable/instrument-sans";
+import "@fontsource-variable/bricolage-grotesque";
+import "@fontsource-variable/noto-kufi-arabic";
 import "@fontsource-variable/jetbrains-mono";
 import "@fontsource-variable/noto-sans-arabic";
 import "./globals.css";
@@ -25,8 +26,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f5f6f8" },
-    { media: "(prefers-color-scheme: dark)", color: "#080d17" },
+    { media: "(prefers-color-scheme: light)", color: "#f7f4ee" },
+    { media: "(prefers-color-scheme: dark)", color: "#070b16" },
   ],
 };
 

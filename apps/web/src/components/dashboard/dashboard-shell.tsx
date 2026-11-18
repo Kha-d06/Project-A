@@ -20,11 +20,12 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
-import { Logo } from "@/components/brand/logo";
+import { Logo, LogoMark } from "@/components/brand/logo";
 import { LanguageSwitch } from "@/components/site/language-switch";
 import { ThemeToggle } from "@/components/site/theme-toggle";
 import type { ScanType } from "@/lib/api/types";
@@ -96,25 +97,41 @@ function SidebarNav() {
                   href={item.href}
                   aria-current={current ? "page" : undefined}
                   className={cn(
-                    "flex items-center gap-3 rounded-control px-3 py-2 text-sm transition-colors",
-                    current ? "bg-surface-sunken font-medium text-ink" : "text-ink-muted hover:bg-surface-sunken/60 hover:text-ink",
+                    "relative flex items-center gap-3 rounded-control px-3 py-2 text-sm transition-colors duration-200",
+                    current ? "font-medium text-ink" : "text-ink-muted hover:bg-surface-raised/70 hover:text-ink",
                   )}
                 >
-                  <item.icon aria-hidden className={cn("size-4", current && "text-accent")} />
+                  {current && (
+                    <motion.span
+                      layoutId="sidebar-active"
+                      aria-hidden
+                      className="absolute inset-0 rounded-control border border-line-strong/70 bg-surface-raised shadow-raised"
+                      transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                    >
+                      <span className="absolute inset-y-2 start-0 w-0.5 rounded-full bg-accent" />
+                    </motion.span>
+                  )}
+                  <item.icon aria-hidden className={cn("relative size-4 transition-colors", current ? "text-accent" : "text-ink-faint")} />
+                  <span className="relative">
                   {item.key.startsWith("extra.")
                     ? t.extra.nav[item.key.slice(6) as keyof Dictionary["extra"]["nav"]]
                     : t.dashboard.nav[item.key as keyof Dictionary["dashboard"]["nav"]]}
+                  </span>
                 </Link>
               </li>
             );
           })}
         </ul>
         <div>
-          <p className="px-3 text-xs font-semibold tracking-wider text-ink-faint uppercase">{t.dashboard.nav.scanners}</p>
+          <p className="px-3 eyebrow text-ink-faint">{t.dashboard.nav.scanners}</p>
           <ul className="mt-2 space-y-0.5">
             {SCANNERS.map((type) => (
               <li key={type}>
-                <Link href={`/dashboard/scan?type=${type}`} className="block rounded-control px-3 py-1.5 text-sm text-ink-muted hover:text-ink">
+                <Link
+                  href={`/dashboard/scan?type=${type}`}
+                  className="group flex items-center gap-3 rounded-control px-3 py-1.5 text-sm text-ink-muted transition-colors hover:text-ink"
+                >
+                  <span aria-hidden className="size-1 rounded-full bg-line-strong transition-colors group-hover:bg-accent" />
                   {t.scanners[type]}
                 </Link>
               </li>
@@ -124,9 +141,15 @@ function SidebarNav() {
       </nav>
       <div className="mt-auto space-y-3 border-t border-line pt-4">
         {session.status === "signed-in" && (
-          <p className="truncate px-3 text-sm text-ink-muted" title={session.user.email}>
-            {session.user.display_name ?? session.user.email}
-          </p>
+          <div className="flex items-center gap-3 px-2" title={session.user.email}>
+            <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-full border border-accent/30 bg-accent-soft font-display text-sm font-semibold text-accent uppercase">
+              {(session.user.display_name ?? session.user.email).slice(0, 1)}
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-medium text-ink">{session.user.display_name ?? session.user.email.split("@")[0]}</span>
+              <span className="block truncate text-xs text-ink-faint">{session.user.email}</span>
+            </span>
+          </div>
         )}
         <div className="flex items-center justify-between gap-2 px-1">
           <button
@@ -167,14 +190,20 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   if (session.status !== "signed-in") {
     return (
       <div className="grid min-h-dvh place-items-center" role="status">
-        <span className="text-sm text-ink-muted">{t.dashboard.nav.loading}</span>
+        <span className="flex flex-col items-center gap-4">
+          <span className="relative grid size-14 place-items-center rounded-2xl border border-line-strong bg-surface shadow-float">
+            <span aria-hidden className="absolute inset-0 rounded-2xl border border-accent/40 motion-safe:animate-ping" />
+            <LogoMark className="size-7" />
+          </span>
+          <span className="text-sm text-ink-muted">{t.dashboard.nav.loading}</span>
+        </span>
       </div>
     );
   }
 
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[15rem_1fr] print:block">
-      <aside className="sticky top-0 hidden h-dvh print:!hidden overflow-y-auto border-e border-line bg-surface px-3 py-5 lg:block">
+      <aside className="sticky top-0 hidden h-dvh print:!hidden overflow-y-auto border-e border-line bg-surface-sunken/50 px-3 py-5 lg:block">
         <Link href="/" aria-label={t.nav.home} className="mb-8 block px-3">
           <Logo />
         </Link>
@@ -196,14 +225,34 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           {menuOpen ? <X aria-hidden className="size-5" /> : <Menu aria-hidden className="size-5" />}
         </button>
       </div>
-      {menuOpen && (
-        <div id="dashboard-menu" className="animate-fade-up border-b border-line bg-surface px-3 py-4 lg:hidden">
-          <SidebarNav />
-        </div>
-      )}
+      <AnimatePresence>
+        {menuOpen && (
+          <motion.div
+            id="dashboard-menu"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.25, ease: [0.2, 0.8, 0.2, 1] }}
+            className="overflow-hidden border-b border-line bg-surface lg:hidden"
+          >
+            <div className="px-3 py-4">
+              <SidebarNav />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      <main id="main" className="min-w-0">
-        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-8 sm:py-10">{children}</div>
+      <main id="main" className="relative isolate min-w-0">
+        <div aria-hidden className="glow-top pointer-events-none absolute inset-x-0 top-0 -z-10 h-96 print:hidden" />
+        <motion.div
+          key={pathname}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: [0.2, 0.8, 0.2, 1] }}
+          className="mx-auto max-w-6xl px-4 py-8 sm:px-8 sm:py-10"
+        >
+          {children}
+        </motion.div>
       </main>
     </div>
   );
@@ -211,10 +260,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
 export function PageTitle({ title, description, action }: { title: string; description?: ReactNode; action?: ReactNode }) {
   return (
-    <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-      <div className="space-y-1">
-        <h1 className="font-display text-title font-bold text-ink">{title}</h1>
-        {description && <p className="text-ink-muted">{description}</p>}
+    <div className="mb-8 flex flex-wrap items-end justify-between gap-4 sm:mb-10">
+      <div className="max-w-2xl space-y-2">
+        <h1 className="font-display text-[1.9rem] leading-tight font-semibold tracking-[-0.025em] text-balance text-ink sm:text-[2.2rem]">{title}</h1>
+        {description && <p className="text-pretty text-ink-muted sm:text-[1.05rem]">{description}</p>}
       </div>
       {action}
     </div>

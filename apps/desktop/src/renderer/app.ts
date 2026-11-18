@@ -116,6 +116,32 @@ let monitorRunning = false;
 let vpnBusy = false;
 
 type Child = Node | string | null | undefined | false;
+
+const SVG = "http://www.w3.org/2000/svg";
+
+// Line icons for the sidebar (24px grid, stroked with currentColor).
+const TAB_ICONS: Record<string, string[]> = {
+  scan: ["M3 7V5a2 2 0 0 1 2-2h2", "M17 3h2a2 2 0 0 1 2 2v2", "M21 17v2a2 2 0 0 1-2 2h-2", "M7 21H5a2 2 0 0 1-2-2v-2", "M11 15a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z", "m16 16-2.2-2.2"],
+  protection: ["M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.7 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1.2 1.2 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1Z", "m9 12 2 2 4-4"],
+  security: ["M3 21V7h3v2h2V7h3v4h2V7h3v2h2V7h3v14Z", "M10 21v-4a2 2 0 0 1 4 0v4"],
+  monitor: ["M22 12h-2.5a2 2 0 0 0-1.9 1.5l-2.4 8.4a.25.25 0 0 1-.5 0L9.2 2.2a.25.25 0 0 0-.5 0l-2.3 8.3A2 2 0 0 1 4.5 12H2"],
+  quarantine: ["M21 8v13H3V8", "M1 3h22v5H1z", "M10 12h4"],
+  history: ["M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", "M3 3v5h5", "M12 7v5l4 2"],
+  settings: ["M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z", "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"],
+};
+
+function icon(name: string): SVGSVGElement {
+  const svg = document.createElementNS(SVG, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("class", "icon");
+  svg.setAttribute("aria-hidden", "true");
+  for (const d of TAB_ICONS[name] ?? []) {
+    const path = document.createElementNS(SVG, "path");
+    path.setAttribute("d", d);
+    svg.append(path);
+  }
+  return svg;
+}
 function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, unknown> = {}, ...children: Child[]): HTMLElementTagNameMap[K] {
   const element = document.createElement(tag);
   for (const [key, value] of Object.entries(props)) {
@@ -987,8 +1013,6 @@ function backupPanel() {
 
 // --- System monitor ------------------------------------------------------------------
 
-const SVG = "http://www.w3.org/2000/svg";
-
 /** A small line chart of the last readings (0..max). */
 function sparkline(series: number[][], max: number): SVGSVGElement {
   const svg = document.createElementNS(SVG, "svg");
@@ -1248,6 +1272,7 @@ async function render() {
           "aria-current": key === tab ? "page" : false,
           "data-tab": key,
           onclick: () => {
+            if (key === tab) return;
             if (tab === "monitor" && key !== "monitor" && monitorRunning) {
               monitorRunning = false;
               void api.monitorStop();
@@ -1256,7 +1281,8 @@ async function render() {
             void render();
           },
         },
-        t.tabs[key],
+        icon(key),
+        h("span", { class: "label" }, t.tabs[key]),
         key === "quarantine" && status.quarantineCount ? h("span", { class: "count" }, String(status.quarantineCount)) : null,
       ),
     ),

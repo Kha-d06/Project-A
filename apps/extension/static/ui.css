@@ -1,22 +1,22 @@
 /* Shares its colour roles with the website (apps/web/src/app/globals.css). */
 :root {
   color-scheme: light dark;
-  --canvas: #f5f6f8;
-  --surface: #ffffff;
-  --sunken: #eceff3;
-  --line: #dde2e9;
-  --line-strong: #c4cbd6;
-  --ink: #0c1424;
-  --ink-muted: #4c576b;
-  --ink-faint: #5f697c;
-  --accent: #0b7a71;
+  --canvas: #f7f4ee;
+  --surface: #fffdf9;
+  --sunken: #efe9dd;
+  --line: #e4ddcf;
+  --line-strong: #cec4b0;
+  --ink: #121726;
+  --ink-muted: #4b5164;
+  --ink-faint: #5f6577;
+  --accent: #8a560b;
   --accent-ink: #ffffff;
   --danger: #b42318;
-  --danger-soft: #fdecea;
-  --warning: #a15c07;
-  --warning-soft: #fdf3e2;
-  --clear: #1d6b52;
-  --clear-soft: #e5f4ee;
+  --danger-soft: #fcebe8;
+  --warning: #9a5806;
+  --warning-soft: #fbf0dc;
+  --clear: #1b6a51;
+  --clear-soft: #e2f3eb;
   --unknown: #4f5878;
   --unknown-soft: #ebedf4;
   --radius: 10px;
@@ -24,22 +24,22 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --canvas: #080d17;
-    --surface: #0d1420;
-    --sunken: #060a12;
-    --line: #1c2638;
-    --line-strong: #2a374d;
-    --ink: #e5eaf2;
-    --ink-muted: #9aa5b8;
-    --ink-faint: #7d899e;
-    --accent: #3cc8b4;
-    --accent-ink: #04201c;
-    --danger: #f87068;
-    --danger-soft: #2a1214;
+    --canvas: #070b16;
+    --surface: #0c1322;
+    --sunken: #050810;
+    --line: #19233a;
+    --line-strong: #27334f;
+    --ink: #eee9df;
+    --ink-muted: #a5acbd;
+    --ink-faint: #8a92a6;
+    --accent: #e9b453;
+    --accent-ink: #1a1206;
+    --danger: #fa7468;
+    --danger-soft: #2b1214;
     --warning: #f2b44c;
     --warning-soft: #2a1f0e;
-    --clear: #5fcf9f;
-    --clear-soft: #0e2620;
+    --clear: #5fd0a0;
+    --clear-soft: #0d2620;
     --unknown: #a6aed0;
     --unknown-soft: #1a1f33;
   }

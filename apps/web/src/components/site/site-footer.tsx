@@ -47,19 +47,19 @@ export function SiteFooter() {
   ];
 
   return (
-    <footer className="print:hidden border-t border-line bg-surface">
-      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 md:grid-cols-[1.4fr_repeat(3,1fr)]">
-        <div className="space-y-3">
+    <footer className="relative print:hidden border-t border-line bg-surface-sunken/40">
+      <div className="mx-auto grid max-w-6xl gap-12 px-4 py-16 sm:px-6 md:grid-cols-[1.4fr_2fr_1fr_1fr]">
+        <div className="space-y-4">
           <Logo />
-          <p className="max-w-xs text-sm text-ink-muted">{t.footer.tagline}</p>
+          <p className="max-w-xs text-sm leading-relaxed text-ink-muted">{t.footer.tagline}</p>
         </div>
         {columns.map((column) => (
           <div key={column.title}>
-            <h2 className="text-xs font-semibold tracking-wider text-ink-faint uppercase">{column.title}</h2>
-            <ul className="mt-3 space-y-2">
+            <h2 className="eyebrow text-ink-faint">{column.title}</h2>
+            <ul className={column.links.length > 6 ? "mt-4 gap-x-8 sm:columns-2 [&>li]:mb-2.5" : "mt-4 space-y-2.5"}>
               {column.links.map((link) => (
                 <li key={link.href}>
-                  <Link href={link.href} className="text-sm text-ink-muted hover:text-ink">
+                  <Link href={link.href} className="text-sm text-ink-muted transition-colors hover:text-accent">
                     {link.label}
                   </Link>
                 </li>

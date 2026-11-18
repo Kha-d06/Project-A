@@ -6,7 +6,7 @@ import { cn } from "@/lib/cn";
 type Tone = "info" | "warning" | "danger";
 
 const tones: Record<Tone, { box: string; icon: typeof Info }> = {
-  info: { box: "border-line bg-surface-sunken text-ink", icon: Info },
+  info: { box: "border-line bg-surface-sunken/70 text-ink", icon: Info },
   warning: { box: "border-warning/40 bg-warning-soft text-ink", icon: AlertTriangle },
   danger: { box: "border-danger/40 bg-danger-soft text-ink", icon: CircleAlert },
 };
@@ -26,7 +26,7 @@ export function Alert({
   return (
     <div
       role={tone === "info" ? "status" : "alert"}
-      className={cn("flex gap-3 rounded-control border px-4 py-3 text-sm", box, className)}
+      className={cn("flex gap-3 rounded-control border px-4 py-3 text-sm animate-fade-up", box, className)}
     >
       <Icon
         aria-hidden

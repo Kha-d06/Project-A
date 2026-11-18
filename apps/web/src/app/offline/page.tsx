@@ -11,7 +11,7 @@ export default function OfflinePage() {
         been checked, so treat links and files as unverified until you are back online.
       </p>
       <p className="text-ink-muted" lang="ar" dir="rtl">
-        أنت غير متصل بالإنترنت. يحتاج سنتينل إلى اتصال لفحص أي شيء، فلم يُفحص أي شيء بعد.
+        أنت غير متصل بالإنترنت. يحتاج قلعة إلى اتصال لفحص أي شيء، فلم يُفحص أي شيء بعد.
       </p>
     </main>
   );

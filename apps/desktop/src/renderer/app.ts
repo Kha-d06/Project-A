@@ -517,6 +517,12 @@ function settingsView() {
         { id: "language", onchange: (event: Event) => change({ language: (event.target as HTMLSelectElement).value as DesktopSettings["language"] }) },
         ...[["auto", st.auto], ["en", "English"], ["ar", "العربية"]].map(([value, label]) => h("option", { value, selected: s.language === value }, label!)),
       ),
+      h("label", { for: "theme" }, st.theme),
+      h(
+        "select",
+        { id: "theme", onchange: (event: Event) => change({ theme: (event.target as HTMLSelectElement).value as DesktopSettings["theme"] }) },
+        ...[["system", st.themeSystem], ["light", st.themeLight], ["dark", st.themeDark]].map(([value, label]) => h("option", { value, selected: s.theme === value }, label!)),
+      ),
     ),
     accountPanel(),
     appUpdatesPanel(),

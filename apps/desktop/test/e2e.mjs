@@ -457,6 +457,21 @@ await shot(page, "desktop-backup");
 step("encrypted backup: weak password refused, wrong password detected, check and restore give back identical files");
 
 await page.click('[data-tab="settings"]');
+const canvas = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+// Playwright pins pages to a light colour scheme; let the app's own setting decide.
+await page.emulateMedia({ colorScheme: null });
+await page.selectOption("#theme", "dark");
+await page.waitForFunction(() => matchMedia("(prefers-color-scheme: dark)").matches);
+assert.equal(await canvas(), "rgb(7, 11, 22)");
+await page.click('[data-tab="scan"]');
+await shot(page, "desktop-dark");
+await page.click('[data-tab="settings"]');
+await page.selectOption("#theme", "light");
+await page.waitForFunction(() => !matchMedia("(prefers-color-scheme: dark)").matches);
+assert.equal(await canvas(), "rgb(247, 244, 238)");
+assert.equal(JSON.parse(await readFile(join(profile, "settings.json"), "utf8")).theme, "light");
+step("appearance: dark and light themes chosen in Settings, saved");
+
 await page.selectOption("#language", "ar");
 await page.waitForSelector("text=الحماية");
 assert.equal(await page.evaluate(() => document.documentElement.dir), "rtl");

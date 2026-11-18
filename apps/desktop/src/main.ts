@@ -12,7 +12,7 @@ import { readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { basename, join } from "node:path";
 
-import { BrowserWindow, Menu, Notification, Tray, app, dialog, ipcMain, nativeImage, safeStorage, session, shell } from "electron";
+import { BrowserWindow, Menu, Notification, Tray, app, dialog, ipcMain, nativeImage, nativeTheme, safeStorage, session, shell } from "electron";
 
 import { type LinkedAccount, loadAccount, register, saveAccount, unlinkSelf } from "./engine/account";
 import { BackupError, MIN_PASSWORD_LENGTH, createBackup, pruneBackups, readBackup } from "./engine/backup";
@@ -675,6 +675,7 @@ function registerIpc() {
   ipcMain.handle("settings", async (_event, changes: unknown) => {
     settings = { ...settings, ...sanitizeChanges(changes) };
     await saveSettings(join(dataDir(), "settings.json"), settings);
+    nativeTheme.themeSource = settings.theme;
     applyWatching();
     applyPrivacyWatch();
     void remote.tick();
@@ -876,7 +877,7 @@ function createWindow() {
     minWidth: 760,
     minHeight: 560,
     title: "Qalaa Desktop",
-    backgroundColor: "#f4f6fa",
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#070b16" : "#f7f4ee",
     show: false,
     webPreferences: {
       preload: join(__dirname, "preload.js"),
@@ -915,6 +916,8 @@ async function start() {
   const personal = (["documents", "desktop", "pictures"] as const).map((name) => app.getPath(name));
   personalFolders = personal;
   settings = await loadSettings(join(dir, "settings.json"), defaultSettings(app.getPath("downloads"), personal, hostname().slice(0, 80) || "This computer"));
+  // The renderer's styles follow prefers-color-scheme, which this sets for the app.
+  nativeTheme.themeSource = settings.theme;
   if (process.env.SENTINEL_SERVER) settings.serverUrl = new URL(process.env.SENTINEL_SERVER).origin;
   signatures = new SignatureStore(join(dir, "signatures.json"));
   await signatures.open();

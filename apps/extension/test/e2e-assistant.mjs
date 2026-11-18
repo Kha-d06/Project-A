@@ -164,7 +164,24 @@ await article.waitForTimeout(800);
 assert.equal(trackerLoads, before, "the tracker request never left the browser");
 step("third-party tracker blocked when tracker blocking is on");
 
-// 6. Arabic.
+// 6. Appearance: dark and light chosen in Options, on the extension's pages and the assistant.
+const themePage = await context.newPage();
+await themePage.goto(`chrome-extension://${extensionId}/options.html`);
+const pageCanvas = () => themePage.evaluate(() => getComputedStyle(document.body).backgroundColor);
+await themePage.selectOption("#theme", "dark");
+await themePage.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+assert.equal(await pageCanvas(), "rgb(7, 11, 22)");
+await shot(themePage, "ext-options-dark");
+await shop.reload();
+await shop.waitForFunction(() => document.getElementById("sentinel-assistant-root")?.shadowRoot?.querySelector(".wrap.dark") != null, null, { timeout: 10000 });
+await themePage.selectOption("#theme", "light");
+await themePage.waitForFunction(() => document.documentElement.dataset.theme === "light");
+assert.equal(await pageCanvas(), "rgb(247, 244, 238)");
+await themePage.selectOption("#theme", "system");
+await themePage.close();
+step("appearance: dark and light themes on the extension's pages and the assistant");
+
+// 7. Arabic.
 const options2 = await context.newPage();
 await options2.goto(`chrome-extension://${extensionId}/options.html`);
 await options2.evaluate(() => chrome.runtime.sendMessage({ type: "settings", changes: { language: "ar" } }));

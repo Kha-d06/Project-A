@@ -1,5 +1,6 @@
 import type { AccountLink } from "../lib/api";
 import { byId, el } from "../lib/dom";
+import { applyTheme } from "../lib/theme";
 import { initLanguage, localizeDocument, t, type LanguageSetting } from "../lib/i18n";
 import { ask, type Status } from "../lib/messages";
 import { SAFE_SEARCH_ORIGINS, hasSafeSearchAccess } from "../lib/safesearch";
@@ -137,7 +138,7 @@ async function renderFamilyRules(box: HTMLElement, settings: Settings) {
 }
 
 async function main() {
-  await initLanguage();
+  await Promise.all([initLanguage(), applyTheme()]);
   localizeDocument();
   // Refresh the account state before rendering, so the form is not replaced while
   // someone is typing a link code into it.
@@ -177,6 +178,13 @@ async function main() {
       await save({ [key]: input.checked });
     });
   }
+
+  const themeSelect = byId<HTMLSelectElement>("theme");
+  themeSelect.value = settings.theme;
+  themeSelect.addEventListener("change", async () => {
+    await save({ theme: themeSelect.value as Settings["theme"] });
+    await applyTheme();
+  });
 
   const languageSelect = byId<HTMLSelectElement>("language");
   languageSelect.value = settings.language;

@@ -1,5 +1,6 @@
 import type { AccountLink } from "../lib/api";
 import { byId, el, relativeTime } from "../lib/dom";
+import { applyTheme } from "../lib/theme";
 import { initLanguage, localizeDocument, t } from "../lib/i18n";
 import { ask, type Status, type VaultStatus } from "../lib/messages";
 import type { CheckResult } from "../lib/types";
@@ -236,7 +237,7 @@ async function refresh() {
 }
 
 async function main() {
-  await initLanguage();
+  await Promise.all([initLanguage(), applyTheme()]);
   localizeDocument();
   [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
   // Test builds only: open the popup as popup.html?tab=<id> to act on that tab.

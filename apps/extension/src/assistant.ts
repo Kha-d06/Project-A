@@ -10,6 +10,7 @@
  */
 import type { PageSummary } from "./lib/assistant-core";
 import { isWarning } from "./lib/assistant-core";
+import { isDark, themeSetting } from "./lib/theme";
 import { initLanguage, language, t } from "./lib/i18n";
 import type { Verdict } from "./lib/types";
 
@@ -56,17 +57,16 @@ button.secondary { background: #eef0f6; color: #0c1424; border: 0; border-radius
 form { display: flex; gap: 6px; margin-top: 6px; }
 input { flex: 1; min-width: 0; border: 1px solid #c9cfdd; border-radius: 8px; padding: 8px 10px; font-size: 13px; color: inherit; background: #fff; }
 .answer { margin-top: 8px; padding: 10px; border-radius: 10px; background: #f4f6fb; white-space: pre-wrap; }
-@media (prefers-color-scheme: dark) {
-  .wrap { color: #e8ecf6; }
-  .card, .bubble { background: #141b2d; border-color: #2a3350; }
-  .verdict, .answer { background: #1c2540; }
-  .muted, h3 { color: #a9b2cc; } .faint { color: #8d96b3; }
-  li.cookie { border-color: #222b45; } .tag { background: #222b45; color: #c3cae0; }
-  .tag.third { background: #3a2a0e; color: #f3c27a; }
-  input { background: #0f1526; border-color: #2a3350; }
-  button.chip { background: #1f2b4f; color: #b9c9ff; } button.secondary { background: #222b45; color: #e8ecf6; }
-  button.primary { background: #e8ecf6; color: #0c1424; } .fab { background: #1f2b4f; }
-}
+/* Dark: set from the theme setting (or the system, when the setting is "system"). */
+.wrap.dark { color: #e8ecf6; }
+.dark .card, .dark .bubble { background: #141b2d; border-color: #2a3350; }
+.dark .verdict, .dark .answer { background: #1c2540; }
+.dark .muted, .dark h3 { color: #a9b2cc; } .dark .faint { color: #8d96b3; }
+.dark li.cookie { border-color: #222b45; } .dark .tag { background: #222b45; color: #c3cae0; }
+.dark .tag.third { background: #3a2a0e; color: #f3c27a; }
+.dark input { background: #0f1526; border-color: #2a3350; }
+.dark button.chip { background: #1f2b4f; color: #b9c9ff; } .dark button.secondary { background: #222b45; color: #e8ecf6; }
+.dark button.primary { background: #e8ecf6; color: #0c1424; } .dark .fab { background: #1f2b4f; }
 @media (prefers-reduced-motion: reduce) { .fab { transition: none; } }
 `;
 
@@ -154,6 +154,10 @@ class Assistant {
     this.wrap.append(this.fab);
     this.root.append(style, this.wrap);
     document.documentElement.append(host);
+  }
+
+  setDark(dark: boolean) {
+    this.wrap.classList.toggle("dark", dark);
   }
 
   async load(attempt = 0) {
@@ -332,6 +336,9 @@ async function main() {
   if (window.top !== window || document.getElementById(HOST_ID)) return;
   await initLanguage();
   const assistant = new Assistant();
+  const theme = await themeSetting();
+  assistant.setDark(isDark(theme));
+  if (theme === "system") matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (event) => assistant.setDark(event.matches));
   document.addEventListener(
     "focusin",
     (event) => {

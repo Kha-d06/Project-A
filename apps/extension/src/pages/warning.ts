@@ -1,4 +1,5 @@
 import { byId, el } from "../lib/dom";
+import { applyTheme } from "../lib/theme";
 import { initLanguage, localizeDocument, t } from "../lib/i18n";
 import { ask } from "../lib/messages";
 import type { CheckResult } from "../lib/types";
@@ -99,7 +100,7 @@ function render(target: string, result: CheckResult) {
 }
 
 async function main() {
-  await initLanguage();
+  await Promise.all([initLanguage(), applyTheme()]);
   localizeDocument();
   const w = t().warning;
   const target = new URLSearchParams(location.search).get("u");

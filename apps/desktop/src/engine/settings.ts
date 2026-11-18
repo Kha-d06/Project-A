@@ -11,6 +11,8 @@ export interface DesktopSettings {
   /** Off by default: sends each scanned file's SHA-256 to the server. */
   cloudLookup: boolean;
   language: "auto" | "en" | "ar";
+  /** Colour theme: follow the system, or always light or dark. */
+  theme: "system" | "light" | "dark";
   /** Watch these folders for mass encryption (detection only). */
   ransomwareWatch: boolean;
   protectedFolders: string[];
@@ -45,6 +47,7 @@ export function defaultSettings(downloads: string, protectedFolders: string[] = 
     useClamav: true,
     cloudLookup: false,
     language: "auto",
+    theme: "system",
     ransomwareWatch: true,
     protectedFolders,
     allowRemote: false,
@@ -105,5 +108,6 @@ export function sanitizeChanges(changes: unknown): Partial<DesktopSettings> {
     if (typeof input[key] === "boolean") out[key] = input[key];
   }
   if (input.language === "auto" || input.language === "en" || input.language === "ar") out.language = input.language;
+  if (input.theme === "system" || input.theme === "light" || input.theme === "dark") out.theme = input.theme;
   return out;
 }

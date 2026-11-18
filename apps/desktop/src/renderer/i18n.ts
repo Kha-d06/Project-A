@@ -182,6 +182,10 @@ const en = {
     clam: "Use ClamAV when installed",
     language: "Language",
     auto: "Same as the system",
+    theme: "Appearance",
+    themeSystem: "Same as the system",
+    themeLight: "Light",
+    themeDark: "Dark",
     saved: "Saved.",
   },
   security: {
@@ -557,6 +561,10 @@ const ar: Dict = {
     clam: "استخدام ClamAV إن كان مثبّتًا",
     language: "اللغة",
     auto: "مثل لغة النظام",
+    theme: "المظهر",
+    themeSystem: "مثل النظام",
+    themeLight: "فاتح",
+    themeDark: "داكن",
     saved: "تم الحفظ.",
   },
   security: {

@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { Logo } from "@/components/brand/logo";
 import { ButtonLink } from "@/components/ui/button";
 import { LanguageSwitch } from "@/components/site/language-switch";
+import { ThemeToggle } from "@/components/site/theme-toggle";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/lib/i18n/client";
 import { useSession } from "@/lib/session";
@@ -115,6 +116,10 @@ export function SiteHeader() {
 
         <div className="ms-auto hidden items-center gap-2 lg:flex">
           <LanguageSwitch />
+          {/* Below xl the nav needs the room; the footer has the same switch. */}
+          <div className="hidden xl:block">
+            <ThemeToggle />
+          </div>
           <AccountActions />
         </div>
 
@@ -155,6 +160,7 @@ export function SiteHeader() {
             </ul>
             <div className="mt-4 flex flex-col gap-2 border-t border-line pt-4">
               <LanguageSwitch className="justify-center py-3 text-base" />
+              <ThemeToggle className="self-center" />
               <AccountActions stacked />
             </div>
           </nav>

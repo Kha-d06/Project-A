@@ -27,6 +27,7 @@ Verdicts use the same words as the website: **Known malicious**, **Suspicious**,
 - **Wi-Fi check.** Warns when the current network is open or uses WEP. It reads `nmcli`, `netsh` or `system_profiler`.
 - **Software updates.** Lists pending updates from `winget`, `softwareupdate` or `apt`. Installing them is left to the system's own tools.
 - **Tray icon.** Watching continues after the window closes. Quit from the tray menu.
+- **Appearance.** Light, dark, or the same as the system (Settings → Appearance).
 - **Security centre.** One screen that checks:
   - **Firewall**: whether it is on (`netsh`, `socketfilterfw`, `firewall-cmd` or `ufw`), and how to turn it on if not. Reports "could not be read" rather than guessing when the tool needs administrator rights.
   - **Programs accepting connections**: which ports are reachable from the network and by which program. Services that are often attacked when exposed (SMB, Remote Desktop, VNC, Telnet, FTP, databases, the Docker API) are flagged. On Linux it reads `/proc/net/tcp` directly; on Windows `netstat` and `tasklist`; on macOS `lsof`.

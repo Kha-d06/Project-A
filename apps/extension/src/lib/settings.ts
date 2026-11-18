@@ -1,4 +1,5 @@
 import type { LanguageSetting } from "./i18n";
+import type { ThemeSetting } from "./theme";
 
 export type PrivacyMode = "full" | "host";
 
@@ -16,6 +17,7 @@ export interface Settings {
   /** On-screen assistant: needs optional page and cookie permissions; off by default. */
   assistant: boolean;
   language: LanguageSetting;
+  theme: ThemeSetting;
   /** Optional: block well-known advertising and analytics trackers on other sites. */
   blockTrackers: boolean;
   /** Optional: mark dangerous results on Google, Bing and DuckDuckGo search pages. */
@@ -44,6 +46,7 @@ export const DEFAULT_SETTINGS: Settings = {
   preloadBlocking: true,
   assistant: false,
   language: "auto",
+  theme: "system",
   blockTrackers: false,
   searchBadges: false,
   familyBlocklist: [],

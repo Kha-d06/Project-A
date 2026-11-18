@@ -1,4 +1,4 @@
-/** A stand-in SENTINEL API for the extension's end-to-end tests. */
+/** A stand-in Qalaa API for the extension's end-to-end tests. */
 import { createServer } from "node:http";
 
 export function startMockServer(port, { verdicts = {}, blocklist = [], assistant = null, family = null } = {}) {

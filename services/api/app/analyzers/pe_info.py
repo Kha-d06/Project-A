@@ -14,7 +14,7 @@ import pefile
 from app.analyzers.types import FindingData, Severity
 
 logger = logging.getLogger(__name__)
-SOURCE = "SENTINEL executable analysis (pefile)"
+SOURCE = "Qalaa executable analysis (pefile)"
 _HIGH_ENTROPY = 7.2
 
 # Sets of imports that together indicate a capability. Each is common in malware

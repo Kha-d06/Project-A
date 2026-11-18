@@ -119,7 +119,7 @@ export async function createBackup(
   }
   await mkdir(destination, { recursive: true });
   const stamp = now.toISOString().replace(/[-:]/g, "").replace(/\..*/, "").replace("T", "-");
-  const file = join(destination, `SENTINEL-backup-${stamp}.sbk`);
+  const file = join(destination, `Qalaa-backup-${stamp}.sbk`);
   const partial = `${file}.part`;
   const salt = randomBytes(SALT_BYTES);
   const key = await deriveKey(password, salt);
@@ -175,7 +175,7 @@ async function* readRecords(file: string, password: string): AsyncGenerator<{ ty
   try {
     const head = Buffer.alloc(MAGIC.length + SALT_BYTES);
     const { bytesRead } = await handle.read(head, 0, head.length, 0);
-    if (bytesRead < head.length || !head.subarray(0, MAGIC.length).equals(MAGIC)) throw new BackupError("This is not a SENTINEL backup file.");
+    if (bytesRead < head.length || !head.subarray(0, MAGIC.length).equals(MAGIC)) throw new BackupError("This is not a Qalaa backup file.");
     const key = await deriveKey(password, head.subarray(MAGIC.length));
     let position = head.length;
     let seq = 0;
@@ -299,9 +299,9 @@ export async function readBackup(
   }
 }
 
-/** Keep the newest `keep` backups made by SENTINEL in a folder; delete older ones. */
+/** Keep the newest `keep` backups made by Qalaa in a folder; delete older ones. */
 export async function pruneBackups(destinationDir: string, keep: number): Promise<string[]> {
-  const names = (await readdir(destinationDir).catch(() => [] as string[])).filter((name) => /^SENTINEL-backup-\d{8}-\d{6}\.sbk$/.test(name)).sort();
+  const names = (await readdir(destinationDir).catch(() => [] as string[])).filter((name) => /^Qalaa-backup-\d{8}-\d{6}\.sbk$/.test(name)).sort();
   const old = names.slice(0, Math.max(0, names.length - keep));
   for (const name of old) await rm(join(destinationDir, name), { force: true });
   return old;

@@ -44,7 +44,7 @@ def test_push_subscription_and_dangerous_result_notification(
     assert client.post(f"{API}/push/subscriptions", json=SUBSCRIPTION).status_code == 201
     client.post(f"{API}/scans/url", json={"url": LISTED})
     payload = json.loads(vapid[-1]["data"])
-    assert payload["title"] == "SENTINEL: Known threat"
+    assert payload["title"] == "Qalaa: Known threat"
     assert payload["url"].startswith("/dashboard/scans/")
     assert (
         "malware.example.net" not in payload["body"] or True
@@ -94,7 +94,7 @@ def test_weekly_summary_is_opt_in(db: Session, monkeypatch: pytest.MonkeyPatch) 
 
     assert send_weekly_summaries(db) == 1
     mails = db.scalars(select(OutboxEmail)).all()
-    weekly = [mail for mail in mails if mail.subject == "Your weekly SENTINEL summary"]
+    weekly = [mail for mail in mails if mail.subject == "Your weekly Qalaa summary"]
     assert [mail.recipient for mail in weekly] == ["weekly@example.com"]
     assert "1 known threat(s)" in weekly[0].body
 

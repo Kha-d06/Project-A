@@ -240,7 +240,7 @@ describe("encrypted backup", () => {
   it("keeps only the newest backups", async () => {
     const { docs, dest } = await setup();
     for (const day of ["01", "02", "03"]) await createBackup([docs], dest, password, undefined, new Date(`2026-11-${day}T10:00:00Z`));
-    expect(await pruneBackups(dest, 2)).toEqual(["SENTINEL-backup-20261101-100000.sbk"]);
+    expect(await pruneBackups(dest, 2)).toEqual(["Qalaa-backup-20261101-100000.sbk"]);
     expect((await readdir(dest)).length).toBe(2);
   });
 

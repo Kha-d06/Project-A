@@ -160,7 +160,7 @@ def provider_status(db: Db) -> list[ProviderStatus]:
             name="YARA signature rules",
             purpose="Known malicious techniques in uploaded files and apps",
             status="active",
-            detail="SENTINEL's built-in rules"
+            detail="Qalaa's built-in rules"
             + (
                 f", plus custom rules from {settings.yara_rules_dir}"
                 if settings.yara_rules_dir

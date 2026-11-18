@@ -207,8 +207,8 @@ def invite(
             send_email(
                 db,
                 invite.email,
-                f"{inviter} invited you to “{group.name}” on SENTINEL",
-                f"{inviter} invited you to join their SENTINEL {group.kind}, “{group.name}”. "
+                f"{inviter} invited you to “{group.name}” on Qalaa",
+                f"{inviter} invited you to join their Qalaa {group.kind}, “{group.name}”. "
                 "Members can share scan results with each other. Nothing about your browsing "
                 "or scans is shared unless you choose to.\n\n"
                 f"To accept, sign in with this email address and open this link within 7 days:\n"

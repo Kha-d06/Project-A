@@ -14,4 +14,4 @@ await build({ ...common, entryPoints: [join(root, "src/main.ts")], outfile: join
 await build({ ...common, entryPoints: [join(root, "src/preload.ts")], outfile: join(out, "preload.js"), platform: "node", format: "cjs", target: "node22", external: ["electron"] });
 await build({ ...common, entryPoints: [join(root, "src/renderer/app.ts")], outfile: join(out, "renderer/app.js"), platform: "browser", format: "iife", target: "chrome130" });
 for (const file of ["index.html", "styles.css", "icon.png"]) await cp(join(root, "src/renderer", file), join(out, "renderer", file));
-console.log(`Built SENTINEL Desktop -> ${out}`);
+console.log(`Built Qalaa Desktop -> ${out}`);

@@ -29,7 +29,7 @@ describe("api client", () => {
     mockFetch(new TypeError("Failed to fetch"));
     await expect(api.system.providers()).rejects.toMatchObject({
       code: "network_error",
-      message: expect.stringMatching(/could not reach SENTINEL/),
+      message: expect.stringMatching(/could not reach Qalaa/),
     });
   });
 

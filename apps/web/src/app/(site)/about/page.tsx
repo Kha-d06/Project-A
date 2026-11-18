@@ -9,8 +9,8 @@ const contactUrl = process.env.NEXT_PUBLIC_CONTACT_URL;
 export default function AboutPage() {
   return (
     <ProsePage
-      title="About SENTINEL"
-      intro="SENTINEL is a free, open project that helps people judge whether a link, message or file can be trusted, and explains the evidence in plain language."
+      title="About Qalaa"
+      intro="Qalaa is a free, open project that helps people judge whether a link, message or file can be trusted, and explains the evidence in plain language."
     >
       <section>
         <h2>Why it exists</h2>
@@ -43,7 +43,7 @@ export default function AboutPage() {
         <ul>
           <li>Community reports of scams, with moderation, and a full Arabic interface.</li>
           <li>A threat-intelligence lookup page and an administration area.</li>
-          <li>Mobile-friendly sharing to SENTINEL from your phone.</li>
+          <li>Mobile-friendly sharing to Qalaa from your phone.</li>
         </ul>
       </section>
       <section id="contact">
@@ -54,7 +54,7 @@ export default function AboutPage() {
           </p>
         ) : (
           <p>
-            The operator of this SENTINEL deployment has not published a contact address. If you
+            The operator of this Qalaa deployment has not published a contact address. If you
             run this instance, set <code className="font-mono text-ink">NEXT_PUBLIC_CONTACT_URL</code>.
           </p>
         )}

@@ -1,4 +1,4 @@
-"""Turns raw findings into the four-way risk classification used across SENTINEL.
+"""Turns raw findings into the four-way risk classification used across Qalaa.
 
 The rules are deliberately simple so that every verdict can be explained:
 

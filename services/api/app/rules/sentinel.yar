@@ -1,5 +1,5 @@
 /*
- * SENTINEL's built-in YARA rules.
+ * Qalaa's built-in YARA rules.
  *
  * Each rule describes a technique rather than a specific malware family, so a
  * match is a warning sign, not proof. The meta fields are shown to users:

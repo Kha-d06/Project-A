@@ -1,8 +1,8 @@
 #!/bin/sh
 # Every few seconds: report this server's public key and each device's last
-# handshake and traffic to SENTINEL, receive the devices allowed to connect,
+# handshake and traffic to Qalaa, receive the devices allowed to connect,
 # and apply them without dropping existing sessions (wg syncconf).
-# If SENTINEL cannot be reached, the current devices are kept.
+# If Qalaa cannot be reached, the current devices are kept.
 set -u
 
 API="${SENTINEL_API_URL%/}/api/v1/vpn/sync"
@@ -23,7 +23,7 @@ sync_once() {
   }')"
   body="{\"public_key\":\"$PUBLIC_KEY\",\"peers\":[$stats]}"
   if ! peers="$(curl -fsS --max-time 10 -H @"$WORK/auth-header" -H 'Content-Type: application/json' --data "$body" "$API")"; then
-    echo "Could not reach SENTINEL; keeping the current devices." >&2
+    echo "Could not reach Qalaa; keeping the current devices." >&2
     return 1
   fi
   {

@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title data-i18n="options.pageTitle">SENTINEL Protect settings</title>
+  <title data-i18n="options.pageTitle">Qalaa Protect settings</title>
   <link rel="stylesheet" href="ui.css" />
   <link rel="stylesheet" href="options.css" />
 </head>
 <body>
   <main class="options">
     <header class="stack">
-      <span class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2.5 4.5 6.8v8.4c0 7.1 4.9 12.4 11.5 14.3 6.6-1.9 11.5-7.2 11.5-14.3V6.8L16 2.5Z" fill="currentColor"/><path d="M16 6.4 8.3 9.3v5.9c0 4.9 3.2 8.7 7.7 10.3 4.5-1.6 7.7-5.4 7.7-10.3V9.3L16 6.4Z" fill="var(--canvas)"/><rect x="6.5" y="14.2" width="19" height="2.6" rx="1.3" fill="var(--accent)"/><circle cx="16" cy="15.5" r="2.4" fill="currentColor"/></svg> SENTINEL Protect</span>
+      <span class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2.5 4.5 6.8v8.4c0 7.1 4.9 12.4 11.5 14.3 6.6-1.9 11.5-7.2 11.5-14.3V6.8L16 2.5Z" fill="currentColor"/><path d="M16 6.4 8.3 9.3v5.9c0 4.9 3.2 8.7 7.7 10.3 4.5-1.6 7.7-5.4 7.7-10.3V9.3L16 6.4Z" fill="var(--canvas)"/><rect x="6.5" y="14.2" width="19" height="2.6" rx="1.3" fill="var(--accent)"/><circle cx="16" cy="15.5" r="2.4" fill="currentColor"/></svg> Qalaa Protect</span>
       <h1 data-i18n="options.title">Settings</h1>
       <p id="saved" class="faint" role="status" aria-live="polite"></p>
     </header>
@@ -61,7 +61,7 @@
     <section class="panel stack">
       <h2 data-i18n="options.privacy">Privacy</h2>
       <fieldset class="stack">
-        <legend data-i18n="options.privacyLegend">What is sent to SENTINEL for each page</legend>
+        <legend data-i18n="options.privacyLegend">What is sent to Qalaa for each page</legend>
         <label class="radio"><input type="radio" name="privacyMode" value="full" /> <span><strong data-i18n="options.privacyFull">The full address</strong> <span class="muted" data-i18n="options.privacyFullHint">(recommended). Recognises specific malicious links on otherwise normal sites. Addresses are checked and not stored.</span></span></label>
         <label class="radio"><input type="radio" name="privacyMode" value="host" /> <span><strong data-i18n="options.privacyHost">Only the domain name</strong><span data-i18n="options.privacyHostHint">. More private; malicious links on shared hosting may be missed.</span></span></label>
       </fieldset>
@@ -77,19 +77,19 @@
       <h2 data-i18n="options.lists">Your lists</h2>
       <div class="lists">
         <div class="stack"><label for="allowlist" data-i18n="options.allowlist">Never check these sites</label><textarea id="allowlist" placeholder="example.com" spellcheck="false"></textarea><p class="faint" data-i18n="options.oneDomain">One domain per line. Subdomains are included.</p></div>
-        <div class="stack"><label for="blocklist" data-i18n="options.blocklist">Always block these sites</label><textarea id="blocklist" placeholder="unwanted.example" spellcheck="false"></textarea><p class="faint" data-i18n="options.blockedHint">Blocked sites show a warning page without asking SENTINEL.</p></div>
+        <div class="stack"><label for="blocklist" data-i18n="options.blocklist">Always block these sites</label><textarea id="blocklist" placeholder="unwanted.example" spellcheck="false"></textarea><p class="faint" data-i18n="options.blockedHint">Blocked sites show a warning page without asking Qalaa.</p></div>
       </div>
       <div><button id="save-lists" type="button" data-i18n="options.saveLists">Save lists</button></div>
     </section>
 
     <section class="panel stack">
-      <h2 data-i18n="options.account">SENTINEL account</h2>
+      <h2 data-i18n="options.account">Qalaa account</h2>
       <div id="account" class="stack"></div>
     </section>
 
     <section class="panel stack">
       <h2 data-i18n="options.server">Server</h2>
-      <label for="serverUrl" data-i18n="options.serverAddress">SENTINEL server address</label>
+      <label for="serverUrl" data-i18n="options.serverAddress">Qalaa server address</label>
       <div class="row"><input id="serverUrl" type="url" spellcheck="false" /><button id="save-server" class="secondary" type="button" data-i18n="options.change">Change</button></div>
       <p class="muted" data-i18n="options.serverHint">Changing the server disconnects this extension from the current one.</p>
     </section>

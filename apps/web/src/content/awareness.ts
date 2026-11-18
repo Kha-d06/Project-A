@@ -73,7 +73,7 @@ export const ARTICLES: Article[] = [
       steps: [
         "Track parcels only on the retailer's site or the courier's official app.",
         "Never enter a bank code to “confirm” a small payment you did not start.",
-        "Check the link with SENTINEL before opening it.",
+        "Check the link with Qalaa before opening it.",
       ],
     },
     ar: {
@@ -88,7 +88,7 @@ export const ARTICLES: Article[] = [
       steps: [
         "تتبّع الشحنات فقط عبر موقع المتجر أو التطبيق الرسمي لشركة الشحن.",
         "لا تُدخل رمز البنك لـ«تأكيد» دفعة صغيرة لم تبدأها.",
-        "افحص الرابط باستخدام SENTINEL قبل فتحه.",
+        "افحص الرابط باستخدام قلعة قبل فتحه.",
       ],
     },
   },
@@ -143,7 +143,7 @@ export const ARTICLES: Article[] = [
       steps: [
         "A real employer never asks you to pay them.",
         "Stop depositing, even to “recover” what you already paid.",
-        "Report the number to SENTINEL and to your bank.",
+        "Report the number to Qalaa and to your bank.",
       ],
     },
     ar: {
@@ -158,7 +158,7 @@ export const ARTICLES: Article[] = [
       steps: [
         "صاحب العمل الحقيقي لا يطلب منك أن تدفع له.",
         "توقف عن الإيداع، حتى لـ«استرداد» ما دفعته.",
-        "أبلغ SENTINEL والبنك عن الرقم.",
+        "أبلغ قلعة والبنك عن الرقم.",
       ],
     },
   },
@@ -177,7 +177,7 @@ export const ARTICLES: Article[] = [
       ],
       steps: [
         "Pay parking through the official app instead of a code.",
-        "Check where a code leads with SENTINEL's QR scanner before paying.",
+        "Check where a code leads with Qalaa's QR scanner before paying.",
         "Tell the business if a code looks tampered with.",
       ],
     },
@@ -192,7 +192,7 @@ export const ARTICLES: Article[] = [
       ],
       steps: [
         "ادفع المواقف عبر التطبيق الرسمي بدل الرمز.",
-        "تحقق من وجهة الرمز بماسح QR في SENTINEL قبل الدفع.",
+        "تحقق من وجهة الرمز بماسح QR في قلعة قبل الدفع.",
         "أبلغ صاحب المكان إذا بدا الرمز معدَّلًا.",
       ],
     },

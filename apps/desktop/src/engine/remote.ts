@@ -1,7 +1,7 @@
 /**
- * Lets the owner start scans on this computer from their SENTINEL account.
+ * Lets the owner start scans on this computer from their Qalaa account.
  *
- * - Nothing runs unless the person turned on "Allow scans from my SENTINEL account"
+ * - Nothing runs unless the person turned on "Allow scans from my Qalaa account"
  *   in this app. The server is told, and the app checks again before each command.
  * - Folders are offered by id and label only ("Downloads"), never by full path,
  *   and the website can only choose among them.
@@ -155,7 +155,7 @@ export class RemoteAgent {
     } catch (error) {
       if (error instanceof AccountLinkError && error.status === 401) {
         this.host.unlinked();
-        this.lastError = "This computer was removed from your SENTINEL account.";
+        this.lastError = "This computer was removed from your Qalaa account.";
       } else {
         this.lastError = error instanceof Error ? error.message : String(error);
       }
@@ -193,21 +193,21 @@ export class RemoteAgent {
     const folders = this.host.folders();
     switch (command.kind) {
       case "quick_scan":
-        this.host.activity("Quick scan started from your SENTINEL account");
+        this.host.activity("Quick scan started from your Qalaa account");
         return toReport(await this.host.scan(folders.filter((f) => f.id.startsWith("watch")).map(({ path, label }) => ({ path, label })), onProgress));
       case "full_scan":
-        this.host.activity("Full scan started from your SENTINEL account");
+        this.host.activity("Full scan started from your Qalaa account");
         return toReport(await this.host.scan([{ path: this.host.homeFolder(), label: "Home" }], onProgress));
       case "folder_scan": {
         const folder = folders.find((f) => f.id === command.args.folder_id);
         if (!folder) return { ok: false, error: "That folder is no longer offered by this computer." };
-        this.host.activity(`Scan of ${folder.label} started from your SENTINEL account`);
+        this.host.activity(`Scan of ${folder.label} started from your Qalaa account`);
         return toReport(await this.host.scan([{ path: folder.path, label: folder.label }], onProgress));
       }
       case "quarantine": {
         const hashes = (command.args.sha256 ?? []).filter((h) => /^[0-9a-f]{64}$/.test(h));
         const moved = await this.host.quarantineByHash(hashes);
-        this.host.activity(`${moved} file(s) moved to quarantine from your SENTINEL account`);
+        this.host.activity(`${moved} file(s) moved to quarantine from your Qalaa account`);
         return { ok: true, quarantined: moved };
       }
       case "update_signatures":

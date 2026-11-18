@@ -3,7 +3,7 @@
 Only the signed-in user's own address can be checked, and only once it is
 verified when email is enabled: searching other people's addresses would make
 this a tool for finding targets. Password checks use the Pwned Passwords range
-API straight from the browser (k-anonymity), so passwords never reach SENTINEL.
+API straight from the browser (k-anonymity), so passwords never reach Qalaa.
 """
 
 from typing import Any
@@ -37,7 +37,7 @@ def hibp_breaches(email: str) -> list[dict[str, Any]]:
         response = httpx.get(
             f"https://haveibeenpwned.com/api/v3/breachedaccount/{quote(email)}",
             params={"truncateResponse": "false"},
-            headers={"hibp-api-key": key, "user-agent": "SENTINEL-breach-check"},
+            headers={"hibp-api-key": key, "user-agent": "Qalaa-breach-check"},
             timeout=15,
         )
     except httpx.HTTPError as exc:

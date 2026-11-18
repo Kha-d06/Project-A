@@ -4,7 +4,7 @@
  * The extension downloads the whole list (so nothing about browsing is sent) and
  * installs it as a few dynamic "block" rules matched inside the browser. A
  * blocked navigation fails with ERR_BLOCKED_BY_CLIENT; the background then shows
- * SENTINEL's warning page in that tab. "Continue anyway" adds a session-scoped
+ * Qalaa's warning page in that tab. "Continue anyway" adds a session-scoped
  * allow rule for that domain only.
  *
  * Block rules need no host permissions. Rule IDs:

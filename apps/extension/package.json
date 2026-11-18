@@ -2,7 +2,7 @@
   "name": "@sentinel/extension",
   "version": "0.1.0",
   "private": true,
-  "description": "SENTINEL Protect browser extension",
+  "description": "Qalaa Protect browser extension",
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",

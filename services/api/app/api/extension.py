@@ -235,7 +235,7 @@ def extension_vault(installation: CurrentInstallation, db: Db) -> ExtensionVault
         raise ApiError(
             403,
             "not_linked",
-            "Link this browser to your SENTINEL account to use your passwords here.",
+            "Link this browser to your Qalaa account to use your passwords here.",
         )
     rate_limit.enforce(VAULT_READ_LIMIT, f"installation:{installation.id}")
     vault = db.get(Vault, installation.user_id)

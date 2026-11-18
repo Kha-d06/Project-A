@@ -59,9 +59,7 @@ def _result(
     elif matches:
         verdict = "community_verified"
     else:
-        primary_fresh = any(
-            s.fresh and not s.name.startswith("SENTINEL community") for s in sources
-        )
+        primary_fresh = any(s.fresh and not s.name.startswith("Qalaa community") for s in sources)
         verdict = "not_listed" if primary_fresh else "unavailable"
     notes = [NOT_A_GUARANTEE] if verdict in ("not_listed", "community_verified") else []
     if verdict == "unavailable":
@@ -69,7 +67,7 @@ def _result(
             "The main threat feed is not up to date on this server, so a miss means nothing."
         )
     if any(m.source_key == COMMUNITY for m in matches):
-        notes.append("Community entries come from user reports confirmed by a SENTINEL moderator.")
+        notes.append("Community entries come from user reports confirmed by a Qalaa moderator.")
     return LookupResult(
         query=query,
         kind=kind,
@@ -190,7 +188,7 @@ def lookup_phone(number: str, request: Request, db: Db) -> LookupResult:
 @router.get("/hash-list", response_model=HashList)
 def hash_list(request: Request, db: Db) -> HashList:
     """Recent known-malware SHA-256 fingerprints, for offline scanners such as
-    SENTINEL Desktop. The whole list is downloaded, so nothing about the files on
+    Qalaa Desktop. The whole list is downloaded, so nothing about the files on
     anyone's computer is sent."""
     rate_limit.enforce(HASH_LIST_LIMIT, client_address(request))
     sources = [
@@ -257,7 +255,7 @@ def stix_bundle(request: Request, db: Db, user: OptionalUser) -> dict[str, Any]:
                 .limit(10_000)
             ).all()
         )
-    return bundle([tuple(row) for row in rows], producer="SENTINEL community reports")
+    return bundle([tuple(row) for row in rows], producer="Qalaa community reports")
 
 
 @router.get("/sources", response_model=list[SourceFreshness])

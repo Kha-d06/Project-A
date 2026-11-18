@@ -112,7 +112,7 @@ export async function decryptDoc(key: CryptoKey, data: string, userId: string): 
   const bytes = fromBase64(data);
   const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: bytes.slice(0, 12), additionalData: aad(userId, "data") }, key, bytes.slice(12));
   const doc = JSON.parse(decoder.decode(plain)) as VaultDoc;
-  if (doc.format !== 1 || !Array.isArray(doc.items)) throw new Error("This vault was saved by a newer version of SENTINEL.");
+  if (doc.format !== 1 || !Array.isArray(doc.items)) throw new Error("This vault was saved by a newer version of Qalaa.");
   return doc;
 }
 

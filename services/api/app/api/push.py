@@ -87,7 +87,7 @@ def test_push(db: Db, user: SessionUser) -> dict[str, int]:
         "delivered": send_push(
             db,
             user.id,
-            "SENTINEL notifications work",
+            "Qalaa notifications work",
             "You will be told here when something needs your attention.",
         )
     }

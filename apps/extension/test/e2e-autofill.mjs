@@ -1,6 +1,6 @@
 /**
  * End-to-end test of password autofill: a real Chromium with the extension, the
- * SENTINEL website and API, a vault created on the site, and a local login page.
+ * Qalaa website and API, a vault created on the site, and a local login page.
  *   SENTINEL_TEST_BUILD=1 SENTINEL_SERVER=http://localhost:3000 node scripts/build.mjs
  *   node test/e2e-autofill.mjs [screenshot-dir]
  */

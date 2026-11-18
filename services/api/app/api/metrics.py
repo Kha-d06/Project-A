@@ -139,7 +139,7 @@ ALERT_LIMIT = RateLimit("monitoring-alerts", max_requests=120, window_seconds=36
 @router.post("/system/alerts", status_code=204, include_in_schema=False)
 def receive_alerts(body: _AlertBatch, request: Request, db: Db) -> None:
     """Alertmanager webhook: emails the administrators about firing or resolved
-    alerts, through SENTINEL's own mail settings. Authenticated with the same
+    alerts, through Qalaa's own mail settings. Authenticated with the same
     bearer token as /system/metrics."""
     token = get_settings().metrics_token
     supplied = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
@@ -165,9 +165,9 @@ def receive_alerts(body: _AlertBatch, request: Request, db: Db) -> None:
         lines.append("")
     lines.append("What to do for each alert: docs/operations.md, section 'Monitoring and alerts'.")
     subject = (
-        f"[SENTINEL] {len(firing)} alert(s) firing"
+        f"[Qalaa] {len(firing)} alert(s) firing"
         if firing
-        else f"[SENTINEL] {len(resolved)} alert(s) resolved"
+        else f"[Qalaa] {len(resolved)} alert(s) resolved"
     )
     admins = db.scalars(
         select(User.email).where(User.role == "admin", User.disabled_at.is_(None))

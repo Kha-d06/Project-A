@@ -1,5 +1,5 @@
 /**
- * Browser-history check: were any recently visited pages on SENTINEL's lists of
+ * Browser-history check: were any recently visited pages on Qalaa's lists of
  * phishing and malware sites?
  *
  * Privacy: the app downloads the server's list (domains and exact URLs from the

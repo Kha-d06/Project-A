@@ -1,4 +1,4 @@
-/** Shared shapes for the scanning engine. Wording follows SENTINEL: never "safe". */
+/** Shared shapes for the scanning engine. Wording follows Qalaa: never "safe". */
 export type Verdict = "malicious" | "suspicious" | "no_known_threat" | "not_scanned";
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 

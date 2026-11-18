@@ -1,7 +1,7 @@
 [project]
 name = "sentinel-api"
 version = "0.1.0"
-description = "SENTINEL scanning API and background workers"
+description = "Qalaa scanning API and background workers"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",

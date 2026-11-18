@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /*
- * SENTINEL design tokens.
+ * Qalaa design tokens.
  *
  * Colour roles, not colour names: components ask for "surface" or "risk-danger",
  * never for "navy-900". Each theme defines every role explicitly; the light theme

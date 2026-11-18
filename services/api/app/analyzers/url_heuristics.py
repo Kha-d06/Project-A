@@ -5,7 +5,7 @@ import unicodedata
 from app.analyzers.types import FindingData
 from app.analyzers.urls import ParsedUrl
 
-SOURCE = "SENTINEL URL pattern analysis"
+SOURCE = "Qalaa URL pattern analysis"
 
 # Frequently impersonated brands and the domains they actually use. Kept short on
 # purpose: a larger list raises the odds of flagging an unrelated legitimate site.

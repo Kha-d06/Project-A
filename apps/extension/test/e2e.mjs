@@ -1,5 +1,5 @@
 /**
- * End-to-end check of the built extension in Chromium against a running SENTINEL
+ * End-to-end check of the built extension in Chromium against a running Qalaa
  * stack. Not part of `npm test`: it needs the web app and API running, the
  * extension built with SENTINEL_SERVER pointing at them, and the development
  * fixtures loaded (python -m app.cli load-test-fixtures).

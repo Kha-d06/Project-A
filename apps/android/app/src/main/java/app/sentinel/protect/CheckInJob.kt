@@ -9,7 +9,7 @@ import android.content.Context
 import java.util.concurrent.Executors
 
 /**
- * Checks in with the SENTINEL account every 15 minutes (Android's shortest
+ * Checks in with the Qalaa account every 15 minutes (Android's shortest
  * period for background work), runs any scans started from the website, and
  * keeps the malware fingerprints fresh. Survives restarts (persisted job).
  */

@@ -1,6 +1,6 @@
 /**
  * Optional content script for Google, Bing and DuckDuckGo result pages: puts a
- * small SENTINEL badge next to results with warning signs. It reads only the
+ * small Qalaa badge next to results with warning signs. It reads only the
  * result links' addresses; results without warnings are left untouched.
  */
 import { initLanguage, t } from "./lib/i18n";

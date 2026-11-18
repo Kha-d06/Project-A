@@ -4,8 +4,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Linking the phone to a SENTINEL account and running scans started from the
- * website. The same protocol as SENTINEL Desktop:
+ * Linking the phone to a Qalaa account and running scans started from the
+ * website. The same protocol as Qalaa Desktop:
  * - nothing runs unless the person turned on "Allow scans from my account" in the app;
  * - folders are offered by id and label only, never by path;
  * - results carry names, verdicts and fingerprints, never file contents.
@@ -152,7 +152,7 @@ class RemoteAgent(private val host: RemoteHost, private val transport: Transport
         } catch (error: RemoteError) {
             if (error.status == 401) {
                 host.unlinked()
-                lastError = "This phone was removed from your SENTINEL account."
+                lastError = "This phone was removed from your Qalaa account."
             } else {
                 lastError = error.message
             }

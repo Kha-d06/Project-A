@@ -23,7 +23,7 @@ import java.io.File
 import org.json.JSONObject
 
 /**
- * Lists used by the call and message guards, downloaded from the linked SENTINEL
+ * Lists used by the call and message guards, downloaded from the linked Qalaa
  * server during the regular check-in (at most every 6 hours) and kept in the
  * app's private storage. Matching happens on the phone: no call, message or
  * link is ever sent to the server.
@@ -102,7 +102,7 @@ internal fun warn(context: Context, id: Int, title: String, body: String) {
 }
 
 /**
- * Screens incoming calls (Android 10+, after the person makes SENTINEL the call
+ * Screens incoming calls (Android 10+, after the person makes Qalaa the call
  * screening app). A number on the community scam list triggers a warning; it is
  * rejected only if the person turned on "Block reported scam numbers".
  */
@@ -137,7 +137,7 @@ class CallGuard : CallScreeningService() {
 
 /**
  * Optional: checks links in incoming message notifications (SMS, WhatsApp,
- * Telegram...) against SENTINEL's lists, on the phone, after the person grants
+ * Telegram...) against Qalaa's lists, on the phone, after the person grants
  * notification access. Only the links are looked at, only locally, and nothing
  * is stored or sent.
  */

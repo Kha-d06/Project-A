@@ -1,5 +1,5 @@
 /**
- * Known-malware fingerprints (SHA-256), downloaded from the SENTINEL server,
+ * Known-malware fingerprints (SHA-256), downloaded from the Qalaa server,
  * which collects them from MalwareBazaar and ThreatFox. Stored as a sorted
  * JSON list on disk and as a Set in memory. The list covers recently reported
  * samples, not every piece of malware ever seen.

@@ -97,8 +97,8 @@ def _send_code(db: Db, item: MonitoredIdentity) -> None:
     send_email(
         db,
         item.value,
-        "SENTINEL: confirm this address for breach monitoring",
-        f"Someone asked SENTINEL to watch {item.value} for data breaches.\n\n"
+        "Qalaa: confirm this address for breach monitoring",
+        f"Someone asked Qalaa to watch {item.value} for data breaches.\n\n"
         f"If that was you, enter this code on the Breach check page: {code}\n"
         "It expires in 30 minutes.\n\n"
         "If it was not you, ignore this email: the address will not be monitored.\n",

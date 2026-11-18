@@ -58,4 +58,4 @@ if (testBuild) {
   manifest.host_permissions.push(...manifest.optional_host_permissions);
 }
 await writeFile(join(out, "manifest.json"), JSON.stringify(manifest, null, 2));
-console.log(`Built SENTINEL Protect ${version} (${browser}) for ${serverOrigin} -> ${out}`);
+console.log(`Built Qalaa Protect ${version} (${browser}) for ${serverOrigin} -> ${out}`);

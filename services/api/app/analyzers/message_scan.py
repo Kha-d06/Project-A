@@ -18,7 +18,7 @@ from app.analyzers.urls import InvalidUrlError, ParsedUrl, parse_url
 from app.intel.feeds import COMMUNITY, THREATFOX, URLHAUS
 from app.intel.lookup import find_indicators, fresh_sources
 
-SOURCE = "SENTINEL message pattern analysis"
+SOURCE = "Qalaa message pattern analysis"
 MAX_MESSAGE_LENGTH = 10_000
 _MAX_URLS_CHECKED = 10
 _EXCERPT_CONTEXT = 30
@@ -184,7 +184,7 @@ def analyze_message(payload: dict[str, Any], db: Session) -> Outcome:
             Check(
                 "embedded_links",
                 "Links in the message",
-                "SENTINEL URL pattern analysis",
+                "Qalaa URL pattern analysis",
                 "completed",
                 f"Inspected the address of {len(checked)} link{'s' if len(checked) != 1 else ''}"
                 " without opening " + ("it." if len(checked) == 1 else "them."),

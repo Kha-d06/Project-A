@@ -6,7 +6,7 @@ owners, not a scanner for other people's sites.
 
 ## The rule that governs this feature
 
-SENTINEL only ever probes a domain the account has verified it controls, and
+Qalaa only ever probes a domain the account has verified it controls, and
 **ownership is checked again at the start of every scan**. A domain that changes
 hands, or whose verification record is removed, can no longer be scanned — the
 assessment stops before making a single request to the site. Unverified domains
@@ -31,7 +31,7 @@ with either method (the same ones Google Search Console and certificate
 authorities use):
 
 - **DNS** — add a `TXT` record containing the token shown.
-- **File** — serve the token at `https://<domain>/.well-known/sentinel-verification.txt`.
+- **File** — serve the token at `https://<domain>/.well-known/qalaa-verification.txt`.
 
 ## What the assessment checks
 
@@ -49,7 +49,7 @@ crafted input is sent, and no attempt is made to break in.
 
 Off by default. The owner can tick **Include light active tests** for one scan,
 and must also tick a second box confirming *"I own this site and I authorise
-SENTINEL to send these test requests to it now"*. The API refuses
+Qalaa to send these test requests to it now"*. The API refuses
 (`422 confirmation_required`) unless both are sent, and the choice is recorded in
 the audit log (`assessment_started_active`). Scheduled scans never include them.
 

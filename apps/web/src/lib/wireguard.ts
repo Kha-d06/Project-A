@@ -1,7 +1,7 @@
 /**
  * WireGuard keys and configuration, made in the browser. The private key is
  * generated here (WebCrypto X25519), put straight into the configuration the
- * person downloads or scans, and never sent to SENTINEL.
+ * person downloads or scans, and never sent to Qalaa.
  */
 import qrcode from "qrcode-generator";
 

@@ -9,13 +9,13 @@ export function createManifest({ version, serverOrigin, browser = "chrome" }) {
   const manifest = {
     manifest_version: 3,
     name: "__MSG_extName__",
-    short_name: "SENTINEL",
+    short_name: "Qalaa",
     version,
     description: "__MSG_extDescription__",
     default_locale: "en",
     icons: { 16: "icons/icon-16.png", 32: "icons/icon-32.png", 48: "icons/icon-48.png", 128: "icons/icon-128.png" },
     action: {
-      default_title: "SENTINEL Protect",
+      default_title: "Qalaa Protect",
       default_popup: "popup.html",
       default_icon: { 16: "icons/icon-16.png", 32: "icons/icon-32.png" },
     },

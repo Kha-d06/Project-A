@@ -24,7 +24,7 @@ from app.core.config import get_settings
 from app.intel.feeds import COMMUNITY
 from app.intel.lookup import find_indicators
 
-SOURCE = "SENTINEL screenshot analysis"
+SOURCE = "Qalaa screenshot analysis"
 _MAX_URLS = 5
 
 
@@ -106,7 +106,7 @@ def analyze_screenshot(payload: dict[str, Any], db: Session) -> Outcome:
                     "Language model (with your consent)",
                     "completed",
                     f"Transcribed {len(reading.text)} characters, {len(reading.urls)} link(s) and {len(reading.phones)} phone number(s); "
-                    "SENTINEL's own rules then judged them.",
+                    "Qalaa's own rules then judged them.",
                 )
             )
             if reading.label == "likely_scam":
@@ -150,7 +150,7 @@ def analyze_screenshot(payload: dict[str, Any], db: Session) -> Outcome:
             Check(
                 "embedded_links",
                 "Links in the image",
-                "SENTINEL URL pattern analysis",
+                "Qalaa URL pattern analysis",
                 "completed",
                 f"Inspected the address of {len(checked)} link(s) without opening them.",
             )

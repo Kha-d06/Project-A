@@ -1,4 +1,4 @@
-"""Proving that an account controls a domain before SENTINEL will scan it.
+"""Proving that an account controls a domain before Qalaa will scan it.
 
 Two methods, the same ones Google Search Console and certificate authorities
 use:
@@ -21,9 +21,12 @@ from typing import Literal
 
 from app.analyzers import safe_fetch
 
-TOKEN_PREFIX = "sentinel-site-verification"  # noqa: S105 - a public label, not a secret
-CHALLENGE_SUBDOMAIN = "_sentinel-challenge"
-VERIFICATION_PATH = "/.well-known/sentinel-verification.txt"
+TOKEN_PREFIX = "qalaa-site-verification"  # noqa: S105 - a public label, not a secret
+CHALLENGE_SUBDOMAIN = "_qalaa-challenge"
+VERIFICATION_PATH = "/.well-known/qalaa-verification.txt"
+# Names used before the product was renamed; sites verified with them keep working.
+LEGACY_CHALLENGE_SUBDOMAIN = "_sentinel-challenge"
+LEGACY_VERIFICATION_PATH = "/.well-known/sentinel-verification.txt"
 
 # A function that returns the TXT records for a name (so tests can supply fakes).
 TxtResolver = Callable[[str], list[str]]
@@ -82,14 +85,19 @@ def verify(
 ) -> Literal["dns", "file"] | None:
     """Return the method that proved ownership, or None if neither did."""
     resolver = resolver or dns_resolver
-    for name in (domain, f"{CHALLENGE_SUBDOMAIN}.{domain}"):
+    for name in (
+        domain,
+        f"{CHALLENGE_SUBDOMAIN}.{domain}",
+        f"{LEGACY_CHALLENGE_SUBDOMAIN}.{domain}",
+    ):
         if any(token == record.strip() for record in resolver(name)):
             return "dns"
     fetch = file_fetcher or _file_fetcher
-    try:
-        status, body = fetch(domain, VERIFICATION_PATH)
-    except Exception:  # noqa: BLE001 - unreachable file is just "not verified"
-        return None
-    if status == 200 and token == body.strip():
-        return "file"
+    for path in (VERIFICATION_PATH, LEGACY_VERIFICATION_PATH):
+        try:
+            status, body = fetch(domain, path)
+        except Exception:  # noqa: BLE001, S112 - unreachable file is just "not verified"
+            continue
+        if status == 200 and token == body.strip():
+            return "file"
     return None

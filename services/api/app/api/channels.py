@@ -45,12 +45,12 @@ _MIN_TEXT = 10
 
 HELP = {
     "en": (
-        "Send me a link or paste a suspicious message, and I will check it with SENTINEL. "
+        "Send me a link or paste a suspicious message, and I will check it with Qalaa. "
         "I reply with the verdict and a link to the full report. Messages are analysed and "
         "then discarded. I never say something is safe: at best, no known threat was found."
     ),
     "ar": (
-        "أرسل لي رابطًا أو الصق رسالة مشبوهة وسأفحصها باستخدام SENTINEL، ثم أرد عليك بالنتيجة "
+        "أرسل لي رابطًا أو الصق رسالة مشبوهة وسأفحصها باستخدام قلعة، ثم أرد عليك بالنتيجة "
         "ورابط للتقرير الكامل. تُحلَّل الرسائل ثم تُحذف. لا أقول أبدًا إن شيئًا آمن؛ في أفضل "
         "الأحوال لم يُعثر على تهديد معروف."
     ),

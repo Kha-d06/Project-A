@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Back up SENTINEL's database (accounts, scan history, reports, settings).
+# Back up Qalaa's database (accounts, scan history, reports, settings).
 #   ./scripts/backup.sh                  via Docker Compose
 #   DATABASE_URL=postgresql://… ./scripts/backup.sh   directly with pg_dump
 # Writes backups/sentinel-YYYYmmdd-HHMMSS.sql.gz and keeps the newest KEEP (default 14).

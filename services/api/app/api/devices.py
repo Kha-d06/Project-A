@@ -1,4 +1,4 @@
-"""Devices: SENTINEL Desktop and the Android app linked to an account.
+"""Devices: Qalaa Desktop and the Android app linked to an account.
 
 A device links with the same one-time code as the browser extension and gets a
 long random token (stored as a digest). It sends a heartbeat with its
@@ -494,7 +494,7 @@ def send_command(
         raise ApiError(
             409,
             "device_offline",
-            "This device is offline. Start the SENTINEL app on it and try again.",
+            "This device is offline. Start the Qalaa app on it and try again.",
         )
     args: dict[str, Any] = {}
     if body.kind == "folder_scan":

@@ -1,4 +1,4 @@
-"""Devices running SENTINEL apps (desktop, Android) linked to an account, and the
+"""Devices running Qalaa apps (desktop, Android) linked to an account, and the
 commands the account holder sends them from the website."""
 
 import uuid

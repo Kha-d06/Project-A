@@ -1,5 +1,5 @@
 /**
- * Digital Asset Links: proves to Android that this site and the SENTINEL Android
+ * Digital Asset Links: proves to Android that this site and the Qalaa Android
  * app belong together, so the app can show the site full-screen without a URL
  * bar. Set SENTINEL_ANDROID_PACKAGE and SENTINEL_ANDROID_CERT_SHA256 (the signing
  * certificate fingerprint, several comma-separated if needed).

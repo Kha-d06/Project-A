@@ -57,7 +57,7 @@ export function AssessmentReport({ id }: { id: string }) {
         </Button>
       </div>
       <header className="space-y-2 border-b border-line pb-4">
-        <p className="text-xs font-semibold tracking-wide text-ink-faint">SENTINEL</p>
+        <p className="text-xs font-semibold tracking-wide text-ink-faint">Qalaa</p>
         <h1 className="text-2xl font-semibold text-ink">
           {a.reportTitle(detail.domain)}
         </h1>

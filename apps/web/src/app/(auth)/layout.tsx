@@ -6,7 +6,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6">
-        <Link href="/" aria-label="SENTINEL home" className="inline-block rounded-control">
+        <Link href="/" aria-label="Qalaa home" className="inline-block rounded-control">
           <Logo />
         </Link>
       </header>

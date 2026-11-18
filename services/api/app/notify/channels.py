@@ -45,7 +45,7 @@ def reply_text(scan: ScanJob, *, include_link: bool = True) -> str:
             if locale == "ar"
             else "The scan could not be completed. Please try again."
         )
-    lines = [f"SENTINEL: {RISK_LABELS[locale].get(scan.risk or 'inconclusive', scan.risk or '')}"]
+    lines = [f"Qalaa: {RISK_LABELS[locale].get(scan.risk or 'inconclusive', scan.risk or '')}"]
     if scan.summary:
         lines.append(scan.summary)
     serious = [f for f in scan.findings if f.severity in ("critical", "high", "medium")][:3]
@@ -103,7 +103,7 @@ def send_reply(db: Session, scan: ScanJob, reply_to: dict[str, Any]) -> None:
     elif channel == "email":
         subject = str(reply_to.get("subject") or "your message")[:120]
         try:
-            send_email(db, str(reply_to["to"]), f"SENTINEL result: {subject}", reply_text(scan))
+            send_email(db, str(reply_to["to"]), f"Qalaa result: {subject}", reply_text(scan))
         except EmailUnavailableError as exc:
             raise ChannelUnavailableError(str(exc)) from exc
     else:

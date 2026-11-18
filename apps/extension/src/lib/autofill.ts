@@ -1,5 +1,5 @@
 /**
- * Filling saved logins from the SENTINEL password vault.
+ * Filling saved logins from the Qalaa password vault.
  *
  * Safety rules, enforced in the background script before anything is filled:
  * - only when the person clicks Fill in the popup (never automatically on page
@@ -7,7 +7,7 @@
  * - only into the top-level page, never an iframe;
  * - only on https:// pages (or a local development server);
  * - only logins saved for this site (same host, or a subdomain of it);
- * - never on a page SENTINEL flags as dangerous or that you or your family blocked.
+ * - never on a page Qalaa flags as dangerous or that you or your family blocked.
  */
 import type { VaultItem } from "../../../web/src/lib/vault";
 import type { Verdict } from "./types";

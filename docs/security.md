@@ -77,7 +77,7 @@ code.
 ## Mobile web app
 
 - **Service worker.** It caches only the offline notice. Pages, scan results and API responses are never stored on the device.
-- **Shared content.** Content shared into SENTINEL is placed in the form, not submitted. It travels in the address of a page on this site, so it is visible to this server's access logs if those are enabled.
+- **Shared content.** Content shared into Qalaa is placed in the form, not submitted. It travels in the address of a page on this site, so it is visible to this server's access logs if those are enabled.
 
 See also [security-review.md](security-review.md) for the latest self-review.
 

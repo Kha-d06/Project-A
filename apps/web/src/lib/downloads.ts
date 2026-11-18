@@ -34,5 +34,5 @@ export function parseAndroid(json: unknown): AndroidRelease | null {
 
 /** The .deb and .rpm sit next to the AppImage with predictable names. */
 export function linuxPackages(version: string): { deb: string; rpm: string } {
-  return { deb: `SENTINEL-Desktop-${version}-amd64.deb`, rpm: `SENTINEL-Desktop-${version}-x86_64.rpm` };
+  return { deb: `Qalaa-Desktop-${version}-amd64.deb`, rpm: `Qalaa-Desktop-${version}-x86_64.rpm` };
 }

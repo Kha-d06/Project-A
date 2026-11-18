@@ -44,7 +44,7 @@ _RISKY_DOWNLOAD_EXTENSIONS = frozenset(
 )  # fmt: skip
 _DOCUMENT_EXTENSIONS = frozenset({"pdf", "doc", "docx", "xls", "xlsx", "jpg", "jpeg", "png",
                                   "txt", "mp4", "mp3", "zip"})  # fmt: skip
-SOURCE = "SENTINEL quick check"
+SOURCE = "Qalaa quick check"
 
 
 @dataclass
@@ -93,7 +93,7 @@ def _evaluate(db: Session, url: ParsedUrl, *, host_only: bool = False) -> QuickR
             (finding for finding in findings if finding.severity != "info"),
             key=lambda finding: _SEVERITY_ORDER.index(finding.severity),
         ),
-        sources=["SENTINEL address patterns"] + [source.name for source in feeds],
+        sources=["Qalaa address patterns"] + [source.name for source in feeds],
     )
     if result.verdict == "unavailable":
         result.limitations.append(

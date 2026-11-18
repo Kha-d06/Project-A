@@ -1,5 +1,5 @@
 /**
- * Linking this computer to a SENTINEL account, so its owner can see its status
+ * Linking this computer to a Qalaa account, so its owner can see its status
  * and start scans on it from the website. The device token is kept in the app's
  * private data folder (owner-only permissions) and never shown in the interface.
  */

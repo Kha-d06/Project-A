@@ -20,7 +20,7 @@ from app.intel import providers
 from app.intel.feeds import MALWAREBAZAAR, THREATFOX
 from app.intel.lookup import find_indicators, fresh_sources
 
-SOURCE = "SENTINEL static file inspection"
+SOURCE = "Qalaa static file inspection"
 
 _HASH_CHUNK_BYTES = 1024 * 1024
 _CONTENT_SCAN_BYTES = 8 * 1024 * 1024
@@ -274,7 +274,7 @@ def _archive_member_findings(path: Path, outcome: Outcome) -> list[FindingData]:
                             "yara_match",
                             f"{match.meta.get('title', match.rule)} (inside {name})",
                             str(match.meta.get("explanation", "A member matches a signature.")),
-                            "SENTINEL YARA rules",
+                            "Qalaa YARA rules",
                             {"rule": match.rule, "entry": name},
                         )
                     )

@@ -1,6 +1,6 @@
 # Security self-review
 
-A structured review of the SENTINEL codebase by the team that wrote it, done
+A structured review of the Qalaa codebase by the team that wrote it, done
 before the second round of features. **It is not an independent review.** It
 catches what the authors can see; an outside reviewer should still test the
 areas marked "recommended for external testing" before production use.
@@ -39,8 +39,8 @@ Scope: the API (`services/api`), web app (`apps/web`), browser extension
 - **Webhooks.** HTTPS domain names only. Delivery uses the same address checks as the fetcher, does not follow redirects, signs each body with HMAC-SHA256 plus a timestamp, and switches off after ten failures. Secrets are encrypted at rest and shown once.
 - **Share links.** 256-bit tokens stored as digests, expiring (30 days by default) and revocable. Without the sharer's explicit choice, the address, evidence and details are left out.
 - **Groups.** Invites only work for the invited address (and only once it is verified when email is on). A member's warning counts are visible to owners and admins only when that member opts in, and only as numbers.
-- **Bots and scan-by-email.** Telegram is checked with its secret header, WhatsApp with the app-secret HMAC, and inbound email with a bearer token. Replies go only to the `From` address, never `Reply-To`, and mail marked `dmarc=fail` or `Auto-Submitted` is dropped, so SENTINEL cannot be used to mail bystanders. Chat IDs and addresses are deleted once the reply is sent.
-- **Breach check.** Only the signed-in user's own address can be checked, so it cannot be used to look up other people. Password checks run in the browser against the Pwned Passwords range API (k-anonymity); passwords never reach SENTINEL.
+- **Bots and scan-by-email.** Telegram is checked with its secret header, WhatsApp with the app-secret HMAC, and inbound email with a bearer token. Replies go only to the `From` address, never `Reply-To`, and mail marked `dmarc=fail` or `Auto-Submitted` is dropped, so Qalaa cannot be used to mail bystanders. Chat IDs and addresses are deleted once the reply is sent.
+- **Breach check.** Only the signed-in user's own address can be checked, so it cannot be used to look up other people. Password checks run in the browser against the Pwned Passwords range API (k-anonymity); passwords never reach Qalaa.
 - **Extension assistant.** Reads cookie names, never values, and sends only a summary to the server. It is drawn in a closed shadow root using text nodes only.
 
 ## Round 3 additions, reviewed
@@ -54,7 +54,7 @@ Scope: the API (`services/api`), web app (`apps/web`), browser extension
 
 **Also reviewed, with no change needed:**
 
-- **Screenshot scans.** AI reading happens only with consent. The image is re-encoded with EXIF and other metadata removed and resized. The vision model's output is treated as text for SENTINEL's own rules, and its opinion is capped at low severity. QR codes are always checked locally.
+- **Screenshot scans.** AI reading happens only with consent. The image is re-encoded with EXIF and other metadata removed and resized. The vision model's output is treated as text for Qalaa's own rules, and its opinion is capped at low severity. QR codes are always checked locally.
 - **Visual phishing references.** Only 64-bit hashes are stored, never screenshots. A brand's own domains never match their own reference.
 - **Phone lookups and trends.** Phone lookups show verified reports and pending counts, not the reports themselves. Trends publish aggregates only, with counts below three hidden.
 - **Web Push.** Payloads contain a title, a sentence and a site-relative link, never scanned content. The service worker opens only same-origin URLs on notification click. Dead subscriptions are deleted.
@@ -141,7 +141,7 @@ Scope: the API (`services/api`), web app (`apps/web`), browser extension
   - No SMS permissions are requested.
 - **Password autofill in the extension.**
   - The extension reads the encrypted vault (`GET /extension/vault`, linked installations only) and decrypts it in memory with the master password; the master password and decrypted vault are never stored, and the vault locks after 10 minutes idle or on demand.
-  - Filling is click-only from the popup (never on page load), top frame only, `https://` (or localhost) only, logins for the same site or its subdomains only, refused on pages SENTINEL rates dangerous/suspicious or that you or your family blocked, and only into visible fields (a hidden-field trap stays empty in the end-to-end test).
+  - Filling is click-only from the popup (never on page load), top frame only, `https://` (or localhost) only, logins for the same site or its subdomains only, refused on pages Qalaa rates dangerous/suspicious or that you or your family blocked, and only into visible fields (a hidden-field trap stays empty in the end-to-end test).
   - Secret-returning messages are accepted only from the extension's own popup page; content scripts and web pages get "Not allowed".
 
 ## Open items

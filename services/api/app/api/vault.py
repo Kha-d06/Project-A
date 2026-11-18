@@ -2,7 +2,7 @@
 
 The browser derives a key from the master password (PBKDF2-SHA256), uses it to
 wrap a random vault key, and encrypts the vault with that key (AES-256-GCM).
-This API only stores and returns the ciphertext, so neither SENTINEL nor
+This API only stores and returns the ciphertext, so neither Qalaa nor
 anyone with database access can read a vault. That also means a forgotten
 master password cannot be recovered.
 """

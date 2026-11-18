@@ -1,4 +1,4 @@
-# Sends Prometheus alerts to SENTINEL, which emails every administrator through
+# Sends Prometheus alerts to Qalaa, which emails every administrator through
 # its own mail settings (SENTINEL_SMTP_*). No separate mail credentials needed.
 # The bearer token is SENTINEL_METRICS_TOKEN, passed in by Compose as a file.
 route:

@@ -80,7 +80,7 @@ def test_password_reset_flow(client: TestClient, db: Session, outbox: None) -> N
 def enable_two_factor(client: TestClient, headers: dict[str, str]) -> tuple[pyotp.TOTP, list[str]]:
     setup = client.post("/api/v1/user/2fa/setup", headers=headers).json()
     assert setup["qr_code"].startswith("data:image/png;base64,")
-    assert "otpauth://totp/SENTINEL" in setup["otpauth_uri"]
+    assert "otpauth://totp/Qalaa" in setup["otpauth_uri"]
     totp = pyotp.TOTP(setup["secret"])
     wrong = client.post("/api/v1/user/2fa/enable", json={"code": "000000"}, headers=headers)
     assert wrong.status_code == 400

@@ -109,7 +109,7 @@ jobs:
         run: npx electron-builder --linux AppImage deb --publish never
       - uses: actions/upload-artifact@v4
         with:
-          name: sentinel-desktop-linux
+          name: qalaa-desktop-linux
           path: |
             apps/desktop/release/*.AppImage
             apps/desktop/release/*.deb
@@ -191,7 +191,7 @@ jobs:
           gradle-version: "8.10.2"
       - name: Scanner unit tests (app risk, device checks, files, account protocol)
         run: gradle :scanner-core:test
-      - run: gradle assembleDebug -PsiteHost=sentinel.example.org
+      - run: gradle assembleDebug -PsiteHost=qalaa.example.org
       - uses: actions/upload-artifact@v4
         with:
           name: sentinel-android-debug

@@ -3,7 +3,7 @@ package app.sentinel.core
 /**
  * On-phone checks for scam calls and dangerous links in messages.
  *
- * Both work from lists the phone downloads from the owner's SENTINEL server
+ * Both work from lists the phone downloads from the owner's Qalaa server
  * (community-verified scam numbers; malicious domains and exact URLs), so no
  * call, message or link is ever sent to the server.
  */

@@ -19,7 +19,7 @@ groups:
         expr: up{job="sentinel"} == 0
         for: 5m
         annotations:
-          summary: "The SENTINEL API has not answered Prometheus for 5 minutes."
+          summary: "The Qalaa API has not answered Prometheus for 5 minutes."
       - alert: ScanQueueBacklog
         expr: sentinel_queue_length{queue="scans"} > 100
         for: 10m

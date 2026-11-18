@@ -1,7 +1,7 @@
 """Web Push notifications (VAPID), for browsers that subscribed in settings.
 
 Payloads are short and contain no scanned content: a title, a sentence and a
-link back to SENTINEL. Subscriptions the push service reports as gone are deleted.
+link back to Qalaa. Subscriptions the push service reports as gone are deleted.
 """
 
 import json

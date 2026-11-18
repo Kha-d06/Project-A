@@ -51,7 +51,7 @@ def check_breaches(db: Session) -> int:
         )
         if email_enabled():
             try:
-                send_email(db, user.email, "SENTINEL: your email appeared in a data breach", body)
+                send_email(db, user.email, "Qalaa: your email appeared in a data breach", body)
                 db.commit()
             except EmailUnavailableError:
                 pass
@@ -101,16 +101,14 @@ def check_identities(db: Session) -> int:
         names = ", ".join(str(b["title"]) for b in new[:10])
         base = get_settings().public_url.rstrip("/")
         body = (
-            f"{item.value}, one of the addresses you asked SENTINEL to watch, appeared in "
+            f"{item.value}, one of the addresses you asked Qalaa to watch, appeared in "
             f"{len(new)} newly listed data breach(es): {names}.\n\n"
             "Change the password on those sites and anywhere you reused it, and turn on two-step "
             f"verification.\n\nDetails: {base}/dashboard/breach\n"
         )
         if email_enabled():
             with contextlib.suppress(EmailUnavailableError):
-                send_email(
-                    db, user.email, "SENTINEL: a monitored address appeared in a breach", body
-                )
+                send_email(db, user.email, "Qalaa: a monitored address appeared in a breach", body)
         send_push(
             db,
             user.id,

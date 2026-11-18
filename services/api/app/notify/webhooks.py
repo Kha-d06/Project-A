@@ -1,9 +1,9 @@
 """Signed webhook deliveries for finished scans.
 
 Each delivery is a JSON POST with:
-  X-Sentinel-Event:      scan.completed or scan.dangerous
-  X-Sentinel-Timestamp:  Unix seconds
-  X-Sentinel-Signature:  sha256=HMAC-SHA256(secret, f"{timestamp}.{body}")
+  X-Qalaa-Event:      scan.completed or scan.dangerous
+  X-Qalaa-Timestamp:  Unix seconds
+  X-Qalaa-Signature:  sha256=HMAC-SHA256(secret, f"{timestamp}.{body}")
 Receivers should check the signature and reject timestamps older than five minutes.
 Deliveries go through the SSRF-safe POST, so a webhook cannot be aimed at the
 server's own network. After ten consecutive failures a webhook is switched off.
@@ -61,9 +61,9 @@ def deliver(webhook: Webhook, event: str, payload: dict[str, Any]) -> str:
     body = json.dumps({"event": event, "data": payload}, separators=(",", ":")).encode()
     timestamp = int(time.time())
     headers = {
-        "X-Sentinel-Event": event,
-        "X-Sentinel-Timestamp": str(timestamp),
-        "X-Sentinel-Signature": sign(secret, timestamp, body),
+        "X-Qalaa-Event": event,
+        "X-Qalaa-Timestamp": str(timestamp),
+        "X-Qalaa-Signature": sign(secret, timestamp, body),
     }
     try:
         status = post_json(webhook.url, body, headers)

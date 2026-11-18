@@ -17,7 +17,7 @@ describe("which logins belong to a page", () => {
   });
 });
 
-describe("when SENTINEL refuses to fill", () => {
+describe("when Qalaa refuses to fill", () => {
   it("needs https, a safe verdict and a saved login", () => {
     expect(canFillOn("https://a.example/")).toBe(true);
     expect(canFillOn("http://a.example/")).toBe(false);

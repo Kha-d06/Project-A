@@ -2,7 +2,7 @@
 
 Registers an account, adds a VPN device with a key made here, brings up a real
 WireGuard interface on this machine pointed at the server, and checks that a
-handshake happens and that SENTINEL then reports the device as connected.
+handshake happens and that Qalaa then reports the device as connected.
 Needs: the stack running with --profile vpn, wireguard-tools, and sudo.
 
     python3 infrastructure/vpn/test/stack-test.py http://localhost:8080
@@ -47,7 +47,7 @@ def wait(what: str, check, seconds: int = 60) -> None:
 
 session = call("POST", "/auth/register", {"email": f"vpn-{int(time.time())}@example.com", "password": "a-strong-password-123"})
 csrf = session["csrf_token"]
-wait("VPN server checked in with SENTINEL", lambda: call("GET", "/vpn")["server_online"])
+wait("VPN server checked in with Qalaa", lambda: call("GET", "/vpn")["server_online"])
 
 private_key = run("wg", "genkey")
 public_key = run("wg", "pubkey", stdin=private_key)
@@ -72,7 +72,7 @@ subprocess.run(["ping", "-c", "3", "-W", "1", server_address], capture_output=Tr
 
 wait("WireGuard handshake with the server", lambda: run("sudo", "wg", "show", "wgci", "latest-handshakes").split()[-1] != "0", 30)
 wait(
-    "SENTINEL shows the device as connected",
+    "Qalaa shows the device as connected",
     lambda: any(d["connected"] for d in call("GET", "/vpn")["devices"]),
     40,
 )

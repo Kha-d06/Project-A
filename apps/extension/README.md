@@ -1,20 +1,20 @@
-# SENTINEL Protect
+# Qalaa Protect
 
-The SENTINEL browser extension (Chrome and Microsoft Edge, Manifest V3).
+The Qalaa browser extension (Chrome and Microsoft Edge, Manifest V3).
 
 ## What it does
 
 - **Page checks.** Checks each page a tab opens, both before navigation and again once it commits, so server-side redirects are covered. Known dangerous sites and convincing imitations are replaced by a warning page; minor warning signs only show on the toolbar badge.
 - **Warning page.** Shows the domain, the risk level, the evidence and the source. "Go back to safety" returns to the last page the tab opened without a warning. A proceed option sits behind "I understand the risk" and lasts for the browser session; it is not offered for sites on your own block list.
 - **Downloads.** Pauses a download from a known dangerous source, or one with a disguised name, and lets you cancel or keep it.
-- **Context menu.** "Scan link with SENTINEL" and "Check this page with SENTINEL".
-- **Pre-load blocking.** Downloads SENTINEL's list of known malicious domains (`GET /extension/blocklist`, up to 4,500 domains from ThreatFox and moderator-verified reports; whole-host listings only, never shared hosting) every six hours and installs it as `declarativeNetRequest` block rules, together with your own block list. Listed domains are stopped inside the browser before any request is made, and the warning page is shown instead. "Continue anyway" adds a session-only allow rule for that domain. Your allow list always wins.
-- **On-screen assistant (optional, off by default).** A small SENTINEL button in the corner of pages:
+- **Context menu.** "Scan link with Qalaa" and "Check this page with Qalaa".
+- **Pre-load blocking.** Downloads Qalaa's list of known malicious domains (`GET /extension/blocklist`, up to 4,500 domains from ThreatFox and moderator-verified reports; whole-host listings only, never shared hosting) every six hours and installs it as `declarativeNetRequest` block rules, together with your own block list. Listed domains are stopped inside the browser before any request is made, and the warning page is shown instead. "Continue anyway" adds a session-only allow rule for that domain. Your allow list always wins.
+- **On-screen assistant (optional, off by default).** A small Qalaa button in the corner of pages:
   - a warning bubble on dangerous or suspicious sites, and a second warning when you click into a password field there;
   - the site's cookies (names, owning domain, first or third party, lifetime; never values) and known advertising and analytics trackers it loaded;
   - questions answered by the server's AI provider (`POST /extension/assistant`, sending only the domain, verdict, warning titles, cookie names and tracker names) or, if none is configured, built-in answers grounded in the same facts.
   Turning it on requests `scripting`, `cookies` and access to web pages.
-- **Search-result labels (optional).** On Google, Bing and DuckDuckGo, results with warning signs get a SENTINEL label. Clean results are left alone.
+- **Search-result labels (optional).** On Google, Bing and DuckDuckGo, results with warning signs get a Qalaa label. Clean results are left alone.
 - **Tracker blocking (optional).** Blocks about 45 well-known advertising and analytics domains when they load as third parties.
 - **Family block lists.** When the linked account applies a family or organisation group's list, those domains are blocked before loading. The warning page names the group and offers no way to proceed.
 - **English and Arabic.** Follows the browser's language, or the choice in settings; Arabic is laid out right to left.
@@ -35,7 +35,7 @@ Checks are cached according to the server's `cache_seconds`, deduplicated while 
 
 ```bash
 npm install
-SENTINEL_SERVER=https://your-sentinel.example npm run build   # default http://localhost:8080
+SENTINEL_SERVER=https://your-qalaa.example npm run build   # default http://localhost:8080
 ```
 
 Then open `chrome://extensions` (or `edge://extensions`), turn on Developer mode, choose **Load unpacked** and select `dist/chrome`.

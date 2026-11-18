@@ -56,7 +56,7 @@ function zip(files: Record<string, Buffer | string>, encrypted = false): Buffer 
 let dir: string;
 let signatures: SignatureStore;
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), "sentinel-desktop-"));
+  dir = await mkdtemp(join(tmpdir(), "qalaa-desktop-"));
   signatures = new SignatureStore(join(dir, "signatures.json"));
 });
 
@@ -189,8 +189,8 @@ describe("watcher and walking", () => {
 describe("settings", () => {
   it("accepts only known settings and safe server addresses", () => {
     expect(sanitizeChanges({ autoQuarantine: false, evil: 1 })).toEqual({ autoQuarantine: false });
-    expect(sanitizeChanges({ serverUrl: "https://sentinel.example.org/path" }).serverUrl).toBe("https://sentinel.example.org");
-    expect(() => sanitizeChanges({ serverUrl: "http://sentinel.example.org" })).toThrow();
+    expect(sanitizeChanges({ serverUrl: "https://qalaa.example.org/path" }).serverUrl).toBe("https://qalaa.example.org");
+    expect(() => sanitizeChanges({ serverUrl: "http://qalaa.example.org" })).toThrow();
     expect(sanitizeChanges({ serverUrl: "http://localhost:8080" }).serverUrl).toBe("http://localhost:8080");
   });
 });

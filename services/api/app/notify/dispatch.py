@@ -37,7 +37,7 @@ def after_scan(db: Session, scan_id: uuid.UUID) -> None:
         send_push(
             db,
             scan.user_id,
-            f"SENTINEL: {label}",
+            f"Qalaa: {label}",
             scan.summary or "",
             f"/dashboard/scans/{scan.id}",
         )

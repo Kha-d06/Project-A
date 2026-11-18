@@ -1,6 +1,6 @@
 # Operations runbook
 
-How to run SENTINEL day to day: starting it, backups, upgrades, monitoring,
+How to run Qalaa day to day: starting it, backups, upgrades, monitoring,
 secrets, and what to do when something breaks.
 
 ## Start and stop
@@ -83,7 +83,7 @@ Start Prometheus with `docker compose --profile monitoring up -d`; it needs
 `SENTINEL_METRICS_TOKEN` in `.env`. The rules in
 `infrastructure/monitoring/alerts.yml` fire for the situations below.
 The profile also starts Alertmanager, which sends firing and resolved alerts to
-SENTINEL; SENTINEL emails every administrator using its own mail settings
+Qalaa; Qalaa emails every administrator using its own mail settings
 (`SENTINEL_SMTP_*`), so email must be configured. You can also point an uptime
 service at `/api/v1/system/health` to learn if the whole server is down.
 

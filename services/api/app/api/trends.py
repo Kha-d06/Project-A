@@ -1,4 +1,4 @@
-"""Public scam trends: what kinds of scams SENTINEL has been seeing recently.
+"""Public scam trends: what kinds of scams Qalaa has been seeing recently.
 
 Only aggregate counts are published: categories of warning signs found in
 scans, verified community reports by type and country, and verdict totals.

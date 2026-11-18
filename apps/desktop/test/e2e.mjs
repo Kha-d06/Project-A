@@ -1,6 +1,6 @@
 /**
  * End-to-end test of the built desktop app in Electron, against a stand-in
- * SENTINEL server. Run under a display (xvfb-run on Linux CI):
+ * Qalaa server. Run under a display (xvfb-run on Linux CI):
  *   npm run build && xvfb-run -a node test/e2e.mjs [screenshot-dir]
  */
 import assert from "node:assert/strict";
@@ -107,7 +107,7 @@ const server = createServer(async (request, response) => {
 });
 await new Promise((resolve) => server.listen(8799, "127.0.0.1", resolve));
 
-const work = await mkdtemp(join(tmpdir(), "sentinel-desktop-e2e-"));
+const work = await mkdtemp(join(tmpdir(), "qalaa-desktop-e2e-"));
 const profile = join(work, "profile");
 const downloads = join(work, "Downloads");
 const files = join(work, "files");
@@ -158,7 +158,7 @@ await page.waitForSelector("nav button");
 // Isolation: the page has no Node.js and only the bridge.
 assert.equal(await page.evaluate(() => typeof require), "undefined");
 assert.equal(await page.evaluate(() => typeof window.sentinel.scan), "function");
-step("window is isolated: no Node.js in the page, only the SENTINEL bridge");
+step("window is isolated: no Node.js in the page, only the Qalaa bridge");
 
 await page.click('[data-tab="protection"]');
 await page.waitForSelector("text=1 known-malware fingerprints", { timeout: 15000 });
@@ -256,7 +256,7 @@ await page.click("#vpn-setup");
 await page.waitForSelector("#vpn >> text=Show the tunnel file").catch(async () => page.waitForSelector("#vpn-toggle"));
 assert.equal(device.vpnKeys.length, 1);
 assert.match(device.vpnKeys[0], /^[A-Za-z0-9+/]{43}=$/);
-const tunnel = join(profile, "sentinel-vpn.conf");
+const tunnel = join(profile, "qalaa-vpn.conf");
 const tunnelText = await readFile(tunnel, "utf8");
 assert.match(tunnelText, /PrivateKey = [A-Za-z0-9+/]{43}=/);
 assert.ok(!tunnelText.includes(device.vpnKeys[0]), "the tunnel file holds the private key, the server only got the public one");

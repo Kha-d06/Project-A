@@ -1,5 +1,5 @@
 /**
- * Same-origin gateway to the SENTINEL API.
+ * Same-origin gateway to the Qalaa API.
  *
  * Done here rather than with a next.config rewrite for two reasons: rewrites are
  * fixed at build time (so one image could not serve different environments), and
@@ -59,7 +59,7 @@ async function forward(request: Request, { params }: { params: Promise<{ path: s
     } as RequestInit);
   } catch {
     return Response.json(
-      { error: { code: "service_unavailable", message: "The SENTINEL service is unavailable right now. Please try again shortly.", details: null } },
+      { error: { code: "service_unavailable", message: "The Qalaa service is unavailable right now. Please try again shortly.", details: null } },
       { status: 502 },
     );
   }

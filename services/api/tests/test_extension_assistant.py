@@ -70,7 +70,7 @@ def test_assistant_sends_only_the_summary(
 
     def respond(request: httpx.Request) -> httpx.Response:
         sent.append(json.loads(request.content))
-        text = "SENTINEL found warning signs. Do not sign in. More at https://evil.example/"
+        text = "Qalaa found warning signs. Do not sign in. More at https://evil.example/"
         return httpx.Response(200, json={"choices": [{"message": {"content": text}}]})
 
     original = httpx.Client

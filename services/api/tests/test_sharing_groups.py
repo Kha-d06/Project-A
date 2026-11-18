@@ -234,9 +234,9 @@ def test_webhook_is_signed_and_rejects_unsafe_targets(
     url, body, sent_headers = sent[0]
     assert url == "https://hooks.example.com/sentinel"
     expected = hmac.new(
-        secret.encode(), f"{sent_headers['X-Sentinel-Timestamp']}.".encode() + body, hashlib.sha256
+        secret.encode(), f"{sent_headers['X-Qalaa-Timestamp']}.".encode() + body, hashlib.sha256
     ).hexdigest()
-    assert sent_headers["X-Sentinel-Signature"] == f"sha256={expected}"
+    assert sent_headers["X-Qalaa-Signature"] == f"sha256={expected}"
     assert json.loads(body)["data"]["risk"] == "known_malicious"
     assert (
         client.get(f"{API}/user/webhooks", headers=headers).json()[0]["last_status"] == "HTTP 200"

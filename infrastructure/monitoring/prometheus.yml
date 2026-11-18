@@ -1,4 +1,4 @@
-# Scrapes SENTINEL's metrics endpoint. Start with:
+# Scrapes Qalaa's metrics endpoint. Start with:
 #   docker compose --profile monitoring up
 # The bearer token must match SENTINEL_METRICS_TOKEN; Compose passes it in as a file.
 global:
@@ -16,7 +16,7 @@ scrape_configs:
 rule_files:
   - /etc/prometheus/alerts.yml
 
-# Firing alerts go to Alertmanager, which forwards them to SENTINEL to email admins.
+# Firing alerts go to Alertmanager, which forwards them to Qalaa to email admins.
 alerting:
   alertmanagers:
     - static_configs:

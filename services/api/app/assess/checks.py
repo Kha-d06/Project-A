@@ -519,7 +519,7 @@ def check_reflection(token: str, status: int | None, body: str) -> Finding | Non
             "high",
             "active",
             "Text from the address is shown on the page without escaping",
-            "SENTINEL put a harmless marker containing < > and quotes in the page address, "
+            "Qalaa put a harmless marker containing < > and quotes in the page address, "
             "and the page displayed it unchanged. An attacker could put script there instead "
             "(reflected cross-site scripting) and send the link to your users.",
             "Escape everything from the URL before writing it into HTML (most templating "

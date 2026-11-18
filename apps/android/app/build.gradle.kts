@@ -3,7 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-val siteHost: String = (project.findProperty("siteHost") as String?) ?: "sentinel.example.org"
+val siteHost: String = (project.findProperty("siteHost") as String?) ?: "qalaa.example.org"
 val siteUrl = "https://$siteHost"
 
 android {
@@ -13,7 +13,7 @@ android {
     defaultConfig {
         // Change this before publishing: it must be unique on Google Play and match
         // SENTINEL_ANDROID_PACKAGE on the server (for /.well-known/assetlinks.json).
-        applicationId = "app.sentinel.protect"
+        applicationId = "app.qalaa.protect"
         minSdk = 23
         targetSdk = 35
         versionCode = 2
@@ -22,7 +22,7 @@ android {
 
         manifestPlaceholders["hostName"] = siteHost
         manifestPlaceholders["defaultUrl"] = "$siteUrl/scan?utm_source=android"
-        manifestPlaceholders["launcherName"] = "SENTINEL"
+        manifestPlaceholders["launcherName"] = "Qalaa"
         resValue(
             "string",
             "asset_statements",

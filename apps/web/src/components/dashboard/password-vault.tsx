@@ -333,7 +333,7 @@ function OpenVault({
     const url = URL.createObjectURL(new Blob([exportCsv(doc.items)], { type: "text/csv" }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = "sentinel-passwords.csv";
+    link.download = "qalaa-passwords.csv";
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };

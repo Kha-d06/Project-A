@@ -1,5 +1,5 @@
 /**
- * SENTINEL Desktop main process.
+ * Qalaa Desktop main process.
  *
  * The window shows only the app's own local page, with context isolation, the
  * Chromium sandbox, no Node.js in the page, no navigation, no new windows and
@@ -249,7 +249,7 @@ async function processCheck() {
 /** Downloads the threat list from the linked server and compares it with recent
  * browser history on this computer. No history is sent. */
 async function historyCheck(days: number) {
-  if (!account) throw new Error("Link this computer to your SENTINEL account first (Settings), so it can download the list of dangerous sites.");
+  if (!account) throw new Error("Link this computer to your Qalaa account first (Settings), so it can download the list of dangerous sites.");
   const response = await fetch(`${account.server.replace(/\/$/, "")}/api/v1/devices/blocklist`, {
     headers: { Accept: "application/json", Authorization: `Bearer ${account.token}` },
     signal: AbortSignal.timeout(30_000),
@@ -272,7 +272,7 @@ async function vpnStatus() {
 }
 
 async function vpnSetup() {
-  if (!account) throw new Error("Link this computer to your SENTINEL account first (Settings).");
+  if (!account) throw new Error("Link this computer to your Qalaa account first (Settings).");
   const keys = vpn.generateKeyPair();
   const config = await vpn.requestPeer(account, keys.publicKey);
   const file = await vpn.saveTunnel(dataDir(), vpn.buildConfig(config, keys.privateKey));
@@ -412,7 +412,7 @@ async function checkSchedules() {
     const targets = settings.scheduledScanKind === "full" ? [{ path: process.env.SENTINEL_DESKTOP_HOME ?? homedir(), label: "Home" }] : settings.watchFolders.map((path) => ({ path, label: basename(path) }));
     void exclusive(() => scanLabelled(targets)).then((outcome) => {
       const threats = outcome.malicious + outcome.suspicious;
-      notify("Scheduled scan finished", threats ? `${threats} file(s) need your attention. Open SENTINEL Desktop to review them.` : `${outcome.scanned} files checked. No known threats found.`);
+      notify("Scheduled scan finished", threats ? `${threats} file(s) need your attention. Open Qalaa Desktop to review them.` : `${outcome.scanned} files checked. No known threats found.`);
       send("schedule-ran", { kind: "scan", outcome });
     });
   }
@@ -492,7 +492,7 @@ function onRansomware(alert: RansomwareAlert) {
 function applyWatching() {
   watcher.set(settings.watchEnabled ? settings.watchFolders : []);
   ransomware.set(settings.ransomwareWatch ? settings.protectedFolders : []);
-  tray?.setToolTip(settings.watchEnabled ? "SENTINEL Desktop: watching for new files" : "SENTINEL Desktop: watching paused");
+  tray?.setToolTip(settings.watchEnabled ? "Qalaa Desktop: watching for new files" : "Qalaa Desktop: watching paused");
 }
 
 async function status() {
@@ -642,7 +642,7 @@ function registerIpc() {
   ipcMain.handle("backup-run", () => runBackup());
   ipcMain.handle("backup-open", async (_event, mode: unknown, password: unknown) => {
     if (typeof password !== "string") throw new Error("Enter the backup's password.");
-    const picked = await dialog.showOpenDialog(window!, { properties: ["openFile"], filters: [{ name: "SENTINEL backup", extensions: ["sbk"] }] });
+    const picked = await dialog.showOpenDialog(window!, { properties: ["openFile"], filters: [{ name: "Qalaa backup", extensions: ["sbk"] }] });
     if (picked.canceled || !picked.filePaths[0]) return null;
     let target: string | null = null;
     if (mode === "restore") {
@@ -683,7 +683,7 @@ function createWindow() {
     height: 760,
     minWidth: 760,
     minHeight: 560,
-    title: "SENTINEL Desktop",
+    title: "Qalaa Desktop",
     backgroundColor: "#f4f6fa",
     show: false,
     webPreferences: {
@@ -707,7 +707,7 @@ function createTray() {
     tray = new Tray(nativeImage.createFromPath(join(__dirname, "renderer", "icon.png")));
     tray.setContextMenu(
       Menu.buildFromTemplate([
-        { label: "Open SENTINEL Desktop", click: () => (window ? window.show() : createWindow()) },
+        { label: "Open Qalaa Desktop", click: () => (window ? window.show() : createWindow()) },
         { label: "Scan Downloads now", click: () => void scanPaths(settings.watchFolders) },
         { type: "separator" },
         { label: "Quit", click: () => app.quit() },
@@ -773,10 +773,10 @@ async function start() {
       account = null;
       remote.stop();
       void saveAccount(accountFile(), null);
-      send("remote-activity", "This computer was removed from your SENTINEL account.");
+      send("remote-activity", "This computer was removed from your Qalaa account.");
     },
     activity: (message) => {
-      if (Notification.isSupported()) new Notification({ title: "SENTINEL Desktop", body: message }).show();
+      if (Notification.isSupported()) new Notification({ title: "Qalaa Desktop", body: message }).show();
       send("remote-activity", message);
     },
   });

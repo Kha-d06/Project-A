@@ -59,7 +59,7 @@ def yara_check(path: Path, outcome: Outcome) -> None:
                 "yara_match",
                 str(meta.get("title", match.rule)),
                 str(meta.get("explanation", "The file matches a signature rule.")),
-                "SENTINEL YARA rules" if match.namespace.startswith("rules_") else provider,
+                "Qalaa YARA rules" if match.namespace.startswith("rules_") else provider,
                 {"rule": match.rule},
             )
         )

@@ -31,7 +31,7 @@ function downloadReport(scan: Scan) {
   const blob = new Blob([JSON.stringify(scan, null, 2)], { type: "application/json" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = `sentinel-report-${scan.id}.json`;
+  link.download = `qalaa-report-${scan.id}.json`;
   link.click();
   URL.revokeObjectURL(link.href);
 }

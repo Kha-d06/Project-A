@@ -1,6 +1,6 @@
 /**
  * End-to-end check of pre-load blocking and the on-screen assistant in Chromium,
- * against a mock SENTINEL API (test/mock-server.mjs). Runs without the real stack:
+ * against a mock Qalaa API (test/mock-server.mjs). Runs without the real stack:
  *
  *   SENTINEL_TEST_BUILD=1 SENTINEL_SERVER=http://localhost:8787 npm run build
  *   node test/e2e-assistant.mjs [screenshot-dir]
@@ -61,7 +61,7 @@ const page = await context.newPage();
 await page.goto("http://preload-evil.example/login").catch(() => undefined);
 for (let i = 0; i < 50 && !page.url().includes("warning.html"); i++) await new Promise((r) => setTimeout(r, 200));
 assert.ok(page.url().includes("warning.html"), `warning page shown (at ${page.url()})`);
-await page.waitForSelector("text=On SENTINEL's list of known malicious domains");
+await page.waitForSelector("text=On Qalaa's list of known malicious domains");
 await shot(page, "ext-preload-warning");
 step("listed domain blocked before loading; warning page explains why");
 

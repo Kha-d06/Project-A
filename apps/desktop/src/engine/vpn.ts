@@ -1,5 +1,5 @@
 /**
- * One-click VPN from the desktop app, using the owner's self-hosted SENTINEL VPN.
+ * One-click VPN from the desktop app, using the owner's self-hosted Qalaa VPN.
  *
  * - The WireGuard key pair is generated here; only the public key is sent.
  * - The tunnel file (which contains the private key) is written to the app's
@@ -16,7 +16,7 @@ import { join } from "node:path";
 
 import { AccountLinkError, type LinkedAccount } from "./account";
 
-export const CONNECTION_NAME = "sentinel-vpn";
+export const CONNECTION_NAME = "qalaa-vpn";
 
 export interface PeerConfig {
   peer: { id: string; name: string; address: string };

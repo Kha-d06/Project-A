@@ -1,6 +1,6 @@
-# SENTINEL for Android
+# Qalaa for Android
 
-**A native scanner for this phone, plus the SENTINEL web app.**
+**A native scanner for this phone, plus the Qalaa web app.**
 
 - **`MainActivity`** (the app's launcher icon) checks the phone itself:
   - **Installed apps:**
@@ -24,12 +24,12 @@
     - developer options and USB debugging;
     - signs of root;
     - apps allowed to install other apps.
-  - **SENTINEL account:**
+  - **Qalaa account:**
     - link with the code from Dashboard → Devices;
-    - turn on **Allow scans from my SENTINEL account** (off by default), and quick, full and Downloads scans, quarantine and fingerprint updates can be started from the website;
+    - turn on **Allow scans from my Qalaa account** (off by default), and quick, full and Downloads scans, quarantine and fingerprint updates can be started from the website;
     - the phone checks in every 15 minutes (Android's shortest interval for background work), so a scan starts at its next check-in;
     - only names, verdicts, fingerprints and the settings summary are sent, never file contents or paths.
-- **`LauncherActivity`** is the SENTINEL web app in a Trusted Web Activity: full-screen Chrome, verified with Digital Asset Links. It opens from the scanner's "Open the SENTINEL website" button, from links to your SENTINEL site, and from **Share to SENTINEL** in other apps. Shared text fills in the scan form and is never submitted automatically.
+- **`LauncherActivity`** is the Qalaa web app in a Trusted Web Activity: full-screen Chrome, verified with Digital Asset Links. It opens from the scanner's "Open the Qalaa website" button, from links to your Qalaa site, and from **Share to Qalaa** in other apps. Shared text fills in the scan form and is never submitted automatically.
 
 **English and Arabic** follow the system language.
 
@@ -42,21 +42,21 @@
 
 ## Calls and messages
 
-Both need the phone to be linked to a SENTINEL account. The app then downloads two lists during its regular check-in, at most every 6 hours:
+Both need the phone to be linked to a Qalaa account. The app then downloads two lists during its regular check-in, at most every 6 hours:
 - community-verified scam numbers (`GET /devices/phone-list`);
 - malicious domains and exact phishing/malware URLs (`GET /devices/blocklist`).
 
 Matching happens on the phone. No call, message or link is ever sent to the server.
 
-- **Call screening** (Android 10+): tap "Warn me about calls from reported scam numbers" and let SENTINEL be the call-screening app. A listed number shows a warning notification. It is rejected only if "Block reported scam numbers" is on. Local number forms (0501234567) match listed international numbers.
-- **Links in messages**: optional notification access lets SENTINEL read links in incoming message notifications (SMS, WhatsApp, Telegram and similar). A link to a listed domain, or an exact listed page, triggers a warning that names the app and the site. Only links are looked at, and nothing is stored. SENTINEL does not ask for SMS permissions, which Google Play reserves for default SMS apps.
-- "Share to SENTINEL" still sends a whole message to the message scanner when you want a full check.
+- **Call screening** (Android 10+): tap "Warn me about calls from reported scam numbers" and let Qalaa be the call-screening app. A listed number shows a warning notification. It is rejected only if "Block reported scam numbers" is on. Local number forms (0501234567) match listed international numbers.
+- **Links in messages**: optional notification access lets Qalaa read links in incoming message notifications (SMS, WhatsApp, Telegram and similar). A link to a listed domain, or an exact listed page, triggers a warning that names the app and the site. Only links are looked at, and nothing is stored. Qalaa does not ask for SMS permissions, which Google Play reserves for default SMS apps.
+- "Share to Qalaa" still sends a whole message to the message scanner when you want a full check.
 
 ## What it cannot do
 
 Android limits what any app can see, and these limits apply to every antivirus:
 - **No access to other apps' private data**, and no way to stop an app while it runs.
-- **Apps cannot be removed for you.** SENTINEL opens Android's uninstall prompt and you confirm. Remotely, only files can be quarantined, not apps.
+- **Apps cannot be removed for you.** Qalaa opens Android's uninstall prompt and you confirm. Remotely, only files can be quarantined, not apps.
 - **Without "All files access"**, files can only be scanned when you pick them.
 - **It does not replace Google Play Protect.** Keep it on.
 
@@ -69,7 +69,7 @@ You need JDK 17 and the Android SDK (or Android Studio).
 ```bash
 cd apps/android
 gradle :scanner-core:test                                         # unit tests, no SDK needed
-gradle assembleRelease -PsiteHost=sentinel.your-domain.example     # Gradle 8.10+
+gradle assembleRelease -PsiteHost=qalaa.your-domain.example     # Gradle 8.10+
 ```
 
 **What CI does:** on every push, CI runs the unit tests and builds a debug APK (`android` job).

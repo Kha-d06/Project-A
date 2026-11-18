@@ -1,5 +1,5 @@
 /**
- * Response shapes of the SENTINEL API (services/api/app/schemas). Keep in sync
+ * Response shapes of the Qalaa API (services/api/app/schemas). Keep in sync
  * with the Pydantic models; the OpenAPI document at /api/v1/openapi.json is the
  * source of truth.
  */

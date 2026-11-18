@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bring SENTINEL up locally and create an administrator account, ready to test.
+# Bring Qalaa up locally and create an administrator account, ready to test.
 #
 #   ./scripts/demo.sh                     # admin@example.com / password printed at the end
 #   ./scripts/demo.sh you@example.com     # choose the admin email (password is generated)
@@ -10,9 +10,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 ADMIN_EMAIL="${1:-admin@example.com}"
-ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(python3 -c 'import secrets; print("Sentinel-" + secrets.token_urlsafe(9))')}"
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(python3 -c 'import secrets; print("Qalaa-" + secrets.token_urlsafe(9))')}"
 
-echo "==> Building and starting SENTINEL (first run can take a few minutes)…"
+echo "==> Building and starting Qalaa (first run can take a few minutes)…"
 ./scripts/up.sh --fixtures
 
 # Local-testing settings, written into .env only where you have not set your own:
@@ -25,7 +25,7 @@ text = open(path).read()
 defaults = {
     "COMPOSE_PROFILES": "devmail,backups",
     "SENTINEL_EMAIL_BACKEND": "smtp",
-    "SENTINEL_EMAIL_FROM": "\"SENTINEL <no-reply@example.com>\"",
+    "SENTINEL_EMAIL_FROM": "\"Qalaa <no-reply@example.com>\"",
     "SENTINEL_SMTP_HOST": "mailpit",
     "SENTINEL_SMTP_PORT": "1025",
     "SENTINEL_SMTP_STARTTLS": "false",
@@ -60,7 +60,7 @@ docker compose exec -T api python -m app.cli sync-feeds || echo "    Could not r
 cat <<SUMMARY
 
 ────────────────────────────────────────────────────────────
- SENTINEL is running:  http://localhost:8080
+ Qalaa is running:  http://localhost:8080
  Sign in at:           http://localhost:8080/sign-in
 
  Administrator account
@@ -72,7 +72,7 @@ cat <<SUMMARY
    • Site assessment      http://localhost:8080/dashboard/assessment
    • Devices, Passwords, VPN, Family & teams, scanners…
 
- Emails SENTINEL sends (sign-up, password reset, alerts) arrive in
+ Emails Qalaa sends (sign-up, password reset, alerts) arrive in
  a local test inbox:  http://localhost:8025
  Database backups:    ./backups (daily)
  Desktop & Android apps:  http://localhost:8080/download

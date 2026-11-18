@@ -2,7 +2,7 @@
 
 The image is re-encoded first (EXIF and other metadata dropped, at most 1600 px
 on the long side). The model is asked only to transcribe what is visible and
-give a one-line opinion; SENTINEL's own rules then judge the transcribed text
+give a one-line opinion; Qalaa's own rules then judge the transcribed text
 and links. The model's opinion can add at most a low-severity finding.
 """
 

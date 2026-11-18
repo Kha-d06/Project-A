@@ -1,4 +1,4 @@
-"""Share SENTINEL's own threat data as a STIX 2.1 bundle.
+"""Share Qalaa's own threat data as a STIX 2.1 bundle.
 
 Only indicators from moderator-verified community reports are shared: they are
 this server's own data. Indicators from third-party feeds stay out, because
@@ -79,7 +79,7 @@ def bundle(
                 "created": created,
                 "modified": _stamp(last_seen, now),
                 "name": f"Reported {kind}: {value}"[:250],
-                "description": "Confirmed by a SENTINEL moderator from a community report.",
+                "description": "Confirmed by a Qalaa moderator from a community report.",
                 "indicator_types": ["malicious-activity"],
                 "pattern": pattern,
                 "pattern_type": "stix",

@@ -1,5 +1,5 @@
 /**
- * Automatic updates, downloaded from the person's own SENTINEL server
+ * Automatic updates, downloaded from the person's own Qalaa server
  * (<server>/downloads/desktop/), never from a third party.
  *
  * - Windows (NSIS installer) and Linux AppImage update in place. macOS updates

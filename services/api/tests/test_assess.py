@@ -20,7 +20,7 @@ class FakeNet:
         self.txt.setdefault(domain, []).append(token)
 
     def publish_file(self, domain: str, token: str) -> None:
-        self.pages[f"https://{domain}/.well-known/sentinel-verification.txt"] = {
+        self.pages[f"https://{domain}/.well-known/qalaa-verification.txt"] = {
             "status": 200,
             "body": token,
         }

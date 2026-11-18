@@ -185,7 +185,7 @@ chrome.webNavigation.onCommitted.addListener(({ tabId, frameId, url }) => {
   if (frameId === 0) void handleNavigation(tabId, url, true);
 });
 // A navigation stopped by a declarativeNetRequest block rule fails inside the
-// browser before any request leaves it. Show SENTINEL's warning page instead of
+// browser before any request leaves it. Show Qalaa's warning page instead of
 // the browser's generic error.
 chrome.webNavigation.onErrorOccurred.addListener(({ tabId, frameId, url, error }) => {
   if (frameId !== 0 || !url.startsWith("http")) return;
@@ -449,7 +449,7 @@ async function handle(request: Request, sender: chrome.runtime.MessageSender): P
         const reply = await api.askAssistant(settings.serverUrl, question, language(), toAssistantContext(summary, !!request.hasPasswordField));
         return { answer: reply.answer, source: "ai" };
       } catch {
-        // No AI provider on this server, or it failed: answer from what SENTINEL knows.
+        // No AI provider on this server, or it failed: answer from what Qalaa knows.
         return { answer: builtInAnswer(question, summary, language()), source: "builtin" };
       }
     }

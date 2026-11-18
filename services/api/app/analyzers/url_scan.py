@@ -38,8 +38,8 @@ def community_finding(match: IndicatorMatch, subject: str) -> FindingData:
     return FindingData(
         "high",
         "community_report",
-        f"{subject} was reported by SENTINEL users as a scam",
-        "People reported it to SENTINEL and a moderator reviewed and confirmed the reports. "
+        f"{subject} was reported by Qalaa users as a scam",
+        "People reported it to Qalaa and a moderator reviewed and confirmed the reports. "
         "Treat it as a likely scam.",
         match.source_name,
         {"matched": match.value, "first_reported": match.evidence()["first_seen"]},
@@ -232,7 +232,7 @@ def _redirect_check(
     db: Session, url: ParsedUrl, outcome: Outcome, *, read_page: bool
 ) -> tuple[ParsedUrl, RedirectTrace]:
     """Trace redirects and return the final destination (or the original if none)."""
-    label, provider = "Destination and redirects", "SENTINEL safe fetcher"
+    label, provider = "Destination and redirects", "Qalaa safe fetcher"
     trace = trace_redirects(url.normalized, read_final_body=read_page)
     outcome.details["redirect_chain"] = _hop_summary(trace)
 
@@ -379,7 +379,7 @@ def analyze_url_target(
         Check(
             "url_patterns",
             "Address patterns",
-            "SENTINEL URL pattern analysis",
+            "Qalaa URL pattern analysis",
             "completed",
             "Checked for look-alike domains, brand impersonation and deceptive address tricks.",
         )

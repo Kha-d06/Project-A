@@ -171,10 +171,10 @@ def test_scan_by_email(
         select(OutboxEmail).where(OutboxEmail.recipient == "amira@example.com")
     ).all()
     assert len(replies) == 2
-    assert all(mail.subject.startswith("SENTINEL result:") for mail in replies)
+    assert all(mail.subject.startswith("Qalaa result:") for mail in replies)
     assert any("Known malicious" in mail.body for mail in replies)
 
-    # Forged senders and automatic replies are ignored, so SENTINEL never mails bystanders.
+    # Forged senders and automatic replies are ignored, so Qalaa never mails bystanders.
     spoofed = forwarded("victim@example.org", Authentication_Results="mx.example; dmarc=fail")
     assert client.post(f"{API}/inbound/email", content=spoofed, headers=auth).json() == {"scans": 0}
     auto = forwarded("bounce@example.org", Auto_Submitted="auto-replied")

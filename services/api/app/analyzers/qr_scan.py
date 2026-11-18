@@ -18,7 +18,7 @@ from app.analyzers.url_scan import analyze_url_target
 from app.analyzers.urls import InvalidUrlError, parse_url
 from app.core.config import get_settings
 
-SOURCE = "SENTINEL QR analysis"
+SOURCE = "Qalaa QR analysis"
 DECODER = "zxing-cpp"
 # Decompression bombs: refuse images whose pixel count would exhaust memory.
 MAX_PIXELS = 40_000_000
@@ -190,7 +190,7 @@ def analyze_qr(payload: dict[str, Any], db: Session) -> Outcome:
                     "info",
                     "qr_destination",
                     f"QR code opens {final.host}",
-                    "SENTINEL checked this address from its own server. It was not opened on your "
+                    "Qalaa checked this address from its own server. It was not opened on your "
                     "device.",
                     SOURCE,
                     {"link": url.normalized},

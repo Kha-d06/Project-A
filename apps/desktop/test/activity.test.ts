@@ -166,8 +166,8 @@ describe("desktop VPN", () => {
   });
 
   it("reads NetworkManager's connection list", () => {
-    expect(parseConnections("Wired:802-3-ethernet:eth0\nsentinel-vpn:wireguard:sentinel-vpn\n")).toBe("connected");
-    expect(parseConnections("sentinel-vpn:wireguard:\n")).toBe("disconnected");
+    expect(parseConnections("Wired:802-3-ethernet:eth0\nqalaa-vpn:wireguard:qalaa-vpn\n")).toBe("connected");
+    expect(parseConnections("qalaa-vpn:wireguard:\n")).toBe("disconnected");
     expect(parseConnections("Wired:802-3-ethernet:eth0\n")).toBe("not_imported");
   });
 });

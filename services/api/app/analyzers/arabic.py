@@ -65,8 +65,8 @@ CATALOGUE: tuple[Entry, ...] = (
         "أُبلغ عن عنوان آخر على الخادم نفسه. في الاستضافات المشتركة وخدمات مشاركة الملفات لا يعني ذلك الكثير عن رابطك، فاعتبره سياقًا لا دليلًا.",
     ),
     _e(
-        r"(?P<subject>.+) was reported by SENTINEL users as a scam",
-        "أبلغ مستخدمو SENTINEL عن هذا على أنه احتيال",
+        r"(?P<subject>.+) was reported by Qalaa users as a scam",
+        "أبلغ مستخدمو قلعة عن هذا على أنه احتيال",
         "أبلغ أشخاص عنه وراجع أحد المشرفين البلاغات وأكّدها. تعامل معه على أنه احتيال محتمل.",
     ),
     _e(
@@ -230,7 +230,7 @@ CATALOGUE: tuple[Entry, ...] = (
     _e(
         r"Page immediately forwards visitors elsewhere",
         "تحوّل الصفحة الزوار فورًا إلى مكان آخر",
-        "تستخدم الصفحة تعليمة تحديث لإرسال المتصفح إلى عنوان آخر، ولم يتبعها SENTINEL.",
+        "تستخدم الصفحة تعليمة تحديث لإرسال المتصفح إلى عنوان آخر، ولم يتبعها قلعة.",
     ),
     _e(
         r"Anyone can send email that claims to come from this domain",

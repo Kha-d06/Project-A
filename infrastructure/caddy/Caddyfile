@@ -1,5 +1,5 @@
 # Public entry point. Set SENTINEL_SITE_ADDRESS to your domain (for example
-# sentinel.example.org) and Caddy obtains and renews a TLS certificate for it.
+# qalaa.example.org) and Caddy obtains and renews a TLS certificate for it.
 # The default, :8080, serves plain HTTP for local use.
 {$SENTINEL_SITE_ADDRESS::8080} {
 	encode zstd gzip

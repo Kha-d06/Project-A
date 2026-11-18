@@ -16,7 +16,7 @@ from app.analyzers.url_scan import analyze_url_target
 from app.analyzers.urls import ParsedUrl, parse_url
 from app.analyzers.visual import closest_match, dhash, load_references
 
-SOURCE = "SENTINEL page analysis"
+SOURCE = "Qalaa page analysis"
 DNS_SOURCE = "DNS"
 _DNS_TIMEOUT_SECONDS = 3
 _DNS_RECORD_TYPES = ("A", "AAAA", "MX", "NS", "TXT")
@@ -181,7 +181,7 @@ def _page_findings(final: ParsedUrl, facts: PageFacts) -> list[FindingData]:
                 "redirect",
                 "Page immediately forwards visitors elsewhere",
                 "The page uses a refresh instruction to send browsers to another address. "
-                "SENTINEL did not follow it.",
+                "Qalaa did not follow it.",
                 SOURCE,
                 {"refresh": facts.meta_refresh},
             )
@@ -354,7 +354,7 @@ def _visual_check(final: ParsedUrl, screenshot: bytes | None, outcome: Outcome) 
             f"The page is visually almost identical to {name}'s real sign-in page, but it is "
             f"hosted on “{final.registrable_domain}”, which does not belong to {name}. Copying the "
             "look of a real page is how phishing kits work.",
-            "SENTINEL visual comparison",
+            "Qalaa visual comparison",
             {"brand": name, "domain": final.registrable_domain, "difference": f"{gap}/64"},
         )
     )
@@ -363,7 +363,7 @@ def _visual_check(final: ParsedUrl, screenshot: bytes | None, outcome: Outcome) 
 def _rendered_check(final: ParsedUrl, outcome: Outcome) -> bool:
     """Load the page in the isolated browser and inspect what scripts built.
     Returns True when the rendered page was inspected."""
-    label, provider = "Page as a browser shows it", "SENTINEL isolated browser"
+    label, provider = "Page as a browser shows it", "Qalaa isolated browser"
     if not rendering_enabled():
         return False
     try:

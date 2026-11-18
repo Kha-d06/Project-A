@@ -23,7 +23,7 @@ export default function DocsPage() {
   return (
     <ProsePage
       title="Documentation"
-      intro="How scans work and how to use the SENTINEL API."
+      intro="How scans work and how to use the Qalaa API."
     >
       <section>
         <h2>Reading a report</h2>
@@ -86,7 +86,7 @@ export default function DocsPage() {
           aria-label="Example request"
           className="overflow-x-auto rounded-control bg-surface-sunken p-4 font-mono text-xs text-ink"
         >
-{`curl -X POST https://your-sentinel.example/api/v1/scans/url \
+{`curl -X POST https://your-qalaa.example/api/v1/scans/url \
   -H "Authorization: Bearer snt_..." \
   -H "Content-Type: application/json" \
   -d '{"url": "https://example.com/login"}'`}

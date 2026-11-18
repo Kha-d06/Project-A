@@ -1,4 +1,4 @@
-# SENTINEL --- Master Project Prompt
+# Qalaa --- Master Project Prompt
 
 ## Free, AI-assisted cybersecurity platform with real-time browser protection
 
@@ -6,7 +6,7 @@ Act as a senior software architect, full-stack engineer, application
 security specialist, browser-extension developer, AI engineer, and
 product designer.
 
-Build **SENTINEL**, a practical, trustworthy cybersecurity platform that
+Build **Qalaa**, a practical, trustworthy cybersecurity platform that
 helps everyday people identify phishing, scams, malicious websites,
 suspicious files, fraudulent messages, and other online threats.
 
@@ -23,7 +23,7 @@ credit-based access.
 
 # 1. Product vision
 
-SENTINEL is one connected digital-safety ecosystem:
+Qalaa is one connected digital-safety ecosystem:
 
 1.  **Web platform:** users submit links, files, messages, QR codes, and
     Android APKs for analysis.
@@ -155,7 +155,7 @@ component-library cards.
 
 ## Visual identity
 
-Create a distinctive SENTINEL identity: - A refined shield, sentinel, or
+Create a distinctive Qalaa identity: - A refined shield, sentinel, or
 abstract protection mark. - A confident, restrained color system. - Deep
 navy, charcoal, or near-black foundations with carefully used blue,
 cyan, or teal accents. - A light theme that is equally considered, not
@@ -220,7 +220,7 @@ use animation as the only way to communicate a status.
 Aim for the polish and clarity of a mature security product. Use
 references for quality and interaction patterns, but do not copy another
 company's branding or layout. Do not blindly reproduce a generated
-screenshot. Make deliberate design decisions that fit SENTINEL's actual
+screenshot. Make deliberate design decisions that fit Qalaa's actual
 workflows.
 
 Before implementation, define: - Brand tokens and color variables. -
@@ -233,7 +233,7 @@ Create a complete responsive public website.
 
 ### Navigation
 
--   SENTINEL brand mark
+-   Qalaa brand mark
 -   Product
 -   Security tools
 -   Browser protection
@@ -246,7 +246,7 @@ Create a complete responsive public website.
 
 Suggested headline: **"Browse with confidence."**
 
-Supporting copy should explain that SENTINEL helps identify suspicious
+Supporting copy should explain that Qalaa helps identify suspicious
 links, websites, files, and messages, and provides browser protection.
 
 Primary actions: - Scan something - Explore browser protection
@@ -257,14 +257,14 @@ is connected to real data.
 
 ### Further sections
 
--   How SENTINEL works
+-   How Qalaa works
 -   Link, file, message, QR, and website scanning
 -   Browser extension demonstration
 -   Clear explanation of detection limits
 -   Privacy-first principles
 -   Supported tools and integrations
 -   Frequently asked questions
--   Clear statement that SENTINEL is free
+-   Clear statement that Qalaa is free
 -   Footer with documentation, contact, privacy, and terms
 
 All navigation and calls to action must work.
@@ -446,14 +446,14 @@ evidence.
 The platform must continue to provide basic scanning and reports when AI
 is unavailable.
 
-# 10. Browser extension --- SENTINEL Protect
+# 10. Browser extension --- Qalaa Protect
 
 Build a separate, installable Chrome extension using Manifest V3.
 Structure it to support other browsers later where feasible.
 
 ## 10.1 Popup
 
-Design a compact, polished popup containing: - SENTINEL identity -
+Design a compact, polished popup containing: - Qalaa identity -
 Protection state - Current site and its status - Last check time -
 Recent alerts - Quick scan action - Link to full dashboard - Settings -
 Pause/resume protection
@@ -467,7 +467,7 @@ Do not label a site "safe" when only a limited check was performed.
 
 On navigation: 1. Detect the navigation event. 2. Normalize the URL
 safely. 3. Check local and cached reputation where appropriate. 4. Query
-the SENTINEL backend when necessary. 5. Evaluate the actual response and
+the Qalaa backend when necessary. 5. Evaluate the actual response and
 its evidence. 6. Show a warning when a meaningful threat is detected. 7.
 Record only the minimum necessary event data, subject to user settings.
 
@@ -477,7 +477,7 @@ make browsing unusably slow.
 ## 10.3 Warning interstitial
 
 For a high-confidence dangerous destination, show a clear warning page
-containing: - SENTINEL branding - The destination hostname - Threat
+containing: - Qalaa branding - The destination hostname - Threat
 category - Risk level - Specific evidence or reason - Recommended
 action - "Go back to safety" - A carefully controlled proceed option
 where appropriate
@@ -488,7 +488,7 @@ website. Explain uncertainty honestly.
 ## 10.4 Link checks
 
 Where supported: - Check links on hover without transmitting unnecessary
-page content. - Provide a right-click "Scan with SENTINEL" context
+page content. - Provide a right-click "Scan with Qalaa" context
 menu. - Expand shortened URLs through safe backend checks. - Inspect
 redirect destinations. - Allow users to submit a copied link for
 analysis.
@@ -668,7 +668,7 @@ Collect the minimum data required to operate the service.
 
 # 19. Free forever --- no subscriptions
 
-SENTINEL must be free for all users.
+Qalaa must be free for all users.
 
 Do not implement: - Subscription tiers - Premium plans - Paywalls - Paid
 feature gates - Credit-based scans - Trials - Billing portals - Payment
@@ -691,7 +691,7 @@ outcomes or restrict features.
 
 The product message should be simple:
 
-**"Digital protection should be accessible to everyone. SENTINEL is
+**"Digital protection should be accessible to everyone. Qalaa is
 free."**
 
 # 20. Localization
@@ -928,7 +928,7 @@ The initial release is not complete until:
 -   The code is readable, tested, documented, and maintainable.
 -   No subscription, payment, premium, or paywall functionality exists.
 
-**Final product standard:** SENTINEL should feel like a credible,
+**Final product standard:** Qalaa should feel like a credible,
 thoughtfully designed cybersecurity product that people can trust---not
 a generic AI dashboard. Prioritize accurate detection, honest
 communication, user privacy, polished interactions, and genuinely useful

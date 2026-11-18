@@ -2,7 +2,7 @@
   "name": "@sentinel/desktop",
   "version": "0.2.0",
   "private": true,
-  "description": "SENTINEL Desktop: on-demand and Downloads-folder malware scanning with quarantine",
+  "description": "Qalaa Desktop: on-demand and Downloads-folder malware scanning with quarantine",
   "main": "dist/main.js",
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -25,13 +25,13 @@
     "vitest": "^5.1.0"
   },
   "author": {
-    "name": "SENTINEL"
+    "name": "Qalaa"
   },
   "homepage": "https://github.com/Kha-d06/Project-A",
   "build": {
-    "appId": "app.sentinel.desktop",
-    "productName": "SENTINEL Desktop",
-    "copyright": "SENTINEL",
+    "appId": "app.qalaa.desktop",
+    "productName": "Qalaa Desktop",
+    "copyright": "Qalaa",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -45,7 +45,7 @@
     "publish": [
       {
         "provider": "generic",
-        "url": "https://sentinel.example.org/downloads/desktop"
+        "url": "https://qalaa.example.org/downloads/desktop"
       }
     ],
     "linux": {
@@ -57,15 +57,15 @@
       "category": "Security",
       "icon": "build/icon.png",
       "synopsis": "Malware scanning, ransomware watch and security checks",
-      "maintainer": "SENTINEL <security@sentinel.example.org>",
+      "maintainer": "Qalaa <security@qalaa.example.org>",
       "desktop": {
         "entry": {
-          "StartupWMClass": "sentinel-desktop",
-          "Name": "SENTINEL Desktop",
+          "StartupWMClass": "qalaa-desktop",
+          "Name": "Qalaa Desktop",
           "Comment": "Malware scanning and security checks"
         }
       },
-      "executableName": "sentinel-desktop",
+      "executableName": "qalaa-desktop",
       "syncDesktopName": true
     },
     "deb": {
@@ -104,8 +104,8 @@
       "icon": "build/icon.png",
       "hardenedRuntime": true
     },
-    "executableName": "sentinel-desktop",
-    "artifactName": "SENTINEL-Desktop-${version}-${arch}.${ext}"
+    "executableName": "qalaa-desktop",
+    "artifactName": "Qalaa-Desktop-${version}-${arch}.${ext}"
   },
-  "desktopName": "sentinel-desktop.desktop"
+  "desktopName": "qalaa-desktop.desktop"
 }

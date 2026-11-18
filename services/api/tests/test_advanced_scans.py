@@ -171,17 +171,17 @@ def test_custom_yara_rules_are_loaded(
 
     (tmp_path / "local.yar").write_text(
         'rule Local_Marker { meta: title = "Local marker" severity = "high" '
-        'strings: $a = "SENTINEL-LOCAL-MARKER" condition: $a }'
+        'strings: $a = "Qalaa-LOCAL-MARKER" condition: $a }'
     )
     monkeypatch.setattr(get_settings(), "yara_rules_dir", tmp_path)
     load_rules.cache_clear()
     try:
-        scan = upload(client, "file", "notes.txt", b"hello SENTINEL-LOCAL-MARKER")
+        scan = upload(client, "file", "notes.txt", b"hello Qalaa-LOCAL-MARKER")
     finally:
         load_rules.cache_clear()
     match = next(f for f in scan["findings"] if f["category"] == "yara_match")
     assert match["title"] == "Local marker"
-    assert match["source"] == "SENTINEL YARA rules"
+    assert match["source"] == "Qalaa YARA rules"
 
 
 # --- APKs -----------------------------------------------------------------------------

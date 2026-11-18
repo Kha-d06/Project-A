@@ -175,7 +175,7 @@ def test_due_domains_are_reassessed_and_regressions_emailed(db: Session, net: Fa
 
     mail = db.scalars(
         select(OutboxEmail).where(
-            OutboxEmail.subject == "SENTINEL: watched.net has new security issues"
+            OutboxEmail.subject == "Qalaa: watched.net has new security issues"
         )
     ).all()
     assert len(mail) == 1 and mail[0].recipient == "sched2@example.com"

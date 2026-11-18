@@ -14,7 +14,7 @@ export default async function PrivacyPage() {
   return (
     <ProsePage
       title="Privacy"
-      intro="What SENTINEL stores, for how long, and who else ever sees it."
+      intro="What Qalaa stores, for how long, and who else ever sees it."
     >
       <section>
         <h2>What we store</h2>
@@ -41,7 +41,7 @@ export default async function PrivacyPage() {
           check are not sent to the feed providers. Two checks do contact outside services:
         </p>
         <ul>
-          <li><strong>Redirect tracing</strong> requests the link you submitted from our server, so the website you are checking will see a request from SENTINEL (not from you).</li>
+          <li><strong>Redirect tracing</strong> requests the link you submitted from our server, so the website you are checking will see a request from Qalaa (not from you).</li>
           <li><strong>Domain age</strong> sends the domain name (not the full link) to rdap.org and the domain’s registry.</li>
           <li><strong>Website analysis</strong> downloads the page (up to 2 MB of HTML) from our server and looks up the domain’s DNS and email-protection (SPF, DMARC) records. If the operator has turned on isolated rendering, the page is also opened in a sealed browser on our server, which cannot reach private networks and is not allowed to send form data anywhere.</li>
           <li><strong>Certificate history</strong> sends the domain name to crt.sh, a public log of security certificates.</li>
@@ -58,10 +58,10 @@ export default async function PrivacyPage() {
       <section>
         <h2>The browser extension</h2>
         <ul>
-          <li>For each page you open, SENTINEL Protect sends its address (or, in privacy mode, only the domain) to the SENTINEL server. The server answers from its local threat database and stores nothing about the request.</li>
+          <li>For each page you open, Qalaa Protect sends its address (or, in privacy mode, only the domain) to the Qalaa server. The server answers from its local threat database and stores nothing about the request.</li>
           <li>It never sends page content, form contents, passwords or messages. Private-network and local addresses are not sent at all.</li>
-          <li>It downloads SENTINEL’s whole list of known dangerous domains every few hours, so blocking them before they load reveals nothing about your browsing.</li>
-          <li>If you turn on the on-screen assistant, it reads the names of cookies (never their values) and the domains of trackers a page loads, and shows them to you. When you ask it a question, the question, the site’s domain, its verdict, the warning titles and those cookie and tracker names are sent to the SENTINEL server, and on to the AI provider if the operator has configured one.</li>
+          <li>It downloads Qalaa’s whole list of known dangerous domains every few hours, so blocking them before they load reveals nothing about your browsing.</li>
+          <li>If you turn on the on-screen assistant, it reads the names of cookies (never their values) and the domains of trackers a page loads, and shows them to you. When you ask it a question, the question, the site’s domain, its verdict, the warning titles and those cookie and tracker names are sent to the Qalaa server, and on to the AI provider if the operator has configured one.</li>
           <li>Recent alerts, your lists and settings are stored only in your browser.</li>
           <li>If you link it to an account and turn on warning history, the domain, the verdict and what you chose are saved to your account. You can delete that history at any time.</li>
         </ul>
@@ -69,36 +69,36 @@ export default async function PrivacyPage() {
       <section>
         <h2>Linked devices</h2>
         <ul>
-          <li>When you link SENTINEL Desktop or the Android app to your account, the device sends a heartbeat about every 30 seconds while it runs: its name, platform, app version, whether remote scans are allowed, the names of the folders it offers (for example “Downloads”, never their full paths) and a short protection summary (for example whether real-time protection is on).</li>
+          <li>When you link Qalaa Desktop or the Android app to your account, the device sends a heartbeat about every 30 seconds while it runs: its name, platform, app version, whether remote scans are allowed, the names of the folders it offers (for example “Downloads”, never their full paths) and a short protection summary (for example whether real-time protection is on).</li>
           <li><strong>Remote scans are off until you turn them on in the app on that device.</strong> When they are on, anyone signed in to your account can start a scan, quarantine a file a scan found, or update the fingerprint list there. Nobody can open, upload, copy or delete your files from the website.</li>
           <li>Scan results sent back contain file names, the label of the folder they were in, verdicts and SHA-256 fingerprints. File contents and full paths stay on the device.</li>
-          <li>SENTINEL Desktop’s security centre (firewall, open ports, startup programs, camera and microphone use) runs entirely on the computer. A linked computer reports only whether its firewall is on, how many risky services are open to the network, and when it last made a backup.</li>
+          <li>Qalaa Desktop’s security centre (firewall, open ports, startup programs, camera and microphone use) runs entirely on the computer. A linked computer reports only whether its firewall is on, how many risky services are open to the network, and when it last made a backup.</li>
           <li>The Android app checks installed apps, files and phone settings on the phone itself, by comparing fingerprints with a list it downloads. A linked phone reports its Android version, security-patch age, whether a screen lock, developer options and file access are on, how many apps may install other apps, and how many apps need attention. It never sends the list of your apps, only those a scan flagged.</li>
-          <li>Encrypted backups are written where you choose, never to SENTINEL. Their password never leaves the computer.</li>
+          <li>Encrypted backups are written where you choose, never to Qalaa. Their password never leaves the computer.</li>
           <li>Only the last 50 commands per device are kept. Removing a device from your account deletes its records and signs the app out.</li>
         </ul>
       </section>
       <section>
         <h2>Password manager</h2>
         <ul>
-          <li>Your vault is encrypted in your browser with a key made from your master password before it is saved. SENTINEL stores only the encrypted result and cannot read your passwords, notes, the sites they belong to, or even how many you have (the size is rounded up).</li>
-          <li>Your master password is never sent to SENTINEL, so it cannot be reset or recovered.</li>
+          <li>Your vault is encrypted in your browser with a key made from your master password before it is saved. Qalaa stores only the encrypted result and cannot read your passwords, notes, the sites they belong to, or even how many you have (the size is rounded up).</li>
+          <li>Your master password is never sent to Qalaa, so it cannot be reset or recovered.</li>
           <li>The breach check sends only the first five characters of each password’s SHA-1 fingerprint to Have I Been Pwned, from your browser.</li>
-          <li>Deleting the vault, or your account, removes the encrypted copy from SENTINEL.</li>
+          <li>Deleting the vault, or your account, removes the encrypted copy from Qalaa.</li>
         </ul>
       </section>
       <section>
         <h2>Website security assessment</h2>
         <ul>
-          <li>This feature works only on domains you have proven you own, by a DNS record or a file on the site. SENTINEL re-checks that proof before every scan and refuses any domain you have not verified.</li>
-          <li>The checks are read-only: SENTINEL requests pages from your own site the way any visitor would, and records the findings (missing security headers, exposed files, and so on). It does not attack your site or store its content.</li>
+          <li>This feature works only on domains you have proven you own, by a DNS record or a file on the site. Qalaa re-checks that proof before every scan and refuses any domain you have not verified.</li>
+          <li>The checks are read-only: Qalaa requests pages from your own site the way any visitor would, and records the findings (missing security headers, exposed files, and so on). It does not attack your site or store its content.</li>
           <li>Only an administrator can turn this feature on for an account.</li>
         </ul>
       </section>
       <section>
         <h2>VPN</h2>
         <ul>
-          <li>If this server offers the VPN, each device you add gets a key pair made in your browser. SENTINEL stores only the public key, the device name and its address inside the VPN, never the private key.</li>
+          <li>If this server offers the VPN, each device you add gets a key pair made in your browser. Qalaa stores only the public key, the device name and its address inside the VPN, never the private key.</li>
           <li>The VPN server records when each device last connected and how much data it moved, so you can see it on your dashboard. It does not log the sites you visit.</li>
           <li>A VPN does not make you anonymous: whoever operates this server could see which addresses your devices connect to, as an internet provider can.</li>
         </ul>
@@ -111,7 +111,7 @@ export default async function PrivacyPage() {
           <li><strong>Telegram, WhatsApp and scan-by-email</strong> work without an account. Your chat ID, phone number or email address is kept only until the reply is sent. Messages pass through Telegram, Meta or the operator’s mail provider under their own privacy terms.</li>
           <li><strong>Breach checks</strong> send your own account email address to Have I Been Pwned. Password checks never leave your browser except for the first five characters of the password’s SHA-1 fingerprint.</li>
           <li><strong>Webhooks</strong> send your own scan results to the address you set up.</li>
-          <li><strong>Browser notifications</strong> go through your browser maker’s push service (for example Google or Mozilla). They contain only a title, a sentence and a link back to SENTINEL, never what you scanned.</li>
+          <li><strong>Browser notifications</strong> go through your browser maker’s push service (for example Google or Mozilla). They contain only a title, a sentence and a link back to Qalaa, never what you scanned.</li>
           <li><strong>The weekly summary</strong> and <strong>breach monitoring</strong> are off until you turn them on in settings.</li>
           <li><strong>The public trends page</strong> shows only totals across everyone, and hides anything seen fewer than three times.</li>
         </ul>

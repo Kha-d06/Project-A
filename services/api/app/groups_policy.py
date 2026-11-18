@@ -1,7 +1,7 @@
 """Group rules (policies) and how members measure up against them.
 
 Family groups:
-- safe_search: the members' browsers (SENTINEL extension) force SafeSearch on
+- safe_search: the members' browsers (Qalaa extension) force SafeSearch on
   Google, Bing and DuckDuckGo, and YouTube's restricted mode.
 - lock_protection: the extension's "pause protection" switch is disabled.
 
@@ -13,7 +13,7 @@ Organisations:
 
 Like the block list, rules apply only to members who chose to follow the group's
 rules, and the compliance view covers only members who chose to share activity.
-SENTINEL cannot stop the account holder from changing their own settings, so
+Qalaa cannot stop the account holder from changing their own settings, so
 these are agreed rules with visibility, not remote control.
 """
 

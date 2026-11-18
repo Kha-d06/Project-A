@@ -123,7 +123,7 @@ def _require_enabled() -> None:
         raise ApiError(
             404,
             "vpn_disabled",
-            "This SENTINEL server does not run a VPN. Its operator can turn it on.",
+            "This Qalaa server does not run a VPN. Its operator can turn it on.",
         )
 
 

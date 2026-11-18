@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One command to run SENTINEL locally with Docker Compose.
+# One command to run Qalaa locally with Docker Compose.
 #   ./scripts/up.sh            build and start everything on http://localhost:8080
 #   ./scripts/up.sh --fixtures also load the development test indicators
 # Creates .env with fresh random secrets the first time.
@@ -20,7 +20,7 @@ fi
 
 docker compose up -d --build
 
-echo "Waiting for SENTINEL to answer…"
+echo "Waiting for Qalaa to answer…"
 for _ in $(seq 1 90); do
   if curl -fsS http://localhost:8080/api/v1/system/health >/dev/null 2>&1; then
     break
@@ -33,4 +33,4 @@ if [ "${1:-}" = "--fixtures" ]; then
   docker compose exec -T api python -m app.cli load-test-fixtures
 fi
 
-echo "SENTINEL is running at http://localhost:8080"
+echo "Qalaa is running at http://localhost:8080"

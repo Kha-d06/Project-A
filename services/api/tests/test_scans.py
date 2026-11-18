@@ -194,7 +194,7 @@ def test_phishing_sms_is_suspicious_and_explained(client: TestClient) -> None:
     found = {f["category"] for f in scan["findings"]}
     assert {"account_threat", "personal_data_request", "urgency"} <= found
     assert scan["details"]["indicators"]["urls"] == ["http://secure-bank.example-login.top/verify"]
-    assert all(f["evidence"] for f in scan["findings"] if f["source"].startswith("SENTINEL mess"))
+    assert all(f["evidence"] for f in scan["findings"] if f["source"].startswith("Qalaa mess"))
 
 
 def test_arabic_scam_patterns_are_recognised(client: TestClient) -> None:

@@ -63,11 +63,11 @@ function LinkCodePanel() {
 
   return (
     <Panel>
-      <PanelHeader title="Link a browser" description="Connect an installed SENTINEL Protect extension to this account." />
+      <PanelHeader title="Link a browser" description="Connect an installed Qalaa Protect extension to this account." />
       <div className="space-y-4 px-5 py-5 text-sm">
         <ol className="list-decimal space-y-1.5 ps-5 text-ink-muted">
           <li>Create a code below.</li>
-          <li>In the extension, open Settings, then SENTINEL account.</li>
+          <li>In the extension, open Settings, then Qalaa account.</li>
           <li>Enter the code. It works once and expires after 10 minutes.</li>
         </ol>
         {code && remaining > 0 ? (
@@ -156,7 +156,7 @@ export function BrowserProtection() {
     <>
       <PageTitle
         title="Browser protection"
-        description="SENTINEL Protect checks the sites you open and warns before known dangerous ones load."
+        description="Qalaa Protect checks the sites you open and warns before known dangerous ones load."
       />
       {error && <Alert tone="warning">{error}</Alert>}
       <div className="space-y-6">

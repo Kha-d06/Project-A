@@ -110,7 +110,7 @@ export function UrlScanForm({
 export function MessageScanForm({ reportBase, initialText = "" }: { reportBase: string; initialText?: string }) {
   const { pending, error, submit } = useScanSubmission(reportBase);
   const { t } = useI18n();
-  // Prefilled (never auto-submitted) when text is shared to SENTINEL from another app.
+  // Prefilled (never auto-submitted) when text is shared to Qalaa from another app.
   const [content, setContent] = useState(initialText);
   const [aiConsent, setAiConsent] = useState(false);
   const [sender, setSender] = useState("");

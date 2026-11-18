@@ -127,7 +127,7 @@ def after_assessment(db: Session, assessment_id: uuid.UUID) -> None:
         _mail(
             db,
             user,
-            f"SENTINEL: scheduled assessment of {job.domain} could not run",
+            f"Qalaa: scheduled assessment of {job.domain} could not run",
             f"The scheduled security assessment of {job.domain} did not run.\n\n"
             f"{job.error or 'An unknown error occurred.'}\n\n"
             f"Details: {base}/dashboard/assessment\n",
@@ -161,9 +161,9 @@ def after_assessment(db: Session, assessment_id: uuid.UUID) -> None:
     lines.append("")
     lines.append(f"Full report and fixes: {base}/dashboard/assessment/report/{job.id}")
     lines.append("")
-    lines.append("You get this email because you own this domain on SENTINEL.")
+    lines.append("You get this email because you own this domain on Qalaa.")
     lines.append(f"Change or stop scheduled assessments at {base}/dashboard/assessment")
-    _mail(db, user, f"SENTINEL: {job.domain} has new security issues", "\n".join(lines) + "\n")
+    _mail(db, user, f"Qalaa: {job.domain} has new security issues", "\n".join(lines) + "\n")
 
 
 def _mail(db: Session, user: User, subject: str, body: str) -> None:

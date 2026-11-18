@@ -23,7 +23,7 @@ from app.intel import providers
 from app.intel.lookup import find_indicators
 
 logger = logging.getLogger(__name__)
-SOURCE = "SENTINEL APK analysis"
+SOURCE = "Qalaa APK analysis"
 ANDROID_NS = "{http://schemas.android.com/apk/res/android}"
 _MAX_DEX_BYTES = 64 * 1024 * 1024
 _MAX_HOSTS = 100

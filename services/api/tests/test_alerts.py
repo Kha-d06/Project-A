@@ -49,11 +49,9 @@ def test_alerts_are_emailed_to_admins_only(db: Session) -> None:
         f"{API}/system/alerts", json=BATCH, headers={"Authorization": f"Bearer {TOKEN}"}
     )
     assert response.status_code == 204, response.text
-    mails = db.scalars(
-        select(OutboxEmail).where(OutboxEmail.subject.startswith("[SENTINEL]"))
-    ).all()
+    mails = db.scalars(select(OutboxEmail).where(OutboxEmail.subject.startswith("[Qalaa]"))).all()
     assert [m.recipient for m in mails] == ["boss@example.com"]
-    assert mails[0].subject == "[SENTINEL] 1 alert(s) firing"
+    assert mails[0].subject == "[Qalaa] 1 alert(s) firing"
     assert "ThreatFeedStale (warning): No feed sync for 6 hours" in mails[0].body
     assert "Resolved:" in mails[0].body and "ScansStuck" in mails[0].body
 

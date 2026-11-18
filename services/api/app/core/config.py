@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     # Outgoing email. "smtp" sends for real; "outbox" stores messages in the database
     # (development and tests); "disabled" turns off every feature that needs email.
     email_backend: Literal["smtp", "outbox", "disabled"] = "disabled"
-    email_from: str = "SENTINEL <no-reply@localhost>"
+    email_from: str = "Qalaa <no-reply@localhost>"
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_username: str | None = None

@@ -25,7 +25,7 @@ ALLOWED_PORTS = frozenset({80, 443, 8080, 8443})
 MAX_REDIRECTS = 6
 HOP_TIMEOUT_SECONDS = 6
 TOTAL_TIMEOUT_SECONDS = 20
-USER_AGENT = "Mozilla/5.0 (compatible; SENTINEL-Scanner/0.1; link safety check)"
+USER_AGENT = "Mozilla/5.0 (compatible; Qalaa-Scanner/0.1; link safety check)"
 MAX_BODY_BYTES = 2 * 1024 * 1024
 _HTML_TYPES = ("text/html", "application/xhtml+xml")
 

@@ -70,7 +70,7 @@ export function intentOf(question: string): Intent {
   return "unknown";
 }
 
-/** A grounded answer from the facts SENTINEL already has, in the given language. */
+/** A grounded answer from the facts Qalaa already has, in the given language. */
 export function builtInAnswer(question: string, summary: PageSummary, language: Language): string {
   const d = dictionary(language);
   const verdict = summary.result?.verdict;

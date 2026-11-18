@@ -13,7 +13,7 @@ const summary = (verdict: Verdict): PageSummary => ({
   result: {
     verdict,
     host: "paypa1-secure.example.com",
-    reasons: [{ severity: "high", title: "Look-alike of paypal.com", explanation: "", source: "SENTINEL" }],
+    reasons: [{ severity: "high", title: "Look-alike of paypal.com", explanation: "", source: "Qalaa" }],
     sources: [],
     limitations: [],
     checkedAt: new Date().toISOString(),

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Tests sync.sh without WireGuard: a stand-in `wg` and a stand-in SENTINEL API.
+# Tests sync.sh without WireGuard: a stand-in `wg` and a stand-in Qalaa API.
 #   sh infrastructure/vpn/test/sync-test.sh
 set -eu
 HERE="$(cd "$(dirname "$0")" && pwd)"

@@ -50,7 +50,7 @@ BACKUP_CODE_COUNT = 10
 RESET_LIMIT = RateLimit("password-reset", max_requests=5, window_seconds=3600)
 VERIFY_SEND_LIMIT = RateLimit("verify-send", max_requests=5, window_seconds=3600)
 TWO_FACTOR_LIMIT = RateLimit("two-factor", max_requests=6, window_seconds=900)
-_ISSUER = "SENTINEL"
+_ISSUER = "Qalaa"
 
 
 def _require_email() -> None:
@@ -102,9 +102,9 @@ def send_verification(db: Session, user: User) -> None:
     send_email(
         db,
         user.email,
-        "Confirm your email address for SENTINEL",
+        "Confirm your email address for Qalaa",
         "Confirm that this email address belongs to you by opening this link within 48 hours:\n\n"
-        f"{link}\n\nIf you did not create a SENTINEL account, you can ignore this message.\n",
+        f"{link}\n\nIf you did not create a Qalaa account, you can ignore this message.\n",
     )
     db.commit()
 
@@ -149,8 +149,8 @@ def _send_reset_email(email: str, ip_address: str) -> None:
             send_email(
                 db,
                 user.email,
-                "Reset your SENTINEL password",
-                "Someone asked to reset the password for this SENTINEL account. If it was you, "
+                "Reset your Qalaa password",
+                "Someone asked to reset the password for this Qalaa account. If it was you, "
                 f"open this link within one hour:\n\n{link}\n\nIf it was not you, ignore this "
                 "message; your password has not changed.\n",
             )

@@ -1,13 +1,13 @@
 import type { MetadataRoute } from "next";
 
 /**
- * Installable web app. On Android, the share target puts SENTINEL in the system
+ * Installable web app. On Android, the share target puts Qalaa in the system
  * share sheet, so a suspicious link or message can be sent to it from any app.
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "SENTINEL: check links, messages and files",
-    short_name: "SENTINEL",
+    name: "Qalaa: check links, messages and files",
+    short_name: "Qalaa",
     description: "Check suspicious links, messages, files, QR codes and apps. Free.",
     id: "/",
     start_url: "/scan",

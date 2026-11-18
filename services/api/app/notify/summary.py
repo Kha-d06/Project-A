@@ -1,4 +1,4 @@
-"""Weekly safety summary: what SENTINEL caught for you in the last seven days."""
+"""Weekly safety summary: what Qalaa caught for you in the last seven days."""
 
 import uuid
 from collections import Counter
@@ -71,7 +71,7 @@ def summary_text(summary: dict[str, Any]) -> str:
         f"In the last {summary['days']} days:",
         f"- You ran {summary['scans']} scan(s); {caught} needed attention "
         f"({summary['known_malicious']} known threat(s), {summary['suspicious']} suspicious).",
-        f"- SENTINEL Protect warned you {summary['browser_warnings']} time(s) while browsing"
+        f"- Qalaa Protect warned you {summary['browser_warnings']} time(s) while browsing"
         + (
             " (only counted if you chose to keep warning history)."
             if summary["browser_warnings"] == 0
@@ -98,7 +98,7 @@ def send_weekly_summaries(db: Session) -> int:
         summary = build_summary(db, user.id)
         if email_enabled() and user.email_verified_at is not None:
             try:
-                send_email(db, user.email, "Your weekly SENTINEL summary", summary_text(summary))
+                send_email(db, user.email, "Your weekly Qalaa summary", summary_text(summary))
                 db.commit()
                 sent += 1
             except EmailUnavailableError:
@@ -107,7 +107,7 @@ def send_weekly_summaries(db: Session) -> int:
         send_push(
             db,
             user.id,
-            "Your weekly SENTINEL summary",
+            "Your weekly Qalaa summary",
             f"{summary['scans']} scans, {caught} needed attention. {summary['tip'][:90]}",
             "/dashboard",
         )

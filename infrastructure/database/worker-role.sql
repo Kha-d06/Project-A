@@ -1,4 +1,4 @@
--- Least-privilege role for SENTINEL scan workers.
+-- Least-privilege role for Qalaa scan workers.
 --
 -- Workers parse untrusted files and fetch untrusted URLs. If one were ever
 -- compromised, this role limits it to scan jobs, their findings and the threat

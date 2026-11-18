@@ -11,16 +11,16 @@ function TermsArabic() {
       <section>
         <h2>ما هي الخدمة</h2>
         <p>
-          يقدّم SENTINEL رأيًا حول الروابط والرسائل والملفات بناءً على الفحوصات الموضحة في كل
+          يقدّم قلعة رأيًا حول الروابط والرسائل والملفات بناءً على الفحوصات الموضحة في كل
           تقرير. الخدمة مجانية وتُقدَّم كما هي. نتيجة «لا يوجد تهديد معروف» ليست وعدًا بأن الشيء
-          آمن، ولا يغني SENTINEL عن برامج الحماية على جهازك.
+          آمن، ولا يغني قلعة عن برامج الحماية على جهازك.
         </p>
       </section>
       <section>
         <h2>الاستخدام العادل</h2>
         <ul>
           <li>لا ترسل إلا محتوى يحق لك مشاركته، ولا ترفع ملفات خاصة بالآخرين.</li>
-          <li>لا تستخدم SENTINEL لفحص أنظمة أخرى أو مهاجمتها، أو للتحايل على حدود الاستخدام.</li>
+          <li>لا تستخدم قلعة لفحص أنظمة أخرى أو مهاجمتها، أو للتحايل على حدود الاستخدام.</li>
           <li>لا تحاول اختراق الحسابات أو الخدمة نفسها، وأبلغ المشغّل عن المشكلات الأمنية بدلًا من ذلك.</li>
         </ul>
       </section>
@@ -39,9 +39,9 @@ export default async function TermsPage() {
       <section>
         <h2>What the service is</h2>
         <p>
-          SENTINEL gives an opinion about links, messages and files based on the checks described in
+          Qalaa gives an opinion about links, messages and files based on the checks described in
           each report. It is provided free of charge and as is. A result of “no known threat
-          detected” is not a promise that something is safe, and SENTINEL does not replace the
+          detected” is not a promise that something is safe, and Qalaa does not replace the
           security software on your device.
         </p>
       </section>
@@ -49,7 +49,7 @@ export default async function TermsPage() {
         <h2>Fair use</h2>
         <ul>
           <li>Only submit content you are entitled to share. Do not upload other people’s private files.</li>
-          <li>Do not use SENTINEL to probe or attack other systems, or to work around its rate limits.</li>
+          <li>Do not use Qalaa to probe or attack other systems, or to work around its rate limits.</li>
           <li>Do not attempt to break into accounts or the service itself. Report security problems to the operator instead.</li>
         </ul>
       </section>

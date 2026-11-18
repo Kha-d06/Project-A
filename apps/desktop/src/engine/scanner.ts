@@ -4,7 +4,7 @@
  *  2. heuristics: name tricks, disguised programs, droppers, risky PDFs, macros,
  *     archive contents, the EICAR test string;
  *  3. ClamAV, when installed and enabled;
- *  4. optionally, a fingerprint-only lookup on the SENTINEL server.
+ *  4. optionally, a fingerprint-only lookup on the Qalaa server.
  * Files are read, never opened with their own program or executed.
  */
 import { open, stat } from "node:fs/promises";
@@ -143,7 +143,7 @@ function unreadableArchive(kind: string): Finding {
     severity: "info",
     rule: "archive_not_listed",
     title: `The contents of this ${kind.toUpperCase()} archive were not checked`,
-    detail: "Install 7-Zip so SENTINEL can list what is inside, or extract it to a folder and scan that folder.",
+    detail: "Install 7-Zip so Qalaa can list what is inside, or extract it to a folder and scan that folder.",
   };
 }
 
@@ -258,7 +258,7 @@ export async function scanFile(path: string, context: ScanContext): Promise<Scan
             severity: "critical",
             rule: "known_hash_cloud",
             title: `This file is listed as malware by ${source}`,
-            detail: "The SENTINEL server matched its fingerprint against its threat feeds.",
+            detail: "The Qalaa server matched its fingerprint against its threat feeds.",
           });
         }
       } catch {

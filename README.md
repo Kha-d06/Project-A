@@ -1,6 +1,6 @@
-# SENTINEL
+# Qalaa
 
-SENTINEL helps people check links, messages and files before trusting them, and
+Qalaa helps people check links, messages and files before trusting them, and
 explains what it found in plain language. It is free for everyone: there are no
 paid plans, trials or locked features.
 
@@ -16,7 +16,7 @@ Every result is one of four verdicts, used consistently in the API and the UI:
 Nothing is ever reported as "safe".
 
 > **Status: Phases 1–5.** Scanning (links, messages, files, QR codes, websites and
-> Android apps), optional AI explanations, accounts, the dashboard, the SENTINEL
+> Android apps), optional AI explanations, accounts, the dashboard, the Qalaa
 > Protect browser extension, threat-intelligence lookups, community reports with
 > moderation, the admin area, an Arabic interface, an installable mobile web app,
 > personal API keys and Prometheus metrics all work end to end. A native Android
@@ -25,7 +25,7 @@ Nothing is ever reported as "safe".
 
 ## What works today
 
-**Link scanner.** For a submitted URL, SENTINEL:
+**Link scanner.** For a submitted URL, Qalaa:
 
 - matches it against the URLhaus feed, which is downloaded and checked locally so the link is never shared;
 - optionally runs a live URLhaus lookup, if a key is configured;
@@ -75,7 +75,7 @@ It also reports which security headers are present.
 The app is never installed or run.
 
 **More file analysis.**
-- YARA, with SENTINEL's own rules plus optional operator rules: encoded PowerShell, download-and-execute, HTML smuggling, malicious shortcuts, credential-dumping tools, ransom notes and packers.
+- YARA, with Qalaa's own rules plus optional operator rules: encoded PowerShell, download-and-execute, HTML smuggling, malicious shortcuts, credential-dumping tools, ransom notes and packers.
 - olevba macro analysis (auto-run plus risky functions, Excel 4 macros, embedded indicators).
 - pefile capability analysis of Windows programs (injection, keylogging, mass encryption, packing, signature presence).
 
@@ -107,8 +107,8 @@ The first administrator is created with `python -m app.cli set-role you@example.
 - **Still English.** Other technical findings, the long policy pages, the browser extension and the staff tools are in English for now. Arabic pages say so rather than half-translating.
 - **Extending it.** Dictionaries are typed (`apps/web/src/lib/i18n`), so a new language has to supply every string.
 
-**On phones.** SENTINEL is an installable web app.
-- **Share target.** On Android, installing it adds SENTINEL to the system share sheet. Sharing a link or a message from any app opens the matching scanner with it filled in, and nothing is submitted until you confirm.
+**On phones.** Qalaa is an installable web app.
+- **Share target.** On Android, installing it adds Qalaa to the system share sheet. Sharing a link or a message from any app opens the matching scanner with it filled in, and nothing is submitted until you confirm.
 - **QR camera.** The QR scanner opens the rear camera directly.
 - **Offline.** A minimal service worker shows an offline notice ("nothing has been checked") and caches nothing else.
 
@@ -127,16 +127,16 @@ There is no native Android app. Building one needs the Android SDK, which was no
 
 `docker compose --profile monitoring up` runs Prometheus with alert rules for stale feeds, stuck scans and failure spikes.
 
-**SENTINEL Protect browser extension** (`apps/extension`, Chrome and Edge, Manifest V3):
+**Qalaa Protect browser extension** (`apps/extension`, Chrome and Edge, Manifest V3):
 - warns before known dangerous sites and convincing imitations load, with evidence and a way back;
-- pauses risky downloads, adds a right-click "Scan link with SENTINEL", and offers optional hover checks;
+- pauses risky downloads, adds a right-click "Scan link with Qalaa", and offers optional hover checks;
 - has pause and resume, allow and block lists, and a privacy mode that sends only domains;
 - works without an account, enrolling anonymously with short-lived tokens, and can be linked to one with a one-time code;
 - reports a check it cannot complete as "Check unavailable", never as clean.
 
 See [apps/extension/README.md](apps/extension/README.md).
 
-**SENTINEL Desktop** (`apps/desktop`, Electron, Windows, macOS and Linux): on-demand file and folder scanning, a Downloads watcher, encrypted quarantine with restore, and English and Arabic. Engines:
+**Qalaa Desktop** (`apps/desktop`, Electron, Windows, macOS and Linux): on-demand file and folder scanning, a Downloads watcher, encrypted quarantine with restore, and English and Arabic. Engines:
 - known-malware fingerprints from the server's hash list;
 - heuristics for disguised programs, droppers, risky PDFs, macros and archives;
 - ClamAV when installed;
@@ -152,13 +152,13 @@ It complements, and does not replace, the operating system's own protection. See
 python -m app.cli add-brand-reference emiratesnbd emiratesnbd.com https://<the brand's real sign-in page>
 ```
 
-**Devices and remote scans.** Link SENTINEL Desktop (and the Android app) to an account with a one-time code. Dashboard → Devices then shows each device's protection status. If the device allows it, you can start a quick, full or folder scan, quarantine what was found, or update signatures from any browser. Commands reach a computer within a second or two (it keeps one long request open), and the page shows live progress while a scan runs (counts only, never file names).
+**Devices and remote scans.** Link Qalaa Desktop (and the Android app) to an account with a one-time code. Dashboard → Devices then shows each device's protection status. If the device allows it, you can start a quick, full or folder scan, quarantine what was found, or update signatures from any browser. Commands reach a computer within a second or two (it keeps one long request open), and the page shows live progress while a scan runs (counts only, never file names).
 
-**Password manager.** Dashboard → Passwords is an end-to-end encrypted vault. It is encrypted in the browser with a master password the server never sees. It includes a generator, a health report (reused, weak, old and breached passwords) and CSV import/export. The browser extension can fill saved logins: unlock the vault in the extension popup with your master password and click **Fill** (only on https sites, only for that site's logins, never on pages SENTINEL flags as dangerous).
+**Password manager.** Dashboard → Passwords is an end-to-end encrypted vault. It is encrypted in the browser with a master password the server never sees. It includes a generator, a health report (reused, weak, old and breached passwords) and CSV import/export. The browser extension can fill saved logins: unlock the vault in the extension popup with your master password and click **Fill** (only on https sites, only for that site's logins, never on pages Qalaa flags as dangerous).
 
 **Website security assessment.** An admin-enabled feature (Dashboard → Site assessment) that runs read-only security checks — TLS, security headers, cookie flags, exposed files, SPF/DMARC — against websites the account has **verified it owns**. Ownership is re-checked at scan time, and unverified domains are refused. Scans can repeat weekly or monthly with an email when a site gets worse, reports print or save as PDF, and optional light active tests (XSS reflection, open redirect, database errors) run only when the owner confirms for that scan. See [docs/assessment.md](docs/assessment.md).
 
-**Security score.** The dashboard overview shows a 0–100 score for how much of SENTINEL's protection the account uses: two-step sign-in, password manager, browser extension, a recently scanned device, breach monitoring and the VPN, each linked to where to turn it on. Steps this server cannot offer are left out. It measures settings, not safety, and says so.
+**Security score.** The dashboard overview shows a 0–100 score for how much of Qalaa's protection the account uses: two-step sign-in, password manager, browser extension, a recently scanned device, breach monitoring and the VPN, each linked to where to turn it on. Steps this server cannot offer are left out. It measures settings, not safety, and says so.
 
 **Identity monitoring.** Breach check can also watch up to five more of your email addresses. Each one is confirmed with a code sent to it before anything is checked, so nobody can monitor someone else's address. Confirmed addresses are checked weekly with Have I Been Pwned, and new breaches are emailed to you.
 
@@ -166,7 +166,7 @@ python -m app.cli add-brand-reference emiratesnbd emiratesnbd.com https://<the b
 - Family groups: SafeSearch on Google, Bing, DuckDuckGo and YouTube, and browser protection that cannot be paused.
 - Organisations: two-step sign-in, the browser extension, and a maximum number of days between device scans, with a compliance view.
 
-Rules apply only to members who choose to follow the group's rules, and the compliance view shows only members who share activity with the group. SENTINEL cannot override the account holder's own settings, so these are agreed rules with visibility, not remote control.
+Rules apply only to members who choose to follow the group's rules, and the compliance view shows only members who share activity with the group. Qalaa cannot override the account holder's own settings, so these are agreed rules with visibility, not remote control.
 
 **Sharing threat data (STIX 2.1).** `GET /api/v1/intelligence/stix` exports community-verified indicators (domains, URLs, IPs and file hashes) as a STIX 2.1 bundle marked TLP:CLEAR, with stable IDs for repeated imports. Third-party feed data is never re-shared. `SENTINEL_SHARE_FEED` sets who can fetch it: `account` (signed-in users and API keys; the default), `public` or `off`.
 
@@ -186,8 +186,8 @@ Rules apply only to members who choose to follow the group's rules, and the comp
 
 ```text
 apps/web/                 Next.js website and dashboard (App Router, TypeScript, Tailwind)
-apps/extension/           SENTINEL Protect browser extension (Manifest V3, TypeScript, esbuild)
-apps/desktop/             SENTINEL Desktop scanner (Electron, TypeScript)
+apps/extension/           Qalaa Protect browser extension (Manifest V3, TypeScript, esbuild)
+apps/desktop/             Qalaa Desktop scanner (Electron, TypeScript)
 services/api/             FastAPI service, Celery worker and scheduler (one Python package)
   app/analyzers/          URL, message and file analysis, verdict rules, SSRF-safe fetcher
   app/intel/              Threat-feed import, indicator lookup, provider adapters
@@ -305,7 +305,7 @@ CI runs all of this plus migrations against PostgreSQL, `alembic check`,
 
 ## Roadmap
 
-1. **Phase 2 (done).** SENTINEL Protect browser extension.
+1. **Phase 2 (done).** Qalaa Protect browser extension.
 2. **Phase 3 (done).** QR, website and APK analysis, YARA, macro and executable analysis, AI explanations. Download reputation checks shipped with the extension.
 3. **Phase 4 (done).** Threat-intelligence lookups, community reports with moderation, admin area, Arabic interface.
 4. **Phase 5 (done, with gaps).**

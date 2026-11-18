@@ -1,7 +1,7 @@
 import { cn } from "@/lib/cn";
 
 /**
- * The SENTINEL mark: a shield cut by a horizontal sightline, the line a sentinel
+ * The Qalaa mark: a shield cut by a horizontal sightline, the line a sentinel
  * keeps watch along. The sightline is the one place the accent appears.
  */
 export function LogoMark({ className }: { className?: string }) {
@@ -25,8 +25,8 @@ export function Logo({ className }: { className?: string }) {
   return (
     <span className={cn("inline-flex items-center gap-2.5", className)}>
       <LogoMark />
-      <span className="font-display text-[0.95rem] font-bold tracking-[0.18em] text-ink">
-        SENTINEL
+      <span className="font-display text-[0.95rem] font-bold tracking-[0.18em] text-ink uppercase">
+        Qalaa
       </span>
     </span>
   );

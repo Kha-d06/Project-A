@@ -1,6 +1,6 @@
 # Self-hosted VPN
 
-SENTINEL can run a WireGuard VPN server next to the rest of the stack. Account
+Qalaa can run a WireGuard VPN server next to the rest of the stack. Account
 holders add their phones and computers on **Dashboard → VPN**, and connect with
 the official WireGuard app.
 
@@ -27,14 +27,14 @@ available, and `wireguard-go` otherwise.
 ## How it works
 
 - **Keys:**
-  - Each device's key pair is made in the person's browser (WebCrypto X25519), or by SENTINEL Desktop on the computer itself.
-  - The private key goes straight into the QR code or `.conf` file and is never sent to SENTINEL.
+  - Each device's key pair is made in the person's browser (WebCrypto X25519), or by Qalaa Desktop on the computer itself.
+  - The private key goes straight into the QR code or `.conf` file and is never sent to Qalaa.
   - The server stores only public keys.
   - The server's own private key is created on first start in the `vpn-data` volume.
 - **Sync:**
-  - Every 10 seconds, the `vpn` container sends SENTINEL its public key and each device's last handshake and traffic, using `SENTINEL_VPN_SYNC_TOKEN`.
+  - Every 10 seconds, the `vpn` container sends Qalaa its public key and each device's last handshake and traffic, using `SENTINEL_VPN_SYNC_TOKEN`.
   - In reply it receives the list of allowed devices and applies it with `wg syncconf`, which does not drop existing sessions.
-  - If SENTINEL is unreachable, the current list stays in force.
+  - If Qalaa is unreachable, the current list stays in force.
   - Removing a device on the website disconnects it within about 10 seconds.
   - A server that has not checked in for 2 minutes shows as offline.
 - **Traffic accounting:**
@@ -65,10 +65,10 @@ available, and `wireguard-go` otherwise.
 
 ## From the desktop app
 
-SENTINEL Desktop, once linked to an account, has a VPN panel (Protection):
+Qalaa Desktop, once linked to an account, has a VPN panel (Protection):
 - **Set up** generates a key pair on the computer, sends only the public key (`POST /devices/vpn`, authenticated with the device's own token) and saves the tunnel file in the app's private data folder (owner-only permissions).
 - **Linux with NetworkManager:** the tunnel is imported once (`nmcli connection import`, with automatic connection off) and then **Connect** / **Disconnect** work with one click, no administrator password.
-- **Windows and macOS:** switching a tunnel on needs the official WireGuard app. SENTINEL saves the tunnel file and shows it so it can be imported there.
+- **Windows and macOS:** switching a tunnel on needs the official WireGuard app. Qalaa saves the tunnel file and shows it so it can be imported there.
 - Unlinking the computer from the account deletes the local tunnel. The device stays listed under Dashboard → VPN until it is removed there.
 
 ## Removing it

@@ -1,7 +1,7 @@
 import type { CheckResult, ServerVerdict } from "./types";
 
 /**
- * Talks to the SENTINEL API. Only the background service worker uses this.
+ * Talks to the Qalaa API. Only the background service worker uses this.
  *
  * Credentials: the refresh token lives in chrome.storage.local (extension-private,
  * never exposed to web pages); access tokens live in chrome.storage.session and
@@ -90,7 +90,7 @@ async function send(
     }
     const timedOut = error instanceof DOMException && error.name === "TimeoutError";
     throw new CheckUnavailable(
-      timedOut ? "The SENTINEL server took too long to answer." : "The SENTINEL server could not be reached.",
+      timedOut ? "The Qalaa server took too long to answer." : "The Qalaa server could not be reached.",
     );
   }
 }
@@ -100,7 +100,7 @@ async function readError(response: Response): Promise<ApiRequestError> {
     const body = (await response.json()) as { error?: { code?: string; message?: string } };
     return new ApiRequestError(response.status, body.error?.code ?? "http_error", body.error?.message ?? "Request failed.");
   } catch {
-    return new ApiRequestError(response.status, "http_error", "The SENTINEL server returned an unexpected answer.");
+    return new ApiRequestError(response.status, "http_error", "The Qalaa server returned an unexpected answer.");
   }
 }
 
@@ -146,7 +146,7 @@ async function accessToken(serverUrl: string, forceRefresh = false): Promise<str
     if (current && current.expiresAt > Date.now()) return current.token;
   }
   const credentials = await getCredentials();
-  if (!credentials) throw new CheckUnavailable("This extension is not connected to a SENTINEL server yet.");
+  if (!credentials) throw new CheckUnavailable("This extension is not connected to a Qalaa server yet.");
 
   const response = await send(serverUrl, "/extension/token", {
     method: "POST",
@@ -157,7 +157,7 @@ async function accessToken(serverUrl: string, forceRefresh = false): Promise<str
     await forgetCredentials();
     throw new CheckUnavailable("This extension was disconnected. Connect it again from the popup.");
   }
-  if (!response.ok) throw new CheckUnavailable("The SENTINEL server could not issue an access token.");
+  if (!response.ok) throw new CheckUnavailable("The Qalaa server could not issue an access token.");
   const body = (await response.json()) as { access_token: string; expires_in: number };
   return storeAccess(body.access_token, body.expires_in);
 }

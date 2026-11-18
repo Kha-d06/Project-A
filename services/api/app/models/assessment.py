@@ -1,6 +1,6 @@
 """Security assessments of websites an account has proven it owns.
 
-The hard rule of this feature: SENTINEL only ever probes a domain the account
+The hard rule of this feature: Qalaa only ever probes a domain the account
 has verified it controls, and verification is checked again at scan time. A
 verified domain that changes hands, or whose token is removed, can no longer be
 scanned. The checks themselves are read-only (see app/assess/checks.py)."""

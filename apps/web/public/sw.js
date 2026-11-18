@@ -1,5 +1,5 @@
 /*
- * SENTINEL service worker.
+ * Qalaa service worker.
  *
  * Deliberately minimal: it caches only the offline notice, so pages, scan
  * results and API responses are never stored on the device and never shown
@@ -27,9 +27,9 @@ self.addEventListener("fetch", (event) => {
 });
 
 // Web Push: notifications carry only a title, a sentence and a link back to
-// SENTINEL, never anything that was scanned.
+// Qalaa, never anything that was scanned.
 self.addEventListener("push", (event) => {
-  let data = { title: "SENTINEL", body: "", url: "/dashboard" };
+  let data = { title: "Qalaa", body: "", url: "/dashboard" };
   try {
     data = { ...data, ...event.data.json() };
   } catch {

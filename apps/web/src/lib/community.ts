@@ -11,7 +11,7 @@ export const CATEGORY: Record<ReportCategory, { label: string; subjectLabel: str
 
 export const REPORT_STATUS: Record<ReportStatus, { label: string; description: string }> = {
   pending: { label: "Awaiting review", description: "A moderator has not reviewed this report yet." },
-  verified: { label: "Verified", description: "A moderator confirmed this report. SENTINEL now warns about it." },
+  verified: { label: "Verified", description: "A moderator confirmed this report. Qalaa now warns about it." },
   rejected: { label: "Not confirmed", description: "A moderator could not confirm this report." },
   duplicate: { label: "Duplicate", description: "This was already reported; the original report is being used." },
 };

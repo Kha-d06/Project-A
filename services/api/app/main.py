@@ -46,9 +46,9 @@ _DOCS_PATHS = (f"{API_PREFIX}/docs", f"{API_PREFIX}/openapi.json")
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
-        title="SENTINEL API",
+        title="Qalaa API",
         version="0.1.0",
-        description="Scanning, account and system endpoints for the SENTINEL platform.",
+        description="Scanning, account and system endpoints for the Qalaa platform.",
         docs_url=f"{API_PREFIX}/docs",
         openapi_url=f"{API_PREFIX}/openapi.json",
         redoc_url=None,

@@ -102,7 +102,7 @@ function describeNetworkFailure(): ApiError {
   return new ApiError(
     0,
     "network_error",
-    "We could not reach SENTINEL. Check your connection and try again.",
+    "We could not reach Qalaa. Check your connection and try again.",
   );
 }
 
@@ -126,7 +126,7 @@ async function readError(response: Response): Promise<ApiError> {
     return new ApiError(
       response.status,
       "service_unavailable",
-      "The SENTINEL service is unavailable right now. Please try again shortly.",
+      "The Qalaa service is unavailable right now. Please try again shortly.",
     );
   }
   return new ApiError(response.status, "http_error", "The request failed.");

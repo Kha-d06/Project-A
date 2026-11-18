@@ -1,6 +1,6 @@
 #!/bin/sh
 # Brings up wg0 with this server's key, sets up NAT and isolation, then hands
-# over to sync.sh, which keeps the list of allowed devices in step with SENTINEL.
+# over to sync.sh, which keeps the list of allowed devices in step with Qalaa.
 set -eu
 
 : "${SENTINEL_API_URL:?SENTINEL_API_URL is required}"
@@ -16,7 +16,7 @@ mkdir -p /data
 # The server's private key is created once and kept in the volume.
 [ -s /data/server.key ] || wg genkey > /data/server.key
 
-# The server takes the first address of the subnet; SENTINEL hands out the rest.
+# The server takes the first address of the subnet; Qalaa hands out the rest.
 NETWORK="${SUBNET%/*}"
 PREFIX="${SUBNET#*/}"
 ADDRESS="${NETWORK%.*}.$(( ${NETWORK##*.} + 1 ))"
@@ -34,7 +34,7 @@ iptables -t nat -A POSTROUTING -s "$SUBNET" -o "$OUT" -j MASQUERADE
 iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 
 # Devices on the VPN reach the internet only: not each other, not this host,
-# and not the private networks around it (the other SENTINEL containers included).
+# and not the private networks around it (the other Qalaa containers included).
 iptables -P FORWARD DROP
 iptables -A FORWARD -i "$OUT" -o wg0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 iptables -A FORWARD -i wg0 -o wg0 -j DROP

@@ -2,7 +2,7 @@ import type { RiskLevel, ScanStatus, Severity } from "./api/types";
 
 /**
  * The one place verdict wording is defined. Note what is absent: there is no
- * "safe". The best outcome SENTINEL reports is that no known threat was found.
+ * "safe". The best outcome Qalaa reports is that no known threat was found.
  */
 
 export type Tone = "danger" | "warning" | "clear" | "unknown" | "neutral";

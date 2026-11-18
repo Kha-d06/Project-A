@@ -1,4 +1,4 @@
-"""Extra email addresses a person asks SENTINEL to watch for data breaches.
+"""Extra email addresses a person asks Qalaa to watch for data breaches.
 
 An address is monitored only after its owner proves they receive mail there
 (a one-time code), so nobody can monitor someone else's address."""

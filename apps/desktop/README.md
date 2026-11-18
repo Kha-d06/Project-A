@@ -1,4 +1,4 @@
-# SENTINEL Desktop
+# Qalaa Desktop
 
 A desktop scanner for Windows, macOS and Linux, built with Electron. It checks
 files on your computer against known malware and common attack techniques,
@@ -9,12 +9,12 @@ quarantine. English and Arabic.
 
 | Engine | What it does | Needs |
 | --- | --- | --- |
-| Fingerprints | SHA-256 of every file (and every file inside ZIP archives) against recent malware from MalwareBazaar and ThreatFox. The list is downloaded from your SENTINEL server every six hours (`GET /api/v1/intelligence/hash-list`); nothing about your files is sent. | A SENTINEL server, for the list |
+| Fingerprints | SHA-256 of every file (and every file inside ZIP archives) against recent malware from MalwareBazaar and ThreatFox. The list is downloaded from your Qalaa server every six hours (`GET /api/v1/intelligence/hash-list`); nothing about your files is sent. | A Qalaa server, for the list |
 | Heuristics | Programs disguised as documents (content vs. name, double extensions, hidden text-direction characters), encoded PowerShell and download-and-run droppers, Defender tampering, PDFs that launch programs or auto-run JavaScript, Office macros, path traversal, zip bombs, password-protected archives, the EICAR test file. | Nothing |
 | Containers | Looks inside ISO/IMG disk images (files fingerprinted and checked like everything else), flags Windows shortcuts (.lnk) that start PowerShell, cmd, mshta and similar, and lists 7z and RAR archives with 7-Zip when it is installed. | 7-Zip (optional, for 7z/RAR) |
 | ClamAV | Used automatically when `clamdscan` or `clamscan` is installed. | ClamAV (optional) |
 | Cloud lookup | Sends each file's SHA-256 (never the file) to the server, to catch samples reported since the last list update. **Off by default.** | Opt-in in Settings |
-| Full server scan | Uploads one file to the SENTINEL server for YARA, Office and PE analysis, and opens the report. Only when you click it, after a confirmation. | A SENTINEL server |
+| Full server scan | Uploads one file to the Qalaa server for YARA, Office and PE analysis, and opens the report. Only when you click it, after a confirmation. | A Qalaa server |
 
 Verdicts use the same words as the website: **Known malicious**, **Suspicious**, **No known threat** (never "safe") and **Could not scan**.
 
@@ -35,9 +35,9 @@ Verdicts use the same words as the website: **Known malicious**, **Suspicious**,
 - **Scheduled scans**, daily or weekly, quick (watched folders) or full (home folder). A computer that was off at the time catches up once when it starts. The schedule counts from the first run, so there is no scan straight after installation.
 - **Encrypted backup** of chosen folders into one `.sbk` file, saved on a USB drive or in a folder that OneDrive, iCloud Drive, Google Drive or Dropbox syncs. It can run on a schedule and keeps the newest N backups.
   - Every 1 MiB record is encrypted with AES-256-GCM. The key comes from your password through scrypt (N=2¹⁵), and each record's sequence number is authenticated, so records cannot be reordered, removed or swapped. A closing record detects a cut-off file. File names are encrypted too.
-  - The password is kept in the system keychain (Electron `safeStorage`), or only in memory where there is none. Without it nobody can open the backup, including SENTINEL.
+  - The password is kept in the system keychain (Electron `safeStorage`), or only in memory where there is none. Without it nobody can open the backup, including Qalaa.
   - **Check** reads and authenticates the whole file. **Restore** writes only into a new or empty folder, rejects unsafe paths, and does not follow symbolic links when backing up.
-- **SENTINEL account and remote scans.** In Settings, type the code from the website's Dashboard → Devices page to link this computer. The website then shows its protection status. If you also turn on **Allow scans from my SENTINEL account** (off by default), you can start a quick scan (watched folders), a full scan (your home folder) or a scan of one offered folder from another device, quarantine what a scan found, and update the fingerprint list. The app offers folders by name only, refuses any folder it did not offer, checks a file's fingerprint again before quarantining it, and reports names, verdicts and fingerprints, never contents or full paths. Removing the device on the website signs the app out.
+- **Qalaa account and remote scans.** In Settings, type the code from the website's Dashboard → Devices page to link this computer. The website then shows its protection status. If you also turn on **Allow scans from my Qalaa account** (off by default), you can start a quick scan (watched folders), a full scan (your home folder) or a scan of one offered folder from another device, quarantine what a scan found, and update the fingerprint list. The app offers folders by name only, refuses any folder it did not offer, checks a file's fingerprint again before quarantining it, and reports names, verdicts and fingerprints, never contents or full paths. Removing the device on the website signs the app out.
 
 ## What it does not do
 
@@ -67,7 +67,7 @@ npm start                            # build and run
 npm run build && xvfb-run -a node test/e2e.mjs   # end to end in Electron (Linux CI)
 ```
 
-Point it at a server with `SENTINEL_SERVER=https://your-sentinel.example npm start`, or in Settings. Data lives in the OS app-data folder; set `SENTINEL_DESKTOP_PROFILE` to use another.
+Point it at a server with `SENTINEL_SERVER=https://your-qalaa.example npm start`, or in Settings. Data lives in the OS app-data folder; set `SENTINEL_DESKTOP_PROFILE` to use another.
 
 ## Installers, Linux packages and updates
 
@@ -88,7 +88,7 @@ work: ufw/firewalld firewall state, listening ports from `/proc/net/tcp`, autost
 entries and systemd user services, camera use from `/dev/video*` and microphone use
 through PipeWire/PulseAudio, Wi-Fi via NetworkManager, and updates via `apt`.
 
-**Updates** come only from your own SENTINEL server
+**Updates** come only from your own Qalaa server
 (`<server>/downloads/desktop/latest*.yml`, published with
 `scripts/publish-downloads.sh`). They are checked every 6 hours and from
 Settings → Updates; electron-updater verifies each download's SHA-512 against

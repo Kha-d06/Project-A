@@ -14,7 +14,7 @@ export interface DesktopSettings {
   /** Watch these folders for mass encryption (detection only). */
   ransomwareWatch: boolean;
   protectedFolders: string[];
-  /** Off until the person turns it on: scans may be started from their SENTINEL account. */
+  /** Off until the person turns it on: scans may be started from their Qalaa account. */
   allowRemote: boolean;
   deviceName: string;
   /** Scheduled scans. `lastScheduledScan` is written only by the app itself. */
@@ -32,7 +32,7 @@ export interface DesktopSettings {
   backupKeep: number;
   lastBackup: { at: string; file: string; files: number; bytes: number } | null;
   lastBackupError: string | null;
-  /** Download and install updates from the SENTINEL server automatically. */
+  /** Download and install updates from the Qalaa server automatically. */
   autoUpdate: boolean;
 }
 

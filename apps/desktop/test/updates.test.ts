@@ -4,11 +4,11 @@ import { feedUrl, installKind, isNewer, versionFromManifest } from "../src/engin
 
 describe("updates", () => {
   it("comes from the person's own server", () => {
-    expect(feedUrl("https://sentinel.example.org/")).toBe("https://sentinel.example.org/downloads/desktop");
+    expect(feedUrl("https://qalaa.example.org/")).toBe("https://qalaa.example.org/downloads/desktop");
   });
 
   it("knows which installs can update themselves", () => {
-    expect(installKind("linux", { APPIMAGE: "/home/me/SENTINEL.AppImage" }, true)).toBe("appimage");
+    expect(installKind("linux", { APPIMAGE: "/home/me/Qalaa.AppImage" }, true)).toBe("appimage");
     expect(installKind("linux", {}, true)).toBe("deb-rpm");
     expect(installKind("win32", {}, true)).toBe("installer");
     expect(installKind("darwin", {}, false)).toBe("development");

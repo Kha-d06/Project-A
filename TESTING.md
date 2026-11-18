@@ -1,4 +1,4 @@
-# Running SENTINEL on your laptop
+# Running Qalaa on your laptop
 
 A full local instance — web app, API, scan workers, database — in Docker, with
 an administrator account ready to use.
@@ -62,7 +62,7 @@ As an administrator you can reach everything:
 | Scanners (link, message, file, QR, website, APK, screenshot) | `/dashboard/scan` |
 
 | Download the desktop and Android apps | `/download` |
-| Test inbox (every email SENTINEL sends) | <http://localhost:8025> |
+| Test inbox (every email Qalaa sends) | <http://localhost:8025> |
 
 The admin account already has the **site assessment** feature enabled. To turn
 it on for another account, open **Admin → Accounts** and use the **Site
@@ -70,13 +70,13 @@ assessment** toggle in that account's row.
 
 ## Install the desktop app from a package
 
-Each CI run uploads a Linux AppImage and .deb (artifact `sentinel-desktop-linux`),
+Each CI run uploads a Linux AppImage and .deb (artifact `qalaa-desktop-linux`),
 and tagged releases include Windows and macOS installers too. On Linux:
 
 ```bash
-sudo apt install ./SENTINEL-Desktop-0.2.0-amd64.deb     # Debian, Ubuntu, Mint
-sudo dnf install ./SENTINEL-Desktop-0.2.0-x86_64.rpm    # Fedora, openSUSE, RHEL
-chmod +x SENTINEL-Desktop-0.2.0-x86_64.AppImage && ./SENTINEL-Desktop-0.2.0-x86_64.AppImage
+sudo apt install ./Qalaa-Desktop-0.2.0-amd64.deb     # Debian, Ubuntu, Mint
+sudo dnf install ./Qalaa-Desktop-0.2.0-x86_64.rpm    # Fedora, openSUSE, RHEL
+chmod +x Qalaa-Desktop-0.2.0-x86_64.AppImage && ./Qalaa-Desktop-0.2.0-x86_64.AppImage
 ```
 
 ## Run the desktop app on your laptop (from source)
@@ -91,10 +91,10 @@ npm start
 ```
 
 In the app:
-1. Open **Settings** and set **SENTINEL server** to `http://localhost:8080`, then click **Save**.
+1. Open **Settings** and set **Qalaa server** to `http://localhost:8080`, then click **Save**.
 2. On the website, open **Devices → Add a device** and copy the code.
-3. Back in the app, under **SENTINEL account**, enter the code and click **Link**.
-4. To start scans from the website, tick **Allow scans from my SENTINEL account**.
+3. Back in the app, under **Qalaa account**, enter the code and click **Link**.
+4. To start scans from the website, tick **Allow scans from my Qalaa account**.
 
 The laptop now appears on the website's **Devices** page, where you can start a
 quick, full or folder scan and quarantine anything found. To try the detection

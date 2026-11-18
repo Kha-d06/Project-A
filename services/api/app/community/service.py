@@ -22,7 +22,7 @@ from app.intel.feeds import COMMUNITY, FeedIndicator, get_or_create_source, stor
 from app.models import CommunityReport, ThreatIndicator, User
 from app.models.base import utcnow
 
-COMMUNITY_SOURCE_NAME = "SENTINEL community reports (moderator-verified)"
+COMMUNITY_SOURCE_NAME = "Qalaa community reports (moderator-verified)"
 logger = logging.getLogger(__name__)
 # Scam sites are abandoned within weeks; phone numbers get reassigned. A verified
 # report stops protecting after this, unless a moderator verifies it again.
@@ -164,7 +164,7 @@ def _tell_reporter(db: Session, report: CommunityReport) -> None:
     if reporter is None or reporter.email_verified_at is None or not email_enabled():
         return
     outcome = {
-        "verified": "A moderator confirmed it. SENTINEL now warns people who check it.",
+        "verified": "A moderator confirmed it. Qalaa now warns people who check it.",
         "rejected": "A moderator could not confirm it from the information provided.",
         "duplicate": "It had already been reported, so it was merged with the earlier report.",
     }[report.status]
@@ -175,7 +175,7 @@ def _tell_reporter(db: Session, report: CommunityReport) -> None:
         send_email(
             db,
             reporter.email,
-            "Your SENTINEL report was reviewed",
+            "Your Qalaa report was reviewed",
             f"Thank you for your report about “{report.subject[:120]}”.\n\n{outcome}{note}\n",
         )
         db.commit()

@@ -1,5 +1,5 @@
 /**
- * The SENTINEL server, used for three optional things:
+ * The Qalaa server, used for three optional things:
  *  - downloading the known-malware fingerprint list (public, nothing sent);
  *  - fingerprint lookups for individual files (opt-in: sends the SHA-256 only);
  *  - uploading one file for a full server-side scan, only when the user asks.
@@ -26,7 +26,7 @@ export async function lookupHash(server: string, sha256: string, fetcher: typeof
   const response = await fetcher(endpoint(server, `/intelligence/hash/${sha256}`), { signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!response.ok) throw new Error(`The server answered ${response.status}`);
   const body = (await response.json()) as { verdict: string; indicators: { source: string }[] };
-  return body.verdict === "listed" ? (body.indicators[0]?.source ?? "SENTINEL threat feeds") : null;
+  return body.verdict === "listed" ? (body.indicators[0]?.source ?? "Qalaa threat feeds") : null;
 }
 
 export async function uploadForFullScan(server: string, path: string, fetcher: typeof fetch = fetch): Promise<string> {

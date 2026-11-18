@@ -1,5 +1,5 @@
 /**
- * The on-screen assistant: a small SENTINEL button in the corner of web pages.
+ * The on-screen assistant: a small Qalaa button in the corner of web pages.
  * Registered only when the user turns it on (optional permissions).
  *
  * What it reads from the page: the page address, the host names of resources the

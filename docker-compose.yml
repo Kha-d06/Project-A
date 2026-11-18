@@ -38,7 +38,7 @@ x-api-environment: &api-environment
   SENTINEL_YARA_RULES_DIR: ${SENTINEL_YARA_RULES_DIR:-}
   SENTINEL_METRICS_TOKEN: ${SENTINEL_METRICS_TOKEN:-}
   SENTINEL_EMAIL_BACKEND: ${SENTINEL_EMAIL_BACKEND:-disabled}
-  SENTINEL_EMAIL_FROM: ${SENTINEL_EMAIL_FROM:-SENTINEL <no-reply@localhost>}
+  SENTINEL_EMAIL_FROM: ${SENTINEL_EMAIL_FROM:-Qalaa <no-reply@localhost>}
   SENTINEL_SMTP_HOST: ${SENTINEL_SMTP_HOST:-}
   SENTINEL_SMTP_PORT: ${SENTINEL_SMTP_PORT:-587}
   SENTINEL_SMTP_USERNAME: ${SENTINEL_SMTP_USERNAME:-}
@@ -236,7 +236,7 @@ services:
       api: { condition: service_healthy }
     restart: unless-stopped
 
-  # Catches every email SENTINEL sends, for local testing: open http://localhost:8025.
+  # Catches every email Qalaa sends, for local testing: open http://localhost:8025.
   # Turned on by COMPOSE_PROFILES=devmail (scripts/demo.sh sets it). Never use it in
   # production: nothing is delivered.
   mailpit:

@@ -12,7 +12,7 @@ const { chromium } = require("playwright");
 const axeSource = await readFile(require.resolve("axe-core/axe.min.js"), "utf8");
 const site = process.env.SITE ?? "http://localhost:3000";
 
-const PUBLIC = ["/", "/scan", "/scan?type=message", "/learn", "/learn/parcel-delivery-fees", "/trends", "/help/scammed", "/tools/password", "/privacy", "/sign-in", "/report", "/intelligence"];
+const PUBLIC = ["/", "/download", "/scan", "/scan?type=message", "/learn", "/learn/parcel-delivery-fees", "/trends", "/help/scammed", "/tools/password", "/privacy", "/sign-in", "/report", "/intelligence"];
 const SIGNED_IN = ["/dashboard", "/dashboard/scan", "/dashboard/settings", "/dashboard/groups", "/dashboard/breach", "/dashboard/history", "/dashboard/devices", "/dashboard/passwords", "/dashboard/vpn", "/dashboard/assessment"];
 
 const browser = await chromium.launch();

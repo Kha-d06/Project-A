@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { Logo } from "@/components/brand/logo";
 import { ButtonLink } from "@/components/ui/button";
 import { LanguageSwitch } from "@/components/site/language-switch";
+import { DownloadHeaderLink } from "@/components/site/platform-download";
 import { ThemeToggle } from "@/components/site/theme-toggle";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/lib/i18n/client";
@@ -103,7 +104,7 @@ export function SiteHeader() {
                   onMouseEnter={() => setHovered(item.href)}
                   onFocus={() => setHovered(item.href)}
                   className={cn(
-                    "relative block rounded-full px-3.5 py-2 text-sm transition-colors",
+                    "relative block whitespace-nowrap rounded-full px-2.5 py-2 text-sm transition-colors xl:px-3.5",
                     pathname === item.href ? "text-ink" : "text-ink-muted hover:text-ink",
                   )}
                 >
@@ -116,9 +117,12 @@ export function SiteHeader() {
 
         <div className="ms-auto hidden items-center gap-2 lg:flex">
           <LanguageSwitch />
-          {/* Below xl the nav needs the room; the footer has the same switch. */}
-          <div className="hidden xl:block">
+          {/* The nav needs the room on narrower screens; the footer has the same switch. */}
+          <div className="hidden 2xl:block">
             <ThemeToggle />
+          </div>
+          <div className="hidden xl:block">
+            <DownloadHeaderLink />
           </div>
           <AccountActions />
         </div>
@@ -161,6 +165,7 @@ export function SiteHeader() {
             <div className="mt-4 flex flex-col gap-2 border-t border-line pt-4">
               <LanguageSwitch className="justify-center py-3 text-base" />
               <ThemeToggle className="self-center" />
+              <DownloadHeaderLink className="justify-center" />
               <AccountActions stacked />
             </div>
           </nav>

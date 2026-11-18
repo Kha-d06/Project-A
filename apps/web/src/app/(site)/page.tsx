@@ -22,6 +22,7 @@ import { BrowserGuardVisual } from "@/components/site/browser-guard-visual";
 import { CitadelScene } from "@/components/site/citadel-scene";
 import { InspectionPipeline } from "@/components/site/inspection-pipeline";
 import { IntegrationsStatus } from "@/components/site/integrations-status";
+import { DownloadPrompt } from "@/components/site/platform-download";
 import { Section } from "@/components/site/section";
 import { ButtonLink } from "@/components/ui/button";
 import type { RiskLevel, ScanType } from "@/lib/api/types";
@@ -202,6 +203,10 @@ export default async function HomePage() {
             </ul>
           </Reveal>
         </div>
+      </Section>
+
+      <Section id="download" eyebrow={t.extra.download.homeEyebrow} title={t.extra.download.homeTitle} intro={t.extra.download.homeIntro}>
+        <DownloadPrompt />
       </Section>
 
       <Section id="integrations" eyebrow={h.integrationsEyebrow} title={h.integrationsTitle} intro={h.integrationsIntro}>

@@ -233,3 +233,5 @@ label.check { display: inline-flex; align-items: center; gap: 8px; cursor: point
 label.check input { accent-color: var(--accent); width: 16px; height: 16px; }
 #more-protection h3, #startup-manager h3 { margin: 18px 0 6px; font-size: 13px; }
 #deep .item, #extensions .item { padding: 8px 0; }
+ul.bullets { margin: 8px 0 12px; padding-inline-start: 20px; color: var(--muted); display: grid; gap: 4px; }
+pre.code { font: 12.5px/1.6 var(--mono); background: var(--sunken); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; overflow-x: auto; margin: 6px 0 0; }

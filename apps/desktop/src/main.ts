@@ -56,6 +56,7 @@ import type { ScanResult } from "./engine/types";
 import { isDirectory, walk } from "./engine/walk";
 import { type DecoyRecord, RemovableWatcher, isExcluded, isSilent, plantDecoys, removableMounts, silentUntilFrom, tamperedDecoys } from "./engine/protection";
 import * as tools from "./engine/tools";
+import { disableTerminal, enableTerminal, terminalStatus } from "./engine/shell-init";
 import { FolderWatcher } from "./engine/watcher";
 
 const SIGNATURE_REFRESH_MS = 6 * 60 * 60 * 1000;
@@ -842,6 +843,27 @@ function registerIpc() {
     return totals;
   });
   ipcMain.handle("extensions", () => tools.browserExtensions(process.platform, homeDir()));
+
+  // Terminal protection (Linux and macOS): the qalaa command and the bash/zsh hooks.
+  ipcMain.handle("terminal-status", () => (process.platform === "win32" ? null : terminalStatus()));
+  ipcMain.handle("terminal-set", async (_event, on: unknown) => {
+    if (process.platform === "win32") throw new Error("Terminal protection is for Linux and macOS.");
+    let result;
+    if (on === true) {
+      // AppImage: its inner path changes on every start, so the launcher calls the AppImage itself.
+      const appImage = process.env.APPIMAGE;
+      const runtime = appImage ?? process.execPath;
+      // cli.js is bundled next to main.js; packaged, it is kept outside the asar archive.
+      const script = appImage ? null : app.isPackaged ? join(process.resourcesPath, "app.asar.unpacked", "dist", "cli.js") : join(__dirname, "cli.js");
+      result = await enableTerminal(runtime, script, undefined, undefined, dataDir());
+    } else {
+      result = await disableTerminal();
+    }
+    // Qalaa's own edit to ~/.bashrc / ~/.zshrc is expected: do not raise a file-integrity alarm for it.
+    for (const file of result.changed) if (integrity.state.paths.includes(file)) await integrity.accept(file).catch(() => undefined);
+    logEvent("terminal", "info", `Terminal protection ${on === true ? "on" : "off"}${result.changed.length ? ` (${result.changed.join(", ")})` : ""}`);
+    return result.setup;
+  });
   ipcMain.handle("deep-check", async () => {
     const result = await tools.deepCheck(process.platform, homeDir());
     for (const finding of result.findings) logEvent("deep-check", finding.severity === "high" ? "alert" : "warning", `${finding.area}: ${finding.item}`);

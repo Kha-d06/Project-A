@@ -101,7 +101,7 @@ jobs:
       - name: End-to-end test in Electron
         run: |
           npm install --no-save playwright@1.63.0
-          sudo apt-get update && sudo apt-get install -y xvfb
+          sudo apt-get update && sudo apt-get install -y xvfb zsh
           xvfb-run -a node test/e2e.mjs
       - name: Dependency vulnerability scan
         run: npm audit --audit-level=high

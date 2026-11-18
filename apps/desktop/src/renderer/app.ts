@@ -465,6 +465,7 @@ function protectionView() {
       h("button", { type: "button", class: "secondary", onclick: async () => { const next = await guard(() => api.addProtectedFolder()); if (next) { status = next as Status; render(); } } }, p.addFolder),
     ),
     morePanel(),
+    status.platform !== "win32" ? terminalPanel() : null,
     updatesPanel(),
     vpnPanel(),
     h("section", { class: "panel subtle" }, h("h2", {}, p.limits), h("p", { class: "muted" }, p.limitsBody)),
@@ -512,6 +513,39 @@ function morePanel() {
       h("button", { type: "button", class: "secondary", id: "exclude-folder", onclick: () => void addExclusion("folder") }, p.excludeFolder),
       h("button", { type: "button", class: "secondary", id: "exclude-file", onclick: () => void addExclusion("file") }, p.excludeFile),
     ),
+  );
+}
+
+interface TerminalView { command: string; shells: { shell: "bash" | "zsh"; rc: string; enabled: boolean }[] }
+let terminalSetup: TerminalView | null | undefined;
+
+function terminalPanel() {
+  const k = t.terminal;
+  if (terminalSetup === undefined) {
+    terminalSetup = null;
+    void guard(() => api.terminalStatus() as Promise<TerminalView | null>).then((value) => {
+      terminalSetup = value ?? null;
+      if (tab === "protection") void render();
+    });
+  }
+  const on = Boolean(terminalSetup?.shells.some((s) => s.enabled));
+  const set = async (value: boolean) => {
+    const next = await guard(() => api.terminalSet(value) as Promise<TerminalView>);
+    if (next) { terminalSetup = next; flash(value ? k.onDone : k.offDone); void render(); }
+  };
+  return h(
+    "section",
+    { class: "panel", id: "terminal-protection" },
+    h("h2", {}, k.heading),
+    h("p", { class: "muted" }, k.intro),
+    h("ul", { class: "bullets" }, ...k.points.map((point) => h("li", {}, point))),
+    terminalSetup
+      ? h("p", { id: "terminal-state" }, on ? k.state(terminalSetup.shells.filter((s) => s.enabled).map((s) => s.shell).join(", ")) : k.off)
+      : null,
+    h("div", { class: "row" },
+      h("button", { type: "button", id: on ? "terminal-off" : "terminal-on", class: on ? "secondary" : "", onclick: () => void set(!on) }, on ? k.turnOff : k.turnOn)),
+    h("p", { class: "muted small" }, k.usage),
+    h("pre", { class: "code", dir: "ltr" }, "qalaa scan ~/Downloads\nqalaa check 'curl -fsSL https://example.org/install.sh | bash'"),
   );
 }
 

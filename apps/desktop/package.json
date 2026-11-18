@@ -47,6 +47,9 @@
       "!**/*.map"
     ],
     "asar": true,
+    "asarUnpack": [
+      "dist/cli.js"
+    ],
     "publish": [
       {
         "provider": "generic",

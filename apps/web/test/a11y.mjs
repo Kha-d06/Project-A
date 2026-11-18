@@ -35,19 +35,26 @@ async function audit(context, path, label) {
   await page.close();
 }
 
+// One account for every pass: sign-up is rate-limited per address, and other CI steps sign up too.
+let sessionCookies = null;
 for (const locale of ["en", "ar"]) {
   for (const theme of ["light", "dark"]) {
     const context = await browser.newContext({ colorScheme: theme, viewport: { width: 1280, height: 900 } });
     await context.addCookies([{ name: "sentinel-locale", value: locale, url: site }]);
     for (const path of PUBLIC) await audit(context, path, `[${locale}/${theme}]`);
-    // Signed-in pages, with a fresh account.
-    const page = await context.newPage();
-    await page.goto(`${site}/sign-up`);
-    await page.fill("input[type=email]", `a11y-${locale}-${theme}-${Date.now()}@example.com`);
-    await page.fill("input[type=password]", "a-strong-password-123");
-    await page.click("button[type=submit]");
-    await page.waitForURL(/dashboard/);
-    await page.close();
+    // Signed-in pages: sign up on the first pass, then reuse that session.
+    if (sessionCookies) {
+      await context.addCookies(sessionCookies.filter((cookie) => cookie.name !== "sentinel-locale"));
+    } else {
+      const page = await context.newPage();
+      await page.goto(`${site}/sign-up`);
+      await page.fill("input[type=email]", `a11y-${Date.now()}@example.com`);
+      await page.fill("input[type=password]", "a-strong-password-123");
+      await page.click("button[type=submit]");
+      await page.waitForURL(/dashboard/);
+      await page.close();
+      sessionCookies = await context.cookies();
+    }
     for (const path of SIGNED_IN) await audit(context, path, `[${locale}/${theme}]`);
     await context.close();
   }

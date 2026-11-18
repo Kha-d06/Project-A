@@ -294,21 +294,21 @@ function SharingPanel({ doc, persist }: { doc: VaultDoc; persist: (doc: VaultDoc
     return keys;
   }, [doc, persist]);
 
-  const refresh = useCallback(async () => {
-    try {
-      const keys = await ensureKeys();
-      await api.vault.setSharingKey(keys.publicKey); // keep the published key current
-      setRecipients(await api.vault.recipients());
-      setShares(await api.vault.shares());
-      setGrants(await api.vault.emergency());
-    } catch (error) {
-      notify("error", errorText(error));
-    }
+  // Load through Promise callbacks (not an awaited effect body) so state updates
+  // happen in continuations, as the dashboard's other panels do.
+  const refresh = useCallback(() => {
+    ensureKeys()
+      .then((keys) => api.vault.setSharingKey(keys.publicKey)) // keep the published key current
+      .then(() => Promise.all([api.vault.recipients(), api.vault.shares(), api.vault.emergency()]))
+      .then(([recipientList, shareList, grantList]) => {
+        setRecipients(recipientList);
+        setShares(shareList);
+        setGrants(grantList);
+      })
+      .catch((error) => notify("error", errorText(error)));
   }, [ensureKeys, notify]);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  useEffect(() => refresh(), [refresh]);
 
   const logins = doc.items.filter((i) => i.kind === "login");
 

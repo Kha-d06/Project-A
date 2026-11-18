@@ -24,7 +24,10 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(
-            ["user_id"], ["users.id"], name=op.f("fk_sharing_keys_user_id_users"), ondelete="CASCADE"
+            ["user_id"],
+            ["users.id"],
+            name=op.f("fk_sharing_keys_user_id_users"),
+            ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("user_id", name=op.f("pk_sharing_keys")),
     )
@@ -37,15 +40,23 @@ def upgrade() -> None:
         sa.Column("sender_ephemeral", sa.String(length=500), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(
-            ["sender_id"], ["users.id"], name=op.f("fk_vault_shares_sender_id_users"), ondelete="CASCADE"
+            ["sender_id"],
+            ["users.id"],
+            name=op.f("fk_vault_shares_sender_id_users"),
+            ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(
-            ["recipient_id"], ["users.id"], name=op.f("fk_vault_shares_recipient_id_users"), ondelete="CASCADE"
+            ["recipient_id"],
+            ["users.id"],
+            name=op.f("fk_vault_shares_recipient_id_users"),
+            ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_vault_shares")),
     )
     op.create_index(op.f("ix_vault_shares_sender_id"), "vault_shares", ["sender_id"], unique=False)
-    op.create_index(op.f("ix_vault_shares_recipient_id"), "vault_shares", ["recipient_id"], unique=False)
+    op.create_index(
+        op.f("ix_vault_shares_recipient_id"), "vault_shares", ["recipient_id"], unique=False
+    )
     op.create_table(
         "emergency_contacts",
         sa.Column("id", sa.Uuid(), nullable=False),
@@ -62,16 +73,26 @@ def upgrade() -> None:
             name=op.f("ck_emergency_contacts_emergency_state_valid"),
         ),
         sa.ForeignKeyConstraint(
-            ["grantor_id"], ["users.id"], name=op.f("fk_emergency_contacts_grantor_id_users"), ondelete="CASCADE"
+            ["grantor_id"],
+            ["users.id"],
+            name=op.f("fk_emergency_contacts_grantor_id_users"),
+            ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(
-            ["grantee_id"], ["users.id"], name=op.f("fk_emergency_contacts_grantee_id_users"), ondelete="CASCADE"
+            ["grantee_id"],
+            ["users.id"],
+            name=op.f("fk_emergency_contacts_grantee_id_users"),
+            ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_emergency_contacts")),
         sa.UniqueConstraint("grantor_id", "grantee_id", name="uq_emergency_pair"),
     )
-    op.create_index(op.f("ix_emergency_contacts_grantor_id"), "emergency_contacts", ["grantor_id"], unique=False)
-    op.create_index(op.f("ix_emergency_contacts_grantee_id"), "emergency_contacts", ["grantee_id"], unique=False)
+    op.create_index(
+        op.f("ix_emergency_contacts_grantor_id"), "emergency_contacts", ["grantor_id"], unique=False
+    )
+    op.create_index(
+        op.f("ix_emergency_contacts_grantee_id"), "emergency_contacts", ["grantee_id"], unique=False
+    )
 
 
 def downgrade() -> None:

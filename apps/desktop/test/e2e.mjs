@@ -147,11 +147,12 @@ await mkdir(chromeProfile, { recursive: true });
 }
 // A program running from a temporary folder, which the running-programs check flags.
 const sleepy = join(work, "sleepy");
-await copyFile("/bin/sleep", sleepy);
+// A copy of Node itself (self-contained, unlike coreutils, which some systems ship as one
+// multi-call binary) that just waits.
+await copyFile(process.execPath, sleepy);
 await chmod(sleepy, 0o755);
-// argv0 "sleep": some systems ship coreutils as one multi-call binary that picks the tool by name.
-const sleeper = spawn(sleepy, ["600"], { stdio: "ignore", argv0: "sleep" });
-await new Promise((resolve) => setTimeout(resolve, 300));
+const sleeper = spawn(sleepy, ["-e", "setTimeout(() => {}, 600000)"], { stdio: "ignore" });
+await new Promise((resolve) => setTimeout(resolve, 500));
 assert.ok(sleeper.exitCode === null && sleeper.signalCode === null, "the stand-in program from a temporary folder is running");
 await writeFile(join(files, "eicar.com"), EICAR);
 await writeFile(join(files, "sample.bin"), SAMPLE);
@@ -374,7 +375,7 @@ await sleepyRow.getByRole("button", { name: "Inspect" }).click();
 await page.waitForFunction(() => /[0-9a-f]{64}/.test(document.querySelector("#monitor-pane tr.detail")?.textContent ?? ""));
 const detail = await page.locator("#monitor-pane tr.detail").innerText();
 assert.match(detail, /Not signed|Installed by/);
-assert.match(detail, /sleep 600/);
+assert.match(detail, /setTimeout/);
 page.once("dialog", (d) => d.accept());
 await sleepyRow.getByRole("button", { name: "Suspend", exact: true }).click();
 await page.waitForFunction(() => document.querySelector("#monitor-pane tr.flag") !== null);

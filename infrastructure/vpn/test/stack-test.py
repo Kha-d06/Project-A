@@ -78,15 +78,16 @@ print(f"✓ device added at {config['address']}")
 
 server_address = config["address"].rsplit(".", 1)[0] + ".1"
 # Only the server's address goes through the tunnel here, so the runner keeps its own network.
-for command in (
-    ["ip", "link", "add", "wgci", "type", "wireguard"],
-    ["wg", "set", "wgci", "private-key", "/dev/stdin", "peer", config["server_public_key"],
-     "endpoint", "127.0.0.1:51820", "allowed-ips", f"{server_address}/32", "persistent-keepalive", "5"],
-    ["ip", "address", "add", config["address"], "dev", "wgci"],
-    ["ip", "link", "set", "wgci", "up"],
-):
-    # The private key goes in on standard input, never into a file.
-    run("sudo", *command, stdin=private_key if "private-key" in command else None)
+# The host's wg cannot read the key on some systems (AppArmor confines it), so the key is set
+# with the wg from the stack's own VPN image, on the host's network namespace.
+vpn_image = run("docker", "inspect", "-f", "{{.Config.Image}}", run("docker", "compose", "--profile", "vpn", "ps", "-q", "vpn"))
+host_wg = ["docker", "run", "--rm", "-i", "--network", "host", "--cap-add", "NET_ADMIN", "--entrypoint", "wg", vpn_image]
+run("sudo", "ip", "link", "add", "wgci", "type", "wireguard")
+run(*host_wg, "set", "wgci", "private-key", "/dev/stdin", "peer", config["server_public_key"],
+    "endpoint", "127.0.0.1:51820", "allowed-ips", f"{server_address}/32", "persistent-keepalive", "5",
+    stdin=private_key)  # the key goes in on standard input, never into a file
+run("sudo", "ip", "address", "add", config["address"], "dev", "wgci")
+run("sudo", "ip", "link", "set", "wgci", "up")
 # The server drops everything addressed to itself, but the attempt starts the handshake.
 subprocess.run(["ping", "-c", "3", "-W", "1", server_address], capture_output=True)
 

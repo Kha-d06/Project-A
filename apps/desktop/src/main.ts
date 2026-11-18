@@ -50,6 +50,7 @@ import * as fanotify from "./engine/fanotify";
 import * as vpnGuard from "./engine/vpn-guard";
 import { RansomwareBurst, underAny } from "./engine/behaviour";
 import * as cfa from "./engine/cfa";
+import * as privacyBlock from "./engine/privacy-block";
 import { posture } from "./engine/posture";
 import { IntegrityMonitor } from "./engine/integrity";
 import { Telemetry } from "./engine/telemetry";
@@ -374,6 +375,43 @@ async function startOnAccessServer(): Promise<void> {
 async function stopOnAccessServer(): Promise<void> {
   await onAccess?.stop().catch(() => {});
   onAccess = null;
+}
+
+/** Camera / microphone block state and controls. */
+async function privacyBlockStatus() {
+  const supported = privacyBlock.privacyBlockSupported();
+  if (!supported) return { supported: false, camera: "unsupported" as const, microphone: "unsupported" as const };
+  if (process.platform === "win32") {
+    const read = (device: privacyBlock.Device) =>
+      new Promise<privacyBlock.BlockState>((resolve) => {
+        execFile("reg.exe", privacyBlock.windowsRegQueryArgs(device), { windowsHide: true, timeout: 10_000 }, (_e, out) => resolve(privacyBlock.parseWindowsConsent(String(out))));
+      });
+    return { supported: true, camera: await read("camera"), microphone: await read("microphone") };
+  }
+  return {
+    supported: true,
+    camera: await privacyBlock.linuxState(await privacyBlock.cameraNodes()),
+    microphone: await privacyBlock.linuxState(await privacyBlock.micNodes()),
+  };
+}
+
+async function setPrivacyBlock(device: privacyBlock.Device, block: boolean) {
+  if (!privacyBlock.privacyBlockSupported()) return { error: "Blocking the camera and microphone isn't available on this system." };
+  try {
+    if (process.platform === "win32") {
+      await new Promise<void>((resolve, reject) =>
+        execFile("reg.exe", privacyBlock.windowsRegSetArgs(device, !block), { windowsHide: true, timeout: 10_000 }, (e) => (e ? reject(e) : resolve())),
+      );
+    } else {
+      const nodes = device === "camera" ? await privacyBlock.cameraNodes() : await privacyBlock.micNodes();
+      if (!nodes.length) return { error: "No camera or microphone device was found." };
+      await pkexec(privacyBlock.linuxBlockScript(nodes, block));
+    }
+    logEvent("privacy", "info", `${device} ${block ? "blocked" : "allowed"}`);
+    return await privacyBlockStatus();
+  } catch (error) {
+    return { error: String(error instanceof Error ? error.message : error) };
+  }
 }
 
 /** Release (SIGCONT) or remove (SIGKILL) a process frozen for ransomware behaviour. */
@@ -1213,6 +1251,8 @@ function registerIpc() {
   ipcMain.handle("network-credential-check", (_event, ip: unknown, consent: unknown) => networkCredentialCheck(String(ip), Boolean(consent)));
   ipcMain.handle("onaccess-status", () => onAccessStatus());
   ipcMain.handle("onaccess-set", (_event, on: unknown) => setOnAccess(Boolean(on)));
+  ipcMain.handle("privacy-block-status", () => privacyBlockStatus());
+  ipcMain.handle("privacy-block-set", (_event, device: unknown, block: unknown) => setPrivacyBlock(device === "microphone" ? "microphone" : "camera", Boolean(block)));
   ipcMain.handle("cfa-status", () => cfa.cfaStatus());
   ipcMain.handle("cfa-apply", async (_event, action: unknown, path: unknown) => {
     try {

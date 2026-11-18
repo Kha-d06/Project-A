@@ -1346,7 +1346,36 @@ function privacyPanel(sec: SecurityResult | null) {
     use && use.log.length
       ? h("details", {}, h("summary", {}, c.recent), h("ul", { class: "folders small" }, ...use.log.map((entry) => h("li", {}, `${date(entry.at)} · ${c.inUse(word(entry.device), entry.app)}`))))
       : null,
+    blockControls(),
   );
+}
+
+interface BlockView { supported: boolean; camera: string; microphone: string }
+let blockView: BlockView | null | undefined;
+
+function blockControls() {
+  const c = t.security;
+  if (blockView === undefined) {
+    blockView = null;
+    void guard(() => api.privacyBlockStatus() as Promise<BlockView>).then((value) => { blockView = value; if (tab === "security") void render(); });
+  }
+  if (!blockView || !blockView.supported) return null;
+  const row = (device: "camera" | "microphone", state: string) => {
+    const blocked = state === "blocked";
+    const set = async () => {
+      const next = await guard(() => api.privacyBlockSet(device, !blocked) as Promise<BlockView | { error: string }>);
+      if (next && "error" in next) { flash(next.error, "error"); return; }
+      if (next) { blockView = next; void render(); }
+    };
+    return h("div", { class: "row spread" },
+      h("span", {}, device === "camera" ? c.camera : c.microphone, blocked ? h("span", { class: "badge no_known_threat" }, c.blocked) : null),
+      h("button", { type: "button", class: blocked ? "secondary" : "", "data-block": device, onclick: () => void set() }, blocked ? c.unblock : c.block));
+  };
+  return h("div", { class: "subpanel", id: "privacy-block" },
+    h("h3", {}, c.blockHeading),
+    h("p", { class: "muted small" }, c.blockHint),
+    row("camera", blockView.camera),
+    row("microphone", blockView.microphone));
 }
 
 function select<T extends string | number>(id: string, label: string, value: T, options: [T, string][], onchange: (value: T) => void, disabled = false) {

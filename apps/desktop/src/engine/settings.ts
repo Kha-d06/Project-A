@@ -49,6 +49,17 @@ export interface DesktopSettings {
   silentUntil: string | null;
   /** Linux on-access scanning (fanotify): scan files as they are opened. */
   onAccessScan: boolean;
+  /** VPN kill switch: block traffic outside the tunnel (Linux, nftables). */
+  vpnKillSwitch: boolean;
+  /** Keep the local network reachable while the kill switch is on. */
+  vpnKillSwitchAllowLan: boolean;
+  /** Split tunnelling: "full" (all via VPN), "exclude" these networks, or "only" these. */
+  vpnSplitMode: "full" | "exclude" | "only";
+  vpnSplitCidrs: string[];
+  /** Bring the VPN up by itself on open, weak or unfamiliar Wi-Fi. */
+  vpnAutoConnect: boolean;
+  /** Wi-Fi SSIDs the user trusts, so auto-connect leaves them alone. */
+  vpnTrustedNetworks: string[];
 }
 
 export function defaultSettings(downloads: string, protectedFolders: string[] = [], deviceName = "This computer"): DesktopSettings {
@@ -67,6 +78,12 @@ export function defaultSettings(downloads: string, protectedFolders: string[] = 
     watchSystemChanges: true,
     silentUntil: null,
     onAccessScan: false,
+    vpnKillSwitch: false,
+    vpnKillSwitchAllowLan: true,
+    vpnSplitMode: "full",
+    vpnSplitCidrs: [],
+    vpnAutoConnect: false,
+    vpnTrustedNetworks: [],
     ransomwareWatch: true,
     protectedFolders,
     allowRemote: false,

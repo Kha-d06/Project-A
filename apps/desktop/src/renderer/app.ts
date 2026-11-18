@@ -73,11 +73,21 @@ interface BrowsingReport {
   matches: { browser: string; profile: string; url: string; host: string; visitedAt: string | null; reason: "url" | "domain" }[];
 }
 
+interface VpnGuard {
+  capable: boolean;
+  killSwitch: boolean;
+  allowLan: boolean;
+  splitMode: "full" | "exclude" | "only";
+  splitCidrs: string[];
+  autoConnect: boolean;
+  trusted: string[];
+}
 interface VpnView {
   linked: boolean;
   saved: boolean;
   state: "connected" | "disconnected" | "not_imported" | "unsupported";
   platform: string;
+  guard?: VpnGuard;
 }
 
 type Entry = ScanResult & { quarantined?: string };
@@ -1184,7 +1194,73 @@ function vpnPanel() {
     );
   }
   if (view?.saved) body.push(h("p", { class: "muted small" }, c.vpnLimitNote));
+  if (view?.saved && view.guard?.capable) body.push(vpnGuardPanel(view.guard));
   return h("section", { class: "panel", id: "vpn" }, h("h2", {}, c.vpn), h("p", { class: "muted" }, c.vpnHint), ...body);
+}
+
+function vpnGuardPanel(g: VpnGuard) {
+  const k = t.vpnGuard;
+  const setGuard = async (changes: Record<string, unknown>) => {
+    const next = await guard(() => api.vpnGuardSet(changes) as Promise<VpnGuard>);
+    if (next && vpnView) { vpnView = { ...vpnView, guard: next }; void render(); }
+  };
+  const setKill = async (on: boolean) => {
+    const button = document.getElementById("vpn-kill-toggle") as HTMLButtonElement | null;
+    if (button) button.disabled = true;
+    const next = await guard(() => api.vpnKillSwitchSet(on) as Promise<VpnGuard | { error: string }>);
+    if (next && "error" in next) { flash(next.error, "error"); void render(); return; }
+    if (next && vpnView) { vpnView = { ...vpnView, guard: next }; flash(on ? k.killOnDone : k.killOffDone); void render(); }
+  };
+  return h(
+    "div",
+    { class: "subpanel", id: "vpn-guard" },
+    h("h3", {}, k.heading),
+    // Kill switch
+    h("p", { id: "vpn-kill-state" }, g.killSwitch ? k.killOn : k.killOff),
+    h("p", { class: "muted small" }, k.killHint),
+    h("div", { class: "row" },
+      h("button", { type: "button", id: "vpn-kill-toggle", class: g.killSwitch ? "secondary" : "", onclick: () => void setKill(!g.killSwitch) }, g.killSwitch ? k.killTurnOff : k.killTurnOn)),
+    g.killSwitch ? toggle(k.allowLan, g.allowLan, (value) => void setGuard({ allowLan: value }), k.allowLanHint, "vpn-allow-lan") : null,
+    // Split tunnelling
+    h("h3", {}, k.split),
+    select("vpn-split-mode", k.splitMode, g.splitMode, [["full", k.splitFull], ["exclude", k.splitExclude], ["only", k.splitOnly]] as ["full" | "exclude" | "only", string][], (value) => void setGuard({ splitMode: value })),
+    g.splitMode !== "full"
+      ? h("div", {},
+          h("p", { class: "muted small" }, k.splitCidrsHint),
+          g.splitCidrs.length
+            ? h("ul", { class: "folders", id: "vpn-split-cidrs" }, ...g.splitCidrs.map((cidr) =>
+                h("li", { class: "row spread" }, h("code", { dir: "ltr" }, cidr),
+                  h("button", { type: "button", class: "link", onclick: () => void setGuard({ splitCidrs: g.splitCidrs.filter((x) => x !== cidr) }) }, t.protection.remove))))
+            : h("p", { class: "muted small" }, k.splitNone),
+          h("div", { class: "row" },
+            h("input", { type: "text", id: "vpn-cidr-input", placeholder: "192.168.1.0/24", dir: "ltr" }),
+            h("button", { type: "button", class: "secondary", onclick: () => {
+              const input = document.getElementById("vpn-cidr-input") as HTMLInputElement | null;
+              const value = input?.value.trim();
+              if (value && /^\d+\.\d+\.\d+\.\d+\/\d+$/.test(value)) void setGuard({ splitCidrs: [...g.splitCidrs, value] });
+              else flash(k.cidrInvalid, "error");
+            } }, k.addCidr)))
+      : null,
+    // Auto-connect on untrusted Wi-Fi
+    h("h3", {}, k.auto),
+    toggle(k.autoToggle, g.autoConnect, (value) => void setGuard({ autoConnect: value }), k.autoHint, "vpn-autoconnect"),
+    g.autoConnect
+      ? h("div", {},
+          h("p", { class: "muted small" }, k.trustedHint),
+          g.trusted.length
+            ? h("ul", { class: "folders", id: "vpn-trusted" }, ...g.trusted.map((ssid) =>
+                h("li", { class: "row spread" }, h("span", { dir: "auto" }, ssid),
+                  h("button", { type: "button", class: "link", onclick: () => void setGuard({ trusted: g.trusted.filter((x) => x !== ssid) }) }, t.protection.remove))))
+            : h("p", { class: "muted small" }, k.trustedNone),
+          h("div", { class: "row" },
+            h("input", { type: "text", id: "vpn-ssid-input", dir: "auto", placeholder: k.ssidPlaceholder }),
+            h("button", { type: "button", class: "secondary", onclick: () => {
+              const input = document.getElementById("vpn-ssid-input") as HTMLInputElement | null;
+              const value = input?.value.trim();
+              if (value) void setGuard({ trusted: [...g.trusted, value] });
+            } }, k.addTrusted)))
+      : null,
+  );
 }
 
 function privacyPanel(sec: SecurityResult | null) {

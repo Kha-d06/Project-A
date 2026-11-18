@@ -6,6 +6,7 @@
  * no permission grants. The page talks to this process through a fixed set of
  * IPC calls (see preload.ts), and every argument is validated here.
  */
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { readFile, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
@@ -46,6 +47,7 @@ import { checkHttp, checkLineService } from "./engine/network/credentials";
 import { type Inventory, annotate, loadInventory, reconcile, saveInventory, setTrusted } from "./engine/network/inventory";
 import type { NetworkScan } from "./engine/network/types";
 import * as fanotify from "./engine/fanotify";
+import * as vpnGuard from "./engine/vpn-guard";
 import { posture } from "./engine/posture";
 import { IntegrityMonitor } from "./engine/integrity";
 import { Telemetry } from "./engine/telemetry";
@@ -581,6 +583,29 @@ async function historyCheck(days: number) {
   return lastHistoryReport;
 }
 
+/** Read the Endpoint host from the saved tunnel, for the kill switch. */
+async function vpnEndpointHost(): Promise<string | null> {
+  try {
+    const text = await readFile(vpnFile(), "utf8");
+    const host = /^Endpoint\s*=\s*([^\s:]+)/m.exec(text)?.[1];
+    return host ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function vpnGuardView() {
+  return {
+    capable: vpnGuard.killSwitchCapable(),
+    killSwitch: settings.vpnKillSwitch,
+    allowLan: settings.vpnKillSwitchAllowLan,
+    splitMode: settings.vpnSplitMode,
+    splitCidrs: settings.vpnSplitCidrs,
+    autoConnect: settings.vpnAutoConnect,
+    trusted: settings.vpnTrustedNetworks,
+  };
+}
+
 async function vpnStatus() {
   let saved = false;
   try {
@@ -589,16 +614,99 @@ async function vpnStatus() {
   } catch {
     saved = false;
   }
-  return { linked: Boolean(account), saved, state: await vpn.tunnelState(), platform: process.platform };
+  return { linked: Boolean(account), saved, state: await vpn.tunnelState(), platform: process.platform, guard: vpnGuardView() };
 }
 
 async function vpnSetup() {
   if (!account) throw new Error("Link this computer to your Qalaa account first (Settings).");
   const keys = vpn.generateKeyPair();
   const config = await vpn.requestPeer(account, keys.publicKey);
-  const file = await vpn.saveTunnel(dataDir(), vpn.buildConfig(config, keys.privateKey));
+  // Apply the chosen split-tunnel routing before the tunnel is saved and imported.
+  const text = vpnGuard.applySplitTunnel(vpn.buildConfig(config, keys.privateKey), settings.vpnSplitMode, settings.vpnSplitCidrs);
+  const file = await vpn.saveTunnel(dataDir(), text);
   if ((await vpn.tunnelState()) !== "unsupported") await vpn.importTunnel(file);
+  // If split-tunnel settings changed while the kill switch is on, refresh its LAN rule too.
+  if (settings.vpnKillSwitch) await applyKillSwitch().catch(() => {});
   return vpnStatus();
+}
+
+const pkexec = (script: string) =>
+  new Promise<void>((resolve, reject) => {
+    execFile("pkexec", ["sh", "-c", script], { timeout: 120_000 }, (error, _stdout, stderr) => (error ? reject(new Error(String(stderr || error.message).slice(0, 300))) : resolve()));
+  });
+
+async function applyKillSwitch(): Promise<void> {
+  const host = (await vpnEndpointHost()) ?? "0.0.0.0";
+  const rules = vpnGuard.killSwitchRules(vpn.CONNECTION_NAME, host, settings.vpnKillSwitchAllowLan);
+  await pkexec(vpnGuard.killSwitchScript(rules));
+}
+
+async function setKillSwitch(on: boolean) {
+  if (!vpnGuard.killSwitchCapable()) return { error: "The kill switch needs nftables and is available on Linux only." };
+  try {
+    if (on) await applyKillSwitch();
+    else await pkexec(vpnGuard.removeKillSwitchScript());
+    settings = { ...settings, vpnKillSwitch: on };
+    await saveSettings(join(dataDir(), "settings.json"), settings);
+    logEvent("vpn-killswitch", "info", on ? "VPN kill switch enabled" : "VPN kill switch disabled");
+    return vpnGuardView();
+  } catch (error) {
+    return { error: String(error instanceof Error ? error.message : error) };
+  }
+}
+
+/** Save split-tunnel / auto-connect settings; re-import the tunnel if routing changed. */
+async function setVpnGuard(changes: Partial<ReturnType<typeof vpnGuardView>>) {
+  const before = { mode: settings.vpnSplitMode, cidrs: settings.vpnSplitCidrs.join(",") };
+  if (changes.splitMode === "full" || changes.splitMode === "exclude" || changes.splitMode === "only") settings = { ...settings, vpnSplitMode: changes.splitMode };
+  if (Array.isArray(changes.splitCidrs)) settings = { ...settings, vpnSplitCidrs: changes.splitCidrs.filter((c): c is string => typeof c === "string").slice(0, 40) };
+  if (typeof changes.allowLan === "boolean") settings = { ...settings, vpnKillSwitchAllowLan: changes.allowLan };
+  if (typeof changes.autoConnect === "boolean") settings = { ...settings, vpnAutoConnect: changes.autoConnect };
+  if (Array.isArray(changes.trusted)) settings = { ...settings, vpnTrustedNetworks: changes.trusted.filter((c): c is string => typeof c === "string").slice(0, 40) };
+  await saveSettings(join(dataDir(), "settings.json"), settings);
+  // If routing changed and a tunnel exists, rebuild it so the new AllowedIPs take effect.
+  const routingChanged = before.mode !== settings.vpnSplitMode || before.cidrs !== settings.vpnSplitCidrs.join(",");
+  if (routingChanged) {
+    try {
+      const text = await readFile(vpnFile(), "utf8");
+      const next = vpnGuard.applySplitTunnel(text, settings.vpnSplitMode, settings.vpnSplitCidrs);
+      await vpn.saveTunnel(dataDir(), next);
+      if ((await vpn.tunnelState()) !== "unsupported") await vpn.importTunnel(vpnFile());
+    } catch {
+      // no tunnel saved yet; the new routing applies next time one is set up
+    }
+  }
+  applyVpnAutoConnect();
+  return vpnGuardView();
+}
+
+let vpnAutoTimer: NodeJS.Timeout | null = null;
+let vpnAutoActed = false;
+
+/** Poll the current Wi-Fi and bring the VPN up on untrusted networks. */
+function applyVpnAutoConnect() {
+  if (vpnAutoTimer) { clearInterval(vpnAutoTimer); vpnAutoTimer = null; }
+  if (!settings.vpnAutoConnect || !vpnGuard.killSwitchCapable()) return;
+  const tick = async () => {
+    try {
+      if ((await vpn.tunnelState()) === "unsupported") return;
+      const wifi = await wifiStatus();
+      const want = vpnGuard.shouldAutoConnect(wifi, { enabled: settings.vpnAutoConnect, trusted: settings.vpnTrustedNetworks });
+      const state = await vpn.tunnelState();
+      if (want && state === "disconnected" && !vpnAutoActed) {
+        vpnAutoActed = true;
+        await vpn.connectTunnel().catch(() => {});
+        notify("VPN connected", `Qalaa turned on the VPN on ${wifi.ssid ?? "this network"} to protect your traffic.`);
+      } else if (!want) {
+        vpnAutoActed = false; // back on a trusted network; allow acting again later
+      }
+    } catch {
+      // ignore a single poll failure
+    }
+  };
+  vpnAutoTimer = setInterval(() => void tick(), 20_000);
+  vpnAutoTimer.unref();
+  void tick();
 }
 
 async function watchDeviceUse() {
@@ -1137,6 +1245,9 @@ function registerIpc() {
     return vpnStatus();
   });
   ipcMain.handle("vpn-show-file", () => shell.showItemInFolder(vpnFile()));
+  ipcMain.handle("vpn-guard", () => vpnGuardView());
+  ipcMain.handle("vpn-guard-set", (_event, changes: unknown) => setVpnGuard((changes ?? {}) as Partial<ReturnType<typeof vpnGuardView>>));
+  ipcMain.handle("vpn-killswitch-set", (_event, on: unknown) => setKillSwitch(Boolean(on)));
   ipcMain.handle("startup-acknowledge", async () => {
     settings = { ...settings, knownStartup: lastStartup.map((item) => item.id).slice(0, 2000) };
     await persistSettings();
@@ -1314,6 +1425,8 @@ async function start() {
   applySystemWatch();
   // On-access scanning: start answering the helper if the user enabled it.
   if (settings.onAccessScan) void startOnAccessServer();
+  // VPN auto-connect: watch Wi-Fi if enabled.
+  applyVpnAutoConnect();
   setInterval(() => void updateSignatures(), SIGNATURE_REFRESH_MS).unref();
 
   account = await loadAccount(accountFile());

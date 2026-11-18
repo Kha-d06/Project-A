@@ -340,6 +340,26 @@ assert.match(tunnelText, new RegExp(`PublicKey = ${SERVER_WG_KEY.replace(/[+/]/g
 assert.equal((await stat(tunnel)).mode & 0o777, 0o600);
 await shot(page, "desktop-vpn");
 step("VPN set up from the app: key pair generated locally, only the public key sent, tunnel file owner-only");
+
+// VPN safety: split tunnelling rewrites AllowedIPs in the tunnel; auto-connect lists trusted networks.
+await page.waitForSelector("#vpn-guard");
+await page.selectOption("#vpn-split-mode", "exclude");
+await page.waitForSelector("#vpn-cidr-input");
+await page.fill("#vpn-cidr-input", "192.168.1.0/24");
+await page.getByText("Add network", { exact: true }).first().click();
+await page.waitForFunction(() => /192\.168\.1\.0\/24/.test(document.querySelector("#vpn-split-cidrs")?.textContent ?? ""));
+const splitTunnel = await readFile(tunnel, "utf8");
+assert.match(splitTunnel, /AllowedIPs = /, "the tunnel still has an AllowedIPs line");
+assert.ok(!/AllowedIPs = 0\.0\.0\.0\/0/.test(splitTunnel), "excluding the LAN replaced the full-tunnel route");
+assert.match(splitTunnel, /::\/0/, "IPv6 is still fully tunnelled");
+await page.check("#vpn-autoconnect");
+await page.waitForSelector("#vpn-ssid-input");
+await page.fill("#vpn-ssid-input", "Home Wi-Fi");
+await page.getByText("Add network", { exact: true }).last().click();
+await page.waitForFunction(() => /Home Wi-Fi/.test(document.querySelector("#vpn-trusted")?.textContent ?? ""));
+assert.equal(JSON.parse(await readFile(join(profile, "settings.json"), "utf8")).vpnTrustedNetworks[0], "Home Wi-Fi");
+step("VPN safety: split tunnelling excludes the LAN from the tunnel; a trusted Wi-Fi network is saved for auto-connect");
+
 await page.click('[data-tab="settings"]');
 
 page.once("dialog", (dialog) => dialog.accept());

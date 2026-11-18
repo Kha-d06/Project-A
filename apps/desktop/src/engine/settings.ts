@@ -47,6 +47,8 @@ export interface DesktopSettings {
   watchSystemChanges: boolean;
   /** Silent mode: no pop-ups or scheduled work until this time (ISO), or null. */
   silentUntil: string | null;
+  /** Linux on-access scanning (fanotify): scan files as they are opened. */
+  onAccessScan: boolean;
 }
 
 export function defaultSettings(downloads: string, protectedFolders: string[] = [], deviceName = "This computer"): DesktopSettings {
@@ -64,6 +66,7 @@ export function defaultSettings(downloads: string, protectedFolders: string[] = 
     ransomwareDecoys: true,
     watchSystemChanges: true,
     silentUntil: null,
+    onAccessScan: false,
     ransomwareWatch: true,
     protectedFolders,
     allowRemote: false,

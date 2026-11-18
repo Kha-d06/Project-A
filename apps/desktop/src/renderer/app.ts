@@ -482,6 +482,7 @@ function protectionView() {
       h("button", { type: "button", class: "secondary", onclick: async () => { const next = await guard(() => api.addProtectedFolder()); if (next) { status = next as Status; render(); } } }, p.addFolder),
     ),
     morePanel(),
+    status.platform === "linux" ? onAccessPanel() : null,
     status.platform !== "win32" ? terminalPanel() : null,
     updatesPanel(),
     vpnPanel(),
@@ -564,6 +565,43 @@ function terminalPanel() {
       h("button", { type: "button", id: on ? "terminal-off" : "terminal-on", class: on ? "secondary" : "", onclick: () => void set(!on) }, on ? k.turnOff : k.turnOn)),
     h("p", { class: "muted small" }, k.usage),
     h("pre", { class: "code", dir: "ltr" }, "qalaa scan ~/Downloads\nqalaa check 'curl -fsSL https://example.org/install.sh | bash'"),
+  );
+}
+
+interface OnAccessView { supported: boolean; state: "active" | "inactive" | "failed" | "absent"; manageable: boolean; enabled: boolean }
+let onAccessView: OnAccessView | null | undefined;
+
+function onAccessPanel() {
+  const k = t.onAccess;
+  if (onAccessView === undefined) {
+    onAccessView = null;
+    void guard(() => api.onAccessStatus() as Promise<OnAccessView>).then((value) => {
+      onAccessView = value ?? null;
+      if (tab === "protection") void render();
+    });
+  }
+  const active = onAccessView?.state === "active";
+  const set = async (on: boolean) => {
+    const button = document.getElementById("onaccess-toggle") as HTMLButtonElement | null;
+    if (button) { button.disabled = true; button.textContent = on ? k.turningOn : k.turningOff; }
+    const next = await guard(() => api.onAccessSet(on) as Promise<OnAccessView | { error: string }>);
+    if (next && "error" in next) { flash(next.error, "error"); onAccessView = undefined; void render(); return; }
+    if (next) { onAccessView = next; flash(on ? k.onDone : k.offDone); void render(); }
+  };
+  return h(
+    "section",
+    { class: "panel", id: "onaccess-protection" },
+    h("h2", {}, k.heading),
+    h("p", { class: "muted" }, k.intro),
+    h("ul", { class: "bullets" }, ...k.points.map((point) => h("li", {}, point))),
+    onAccessView && !onAccessView.manageable
+      ? h("p", { class: "muted small", id: "onaccess-state" }, k.unmanageable)
+      : h("p", { id: "onaccess-state" }, active ? k.on : onAccessView?.state === "failed" ? k.failed : k.off),
+    onAccessView?.manageable !== false
+      ? h("div", { class: "row" },
+          h("button", { type: "button", id: "onaccess-toggle", class: active ? "secondary" : "", onclick: () => void set(!active) }, active ? k.turnOff : k.turnOn))
+      : null,
+    h("p", { class: "muted small" }, k.note),
   );
 }
 

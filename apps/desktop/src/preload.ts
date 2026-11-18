@@ -86,6 +86,8 @@ const api = {
   networkScan: () => ipcRenderer.invoke("network-scan"),
   networkTrust: (key: string, trusted: boolean) => ipcRenderer.invoke("network-trust", key, trusted),
   networkCredentialCheck: (ip: string, consent: boolean) => ipcRenderer.invoke("network-credential-check", ip, consent),
+  onAccessStatus: () => ipcRenderer.invoke("onaccess-status"),
+  onAccessSet: (on: boolean) => ipcRenderer.invoke("onaccess-set", on),
   pathOf: (file: File) => webUtils.getPathForFile(file),
   on: (channel: "scan-result" | "scan-progress" | "ransomware-alert" | "remote-activity" | "device-use" | "backup-progress" | "schedule-ran" | "update-state" | "monitor-sample" | "monitor-event" | "integrity-alert" | "removable-connected" | "removable-scanned" | "signatures-updated" | "startup-added" | "network-progress" | "network-scanned", listener: (payload: unknown) => void) => {
     const wrapped = (_event: unknown, payload: unknown) => listener(payload);

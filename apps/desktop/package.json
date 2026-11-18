@@ -48,7 +48,8 @@
     ],
     "asar": true,
     "asarUnpack": [
-      "dist/cli.js"
+      "dist/cli.js",
+      "dist/onaccessd.py"
     ],
     "publish": [
       {

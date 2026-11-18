@@ -16,6 +16,8 @@ await build({ ...common, entryPoints: [join(root, "src/cli.ts")], outfile: join(
 await build({ ...common, entryPoints: [join(root, "src/preload.ts")], outfile: join(out, "preload.js"), platform: "node", format: "cjs", target: "node22", external: ["electron"] });
 await build({ ...common, entryPoints: [join(root, "src/renderer/app.ts")], outfile: join(out, "renderer/app.js"), platform: "browser", format: "iife", target: "chrome130" });
 for (const file of ["index.html", "styles.css", "icon.png"]) await cp(join(root, "src/renderer", file), join(out, "renderer", file));
+// The on-access helper (Linux fanotify) runs under the system python as root, so it ships as a plain file outside the asar.
+await cp(join(root, "resources/qalaa-onaccessd.py"), join(out, "onaccessd.py"));
 // Fonts ship with the app (it works offline, and its CSP allows only local fonts).
 const FONTS = {
   "instrument-sans": ["latin-wght-normal"],

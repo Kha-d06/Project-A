@@ -651,6 +651,18 @@ assert.match(await page.locator("#network-findings").innerText(), /Critical/, "t
 await shot(page, "desktop-network");
 step("home network: a scan finds the device, flags its open telnet port as critical, lists it by address");
 
+// On-access scanning (Linux fanotify): the helper's logic self-checks, and the Protection panel renders.
+await new Promise((resolve, reject) =>
+  execFile("python3", [join(root, "dist", "onaccessd.py"), "--selftest"], (error, stdout) =>
+    error ? reject(error) : /selftest ok/.test(stdout) ? resolve() : reject(new Error(`unexpected: ${stdout}`)),
+  ),
+);
+await page.click('[data-tab="protection"]');
+await page.waitForSelector("#onaccess-protection");
+await page.waitForFunction(() => /On\.|Off\.|aren't available/.test(document.querySelector("#onaccess-state")?.textContent ?? ""));
+assert.match(await page.locator("#onaccess-protection").innerText(), /On-access scanning/);
+step("on-access scanning: fanotify helper self-check passes; the Protection panel shows its state");
+
 await page.click('[data-tab="settings"]');
 await page.selectOption("#language", "ar");
 await page.waitForSelector("text=الحماية");

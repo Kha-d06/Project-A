@@ -9,7 +9,7 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { readFile, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
-import { homedir, hostname } from "node:os";
+import { homedir, hostname, userInfo } from "node:os";
 import { basename, join } from "node:path";
 
 import { BrowserWindow, Menu, Notification, Tray, app, dialog, ipcMain, nativeImage, nativeTheme, safeStorage, session, shell } from "electron";
@@ -45,6 +45,7 @@ import { scanNetwork } from "./engine/network/scan";
 import { checkHttp, checkLineService } from "./engine/network/credentials";
 import { type Inventory, annotate, loadInventory, reconcile, saveInventory, setTrusted } from "./engine/network/inventory";
 import type { NetworkScan } from "./engine/network/types";
+import * as fanotify from "./engine/fanotify";
 import { posture } from "./engine/posture";
 import { IntegrityMonitor } from "./engine/integrity";
 import { Telemetry } from "./engine/telemetry";
@@ -126,6 +127,9 @@ const decoyFile = () => join(dataDir(), "decoys.json");
 const networkInventoryFile = () => join(dataDir(), "network-devices.json");
 let lastNetworkScan: NetworkScan | null = null;
 let networkScanning = false;
+let onAccess: fanotify.OnAccessServer | null = null;
+const onAccessSocket = () => join(dataDir(), "onaccess.sock");
+const onAccessHelper = () => join(__dirname, "onaccessd.py");
 const disabledStartupFile = () => join(dataDir(), "startup-disabled.json");
 const excluded = (path: string) => isExcluded(path, settings.exclusions);
 const silent = () => isSilent(settings.silentUntil);
@@ -327,6 +331,54 @@ async function exclusive<T>(work: () => Promise<T>): Promise<T> {
 function notify(title: string, body: string) {
   if (silent()) return;
   if (Notification.isSupported()) new Notification({ title, body }).show();
+}
+
+/** Start answering the on-access helper's verdict requests (Linux only). */
+async function startOnAccessServer(): Promise<void> {
+  if (onAccess || !fanotify.onAccessSupported()) return;
+  onAccess = new fanotify.OnAccessServer({
+    socketPath: onAccessSocket(),
+    scan: (path) => scanFile(path, context()),
+    isExcluded: (path) => excluded(path),
+    onBlocked: (path, result) => {
+      logEvent("on-access", "alert", `Blocked opening ${basename(path)}: ${result.findings[0]?.title ?? "known malware"}`);
+      notify("Dangerous file blocked", `Qalaa stopped a program from opening ${basename(path)}.`);
+      void record(result, true);
+    },
+  });
+  await onAccess.start().catch((error) => {
+    logEvent("on-access", "warning", `Could not start the on-access responder: ${String(error)}`);
+    onAccess = null;
+  });
+}
+
+async function stopOnAccessServer(): Promise<void> {
+  await onAccess?.stop().catch(() => {});
+  onAccess = null;
+}
+
+async function onAccessStatus() {
+  const status = await fanotify.onAccessStatus();
+  return { ...status, enabled: settings.onAccessScan };
+}
+
+async function setOnAccess(on: boolean) {
+  if (!fanotify.onAccessSupported()) return { error: "On-access scanning is available on Linux only." };
+  try {
+    if (on) {
+      await startOnAccessServer();
+      await fanotify.enableOnAccess({ bundledHelper: onAccessHelper(), socketPath: onAccessSocket(), markRoots: [homedir()], user: userInfo().username });
+    } else {
+      await fanotify.disableOnAccess();
+      await stopOnAccessServer();
+    }
+    settings = { ...settings, onAccessScan: on };
+    await saveSettings(join(dataDir(), "settings.json"), settings);
+    logEvent("on-access", "info", on ? "On-access scanning enabled" : "On-access scanning disabled");
+    return await onAccessStatus();
+  } catch (error) {
+    return { error: String(error instanceof Error ? error.message : error) };
+  }
 }
 
 /** Scan the home network, fold the result into the saved inventory, alert on new devices. */
@@ -1015,6 +1067,8 @@ function registerIpc() {
     return lastNetworkScan;
   });
   ipcMain.handle("network-credential-check", (_event, ip: unknown, consent: unknown) => networkCredentialCheck(String(ip), Boolean(consent)));
+  ipcMain.handle("onaccess-status", () => onAccessStatus());
+  ipcMain.handle("onaccess-set", (_event, on: unknown) => setOnAccess(Boolean(on)));
   // Posture, integrity, history, reports
   ipcMain.handle("posture", () => postureCheck());
   ipcMain.handle("integrity-state", () => integrity.state);
@@ -1258,6 +1312,8 @@ async function start() {
   dropWatcher = new DropWatcher((path) => void onDroppedFile(path));
   persistenceWatcher = new DropWatcher((path) => void onPersistenceFile(path), 1200);
   applySystemWatch();
+  // On-access scanning: start answering the helper if the user enabled it.
+  if (settings.onAccessScan) void startOnAccessServer();
   setInterval(() => void updateSignatures(), SIGNATURE_REFRESH_MS).unref();
 
   account = await loadAccount(accountFile());

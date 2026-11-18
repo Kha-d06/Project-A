@@ -12,7 +12,6 @@ import http.cookiejar
 import json
 import subprocess
 import sys
-import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -42,7 +41,10 @@ def healthy() -> bool:
 
 
 def run(*args: str, stdin: str | None = None) -> str:
-    return subprocess.run(args, input=stdin, capture_output=True, text=True, check=True).stdout.strip()
+    done = subprocess.run(args, input=stdin, capture_output=True, text=True)
+    if done.returncode != 0:
+        raise SystemExit(f"✗ {' '.join(args)} failed ({done.returncode}): {done.stderr.strip()}")
+    return done.stdout.strip()
 
 
 def wait(what: str, check, seconds: int = 60) -> None:
@@ -74,18 +76,17 @@ config = call("POST", "/vpn/devices", {"name": "CI runner", "public_key": public
 assert config["allowed_ips"] == "0.0.0.0/0, ::/0", config
 print(f"✓ device added at {config['address']}")
 
-with tempfile.NamedTemporaryFile("w", delete=False) as key_file:
-    key_file.write(private_key)
 server_address = config["address"].rsplit(".", 1)[0] + ".1"
 # Only the server's address goes through the tunnel here, so the runner keeps its own network.
 for command in (
     ["ip", "link", "add", "wgci", "type", "wireguard"],
-    ["wg", "set", "wgci", "private-key", key_file.name, "peer", config["server_public_key"],
+    ["wg", "set", "wgci", "private-key", "/dev/stdin", "peer", config["server_public_key"],
      "endpoint", "127.0.0.1:51820", "allowed-ips", f"{server_address}/32", "persistent-keepalive", "5"],
     ["ip", "address", "add", config["address"], "dev", "wgci"],
     ["ip", "link", "set", "wgci", "up"],
 ):
-    run("sudo", *command)
+    # The private key goes in on standard input, never into a file.
+    run("sudo", *command, stdin=private_key if "private-key" in command else None)
 # The server drops everything addressed to itself, but the attempt starts the handshake.
 subprocess.run(["ping", "-c", "3", "-W", "1", server_address], capture_output=True)
 

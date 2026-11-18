@@ -13,6 +13,7 @@ import { clearCache } from "./lib/cache";
 import { initLanguage, language, t } from "./lib/i18n";
 import { WrongMasterPassword, type VaultDoc, unlockVault } from "../../web/src/lib/vault";
 import { fillLoginForm, loginsFor, refusal } from "./lib/autofill";
+import { parseOtpauth, secondsRemaining, totpCode } from "../../web/src/lib/totp";
 import type { Request, Response, Status, VaultStatus } from "./lib/messages";
 import { allowForSession, assessDownload, assessUrl, isAllowedForSession } from "./lib/protection";
 import { SEARCH_ORIGINS, loadSettings, saveSettings, type Settings } from "./lib/settings";
@@ -385,7 +386,7 @@ async function vaultStatus(url: string | undefined, settings: Settings): Promise
   return {
     linked: true,
     unlocked: true,
-    logins: logins.map((item) => ({ id: item.id, title: item.title, username: item.username })),
+    logins: logins.map((item) => ({ id: item.id, title: item.title, username: item.username, hasTotp: Boolean(item.totp && parseOtpauth(item.totp)) })),
     refusal: why === "not_https" || why === "dangerous_site" ? why : null,
   };
 }
@@ -555,6 +556,14 @@ async function handle(request: Request, sender: chrome.runtime.MessageSender): P
       if (!fromPopup(sender)) throw new Error("Not allowed.");
       const item = await loginForPage(request.url, request.itemId, settings);
       return { username: item.username, password: item.password };
+    }
+    case "vault-totp": {
+      // The secret never leaves the background; only the generated code is returned.
+      if (!fromPopup(sender)) throw new Error("Not allowed.");
+      const item = await loginForPage(request.url, request.itemId, settings);
+      const config = item.totp ? parseOtpauth(item.totp) : null;
+      if (!config) throw new Error(t().vault.none);
+      return { code: await totpCode(config), seconds: secondsRemaining(config) };
     }
     case "vault-fill": {
       if (!fromPopup(sender)) throw new Error("Not allowed.");

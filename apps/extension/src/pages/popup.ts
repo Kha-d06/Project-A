@@ -205,12 +205,26 @@ async function renderVault() {
         feedback.replaceChildren(vaultMessage(error instanceof Error ? error.message : String(error), "error"));
       }
     });
+    const actions = [fill, copy];
+    if (login.hasTotp) {
+      const code = el("button", { type: "button", class: "secondary" }, v.copyCode);
+      code.addEventListener("click", async () => {
+        try {
+          const result = await ask<{ code: string; seconds: number }>({ type: "vault-totp", url, itemId: login.id });
+          await navigator.clipboard.writeText(result.code);
+          feedback.replaceChildren(vaultMessage(v.codeCopied(result.code, result.seconds)));
+        } catch (error) {
+          feedback.replaceChildren(vaultMessage(error instanceof Error ? error.message : String(error), "error"));
+        }
+      });
+      actions.push(code);
+    }
     list.append(
       el(
         "li",
         { class: "row spread" },
         el("span", { class: "stack" }, el("strong", {}, login.title), el("span", { class: "faint mono" }, login.username)),
-        el("span", { class: "row" }, fill, copy),
+        el("span", { class: "row" }, ...actions),
       ),
     );
   }

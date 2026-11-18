@@ -18,7 +18,7 @@ export const KDF_ITERATIONS = 600_000;
 export const MIN_MASTER_LENGTH = 12;
 const PAD_TO = 1024;
 
-export type VaultItemKind = "login" | "note";
+export type VaultItemKind = "login" | "note" | "passkey";
 
 export interface VaultItem {
   id: string;
@@ -32,6 +32,16 @@ export interface VaultItem {
   updated: string;
   /** When the password field last changed, for the "old password" check. */
   passwordChanged: string;
+  /**
+   * Two-factor secret for a login: an otpauth:// URI or a bare base32 secret.
+   * Stored only inside the encrypted vault; codes are generated on the device.
+   */
+  totp?: string;
+  /**
+   * A stored passkey (WebAuthn credential), kept so it is backed up and visible
+   * across devices. JSON produced when the user exports/imports a passkey.
+   */
+  passkey?: string;
 }
 
 export interface VaultDoc {

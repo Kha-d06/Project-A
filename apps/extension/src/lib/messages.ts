@@ -25,12 +25,15 @@ export type Request =
   | { type: "vault-unlock"; master: string }
   | { type: "vault-lock" }
   | { type: "vault-fill"; tabId: number; url: string; itemId: string }
-  | { type: "vault-secret"; url: string; itemId: string };
+  | { type: "vault-secret"; url: string; itemId: string }
+  | { type: "vault-totp"; url: string; itemId: string };
 
 export interface VaultLogin {
   id: string;
   title: string;
   username: string;
+  /** True when this login has a two-factor secret, so the popup can offer its code. */
+  hasTotp: boolean;
 }
 
 export interface VaultStatus {

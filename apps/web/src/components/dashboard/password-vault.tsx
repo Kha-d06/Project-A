@@ -14,6 +14,7 @@ import { ApiError, api } from "@/lib/api/client";
 import { useI18n } from "@/lib/i18n/client";
 import { generatePassword } from "@/lib/password";
 import { pwnedCount } from "@/lib/pwned";
+import { parseOtpauth, secondsRemaining, totpCode } from "@/lib/totp";
 import { useSession } from "@/lib/session";
 import {
   MIN_MASTER_LENGTH,
@@ -168,6 +169,39 @@ function UnlockVault({ stored, userId, notice, onUnlocked }: { stored: StoredVau
 
 // --- Item editor -----------------------------------------------------------------
 
+/** A live two-factor code with a countdown, generated on the device. */
+function TotpBadge({ secret, title, onCopy }: { secret: string; title: string; onCopy: (text: string) => void }) {
+  const v = useVaultText();
+  const config = useMemo(() => parseOtpauth(secret), [secret]);
+  const [code, setCode] = useState("••••••");
+  const [left, setLeft] = useState(30);
+  useEffect(() => {
+    if (!config) return;
+    let active = true;
+    const tick = async () => {
+      const next = await totpCode(config);
+      if (active) {
+        setCode(next);
+        setLeft(secondsRemaining(config));
+      }
+    };
+    void tick();
+    const timer = setInterval(() => void tick(), 1000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [config]);
+  if (!config) return null;
+  return (
+    <Button size="sm" variant="secondary" onClick={() => onCopy(code)} aria-label={`${v.copyCode}: ${title}`} title={v.twoFactor}>
+      <KeyRound aria-hidden className="size-4" />
+      <span className="font-mono tabular-nums">{code.replace(/(\d{3})(\d{3})/, "$1 $2")}</span>
+      <span className="ms-1 text-xs text-ink-muted tabular-nums">{left}s</span>
+    </Button>
+  );
+}
+
 function ItemEditor({ item, isNew, onSave, onClose }: { item: VaultItem; isNew: boolean; onSave: (item: VaultItem) => void; onClose: () => void }) {
   const v = useVaultText();
   const [draft, setDraft] = useState<VaultItem>(item);
@@ -220,6 +254,9 @@ function ItemEditor({ item, isNew, onSave, onClose }: { item: VaultItem; isNew: 
               )}
             </Field>
             <StrengthMeter password={draft.password} />
+            <Field label={v.totpLabel} hint={v.totpHint} error={draft.totp && !parseOtpauth(draft.totp) ? v.totpInvalid : undefined}>
+              {(props) => <Input {...props} dir="ltr" autoComplete="off" maxLength={2000} className="font-mono" value={draft.totp ?? ""} onChange={(e) => set({ totp: e.target.value })} />}
+            </Field>
           </>
         )}
         <Field label={v.fields.notes}>{(props) => <Textarea {...props} rows={draft.kind === "note" ? 6 : 3} maxLength={10_000} value={draft.notes} onChange={(e) => set({ notes: e.target.value })} />}</Field>
@@ -445,6 +482,7 @@ function OpenVault({
                         {v.copyPassword}
                       </Button>
                     )}
+                    {item.kind === "login" && item.totp && parseOtpauth(item.totp) && <TotpBadge secret={item.totp} title={item.title} onCopy={copy} />}
                     <Button size="sm" variant="secondary" aria-label={`${revealed === item.id ? v.hide : v.show}: ${item.title}`} onClick={() => setRevealed(revealed === item.id ? null : item.id)}>
                       {revealed === item.id ? <EyeOff aria-hidden className="size-4" /> : <Eye aria-hidden className="size-4" />}
                     </Button>

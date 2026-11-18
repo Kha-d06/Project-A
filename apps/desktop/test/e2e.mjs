@@ -177,7 +177,7 @@ await mkdir(join(home, ".local", "bin"), { recursive: true });
 const app = await electron.launch({
   executablePath: require("electron"),
   args: [join(root, "dist", "main.js"), "--no-sandbox"],
-  env: { ...process.env, HOME: home, SENTINEL_DESKTOP_PROFILE: profile, SENTINEL_DESKTOP_HOME: files, QALAA_EXPORT_DIR: exports, QALAA_TEST_REMOVABLE_ROOT: drives },
+  env: { ...process.env, HOME: home, SENTINEL_DESKTOP_PROFILE: profile, SENTINEL_DESKTOP_HOME: files, QALAA_EXPORT_DIR: exports, QALAA_TEST_REMOVABLE_ROOT: drives, XDG_CONFIG_HOME: join(home, ".config"), XDG_CACHE_HOME: join(home, ".cache"), XDG_DATA_HOME: join(home, ".local", "share") },
 });
 app.process().stderr?.on("data", (chunk) => { if (process.env.E2E_DEBUG) process.stderr.write(`[app] ${chunk}`); });
 const page = await app.firstWindow();

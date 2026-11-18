@@ -91,8 +91,10 @@ const api = {
   networkCredentialCheck: (ip: string, consent: boolean) => ipcRenderer.invoke("network-credential-check", ip, consent),
   onAccessStatus: () => ipcRenderer.invoke("onaccess-status"),
   onAccessSet: (on: boolean) => ipcRenderer.invoke("onaccess-set", on),
+  ransomwareHalted: () => ipcRenderer.invoke("ransomware-halted"),
+  ransomwareResolve: (pid: number, action: "resume" | "kill") => ipcRenderer.invoke("ransomware-resolve", pid, action),
   pathOf: (file: File) => webUtils.getPathForFile(file),
-  on: (channel: "scan-result" | "scan-progress" | "ransomware-alert" | "remote-activity" | "device-use" | "backup-progress" | "schedule-ran" | "update-state" | "monitor-sample" | "monitor-event" | "integrity-alert" | "removable-connected" | "removable-scanned" | "signatures-updated" | "startup-added" | "network-progress" | "network-scanned", listener: (payload: unknown) => void) => {
+  on: (channel: "scan-result" | "scan-progress" | "ransomware-alert" | "remote-activity" | "device-use" | "backup-progress" | "schedule-ran" | "update-state" | "monitor-sample" | "monitor-event" | "integrity-alert" | "removable-connected" | "removable-scanned" | "signatures-updated" | "startup-added" | "network-progress" | "network-scanned" | "ransomware-halt", listener: (payload: unknown) => void) => {
     const wrapped = (_event: unknown, payload: unknown) => listener(payload);
     ipcRenderer.on(channel, wrapped);
     return () => ipcRenderer.removeListener(channel, wrapped);

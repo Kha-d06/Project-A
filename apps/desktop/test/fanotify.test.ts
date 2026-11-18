@@ -128,6 +128,24 @@ describe("OnAccessServer round trip", () => {
     expect(blocked).toBe("/home/a/evil");
   });
 
+  it("denies and signals a halt when the behaviour hook trips", async () => {
+    dir = await mkdtemp(join(tmpdir(), "qalaa-fan-"));
+    const socketPath = join(dir, "s.sock");
+    let halted: number | null = null;
+    server = new OnAccessServer({
+      socketPath,
+      scan: async () => result("no_known_threat"),
+      behaviour: { feed: (pid) => (pid === 666 ? { reason: "changed 40 files", files: 40 } : null) },
+      onHalt: (pid) => { halted = pid; },
+    });
+    await server.start();
+    const reply = await ask(socketPath, '{"id":1,"path":"/home/a/doc","pid":666}');
+    expect(JSON.parse(reply)).toMatchObject({ id: 1, verdict: "deny", halt: true });
+    expect(halted).toBe(666);
+    // A different process is unaffected.
+    expect(JSON.parse(await ask(socketPath, '{"id":2,"path":"/home/a/doc","pid":5}'))).toMatchObject({ verdict: "allow" });
+  });
+
   it("fails open when the scan errors", async () => {
     dir = await mkdtemp(join(tmpdir(), "qalaa-fan-"));
     const socketPath = join(dir, "s.sock");

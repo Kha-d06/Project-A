@@ -22,12 +22,16 @@ import type { ScanResult } from "./types";
 export interface VerdictRequest {
   id: number;
   path: string;
+  /** PID that is opening the file, when the helper could resolve it. */
+  pid?: number;
 }
 
 export interface VerdictResponse {
   id: number;
   verdict: "allow" | "deny";
   reason: string;
+  /** When true, the helper freezes (SIGSTOP) the process behind this open. */
+  halt?: boolean;
 }
 
 /** Decide what to do with a scanned file. Only known-malicious opens are blocked. */
@@ -40,7 +44,7 @@ export function parseRequest(line: string): VerdictRequest | null {
   try {
     const value = JSON.parse(line) as Partial<VerdictRequest>;
     if (typeof value.id === "number" && typeof value.path === "string" && value.path.startsWith("/")) {
-      return { id: value.id, path: value.path };
+      return { id: value.id, path: value.path, pid: typeof value.pid === "number" ? value.pid : undefined };
     }
   } catch {
     // malformed line
@@ -50,6 +54,12 @@ export function parseRequest(line: string): VerdictRequest | null {
 
 export function encodeResponse(response: VerdictResponse): string {
   return `${JSON.stringify(response)}\n`;
+}
+
+/** Decides a behavioural response from a per-open event, for the server to use. */
+export interface BehaviourHook {
+  /** Returns a halt reason when this open completes a ransomware pattern. */
+  feed(pid: number, path: string): { reason: string; files: number } | null;
 }
 
 /** systemctl is-active output → a simple state. */
@@ -91,6 +101,10 @@ export interface OnAccessOptions {
   isExcluded?: (path: string) => boolean;
   /** Called when an open is blocked, for logging and notifications. */
   onBlocked?: (path: string, result: ScanResult) => void;
+  /** Behavioural ransomware detector, fed every open; trips to freeze a process. */
+  behaviour?: BehaviourHook;
+  /** Called when a process is frozen for ransomware behaviour. */
+  onHalt?: (pid: number, reason: string, files: number) => void;
   /** Milliseconds to spend on one verdict before failing open. */
   timeoutMs?: number;
 }
@@ -131,13 +145,22 @@ export class OnAccessServer {
   }
 
   private async handle(request: VerdictRequest, socket: NodeJS.WritableStream): Promise<void> {
-    const reply = (verdict: VerdictResponse["verdict"], reason: string) => {
+    const reply = (verdict: VerdictResponse["verdict"], reason: string, halt = false) => {
       try {
-        socket.write(encodeResponse({ id: request.id, verdict, reason }));
+        socket.write(encodeResponse({ id: request.id, verdict, reason, ...(halt ? { halt: true } : {}) }));
       } catch {
         // the helper went away; nothing to do
       }
     };
+    // Behavioural ransomware check runs on every open, regardless of the file verdict.
+    if (this.options.behaviour && typeof request.pid === "number" && request.pid > 0) {
+      const halt = this.options.behaviour.feed(request.pid, request.path);
+      if (halt) {
+        this.options.onHalt?.(request.pid, halt.reason, halt.files);
+        reply("deny", "ransomware", true);
+        return;
+      }
+    }
     if (this.options.isExcluded?.(request.path)) {
       reply("allow", "excluded");
       return;

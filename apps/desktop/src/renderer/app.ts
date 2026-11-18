@@ -423,11 +423,41 @@ function updatesPanel() {
   );
 }
 
+interface HaltedProc { pid: number; reason: string; files: number; at: string }
+let haltedProcs: HaltedProc[] = [];
+
+function ransomwarePanel() {
+  const k = t.ransomware;
+  if (!haltedProcs.length) return null;
+  return h(
+    "section",
+    { class: "panel danger", id: "ransomware-frozen" },
+    h("h2", {}, k.frozen),
+    ...haltedProcs.map((proc) =>
+      h("div", { class: "item risky" },
+        h("p", {}, k.frozenBody(proc.reason)),
+        h("div", { class: "row spread" },
+          h("code", { dir: "ltr" }, k.pid(proc.pid)),
+          h("span", { class: "row" },
+            h("button", { type: "button", class: "secondary", onclick: () => void resolveHalted(proc.pid, "resume") }, k.release),
+            h("button", { type: "button", class: "danger", onclick: () => void resolveHalted(proc.pid, "kill") }, k.remove))))),
+  );
+}
+
+async function resolveHalted(pid: number, action: "resume" | "kill") {
+  const result = await guard(() => api.ransomwareResolve(pid, action) as Promise<{ ok?: boolean; error?: string }>);
+  if (result?.error) { flash(result.error, "error"); return; }
+  haltedProcs = haltedProcs.filter((p) => p.pid !== pid);
+  void render();
+}
+
 function protectionView() {
   const s = status.settings;
   const p = t.protection;
   const alert = ransomwareAlert ?? status.ransomwareAlert;
+  if (status.platform === "linux" && !haltedProcs.length) void api.ransomwareHalted().then((list) => { const next = list as HaltedProc[]; if (next.length) { haltedProcs = next; if (tab === "protection") void render(); } });
   return [
+    ransomwarePanel(),
     h("h1", {}, p.heading),
     alert
       ? h(
@@ -2202,6 +2232,12 @@ api.on("network-progress", (payload) => {
 api.on("network-scanned", (payload) => {
   networkScan = payload as NetworkScanView;
   if (tab === "network") void render();
+});
+api.on("ransomware-halt", (payload) => {
+  const proc = payload as HaltedProc;
+  if (!haltedProcs.some((p) => p.pid === proc.pid)) haltedProcs = [...haltedProcs, proc];
+  tab = "protection";
+  void render();
 });
 
 api.on("scan-progress", (payload) => {

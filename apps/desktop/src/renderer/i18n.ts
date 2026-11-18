@@ -188,6 +188,13 @@ const en = {
     offDone: "Terminal protection is off.",
     usage: "It also adds the qalaa command:",
   },
+  ransomware: {
+    frozen: "Ransomware stopped",
+    frozenBody: (reason: string) => `Qalaa froze a program that was changing your files (${reason}). Release it only if you are sure it is safe.`,
+    pid: (pid: number) => `Process ${pid}`,
+    release: "Release",
+    remove: "Remove it",
+  },
   onAccess: {
     heading: "On-access scanning",
     intro: "Scans each file the moment it is opened and stops a known-malicious one from running, using the Linux fanotify interface (no kernel driver).",
@@ -737,6 +744,13 @@ const ar: Dict = {
     onDone: "حماية الطرفية مفعّلة. افتح طرفية جديدة لاستخدامها.",
     offDone: "حماية الطرفية متوقفة.",
     usage: "وتضيف أيضًا الأمر qalaa:",
+  },
+  ransomware: {
+    frozen: "تم إيقاف برنامج فدية",
+    frozenBody: (reason: string) => `جمّدت قلعة برنامجًا كان يغيّر ملفاتك (${reason}). لا تُطلقه إلا إذا كنت متأكدًا من أمانه.`,
+    pid: (pid: number) => `العملية ${pid}`,
+    release: "إطلاق",
+    remove: "إزالته",
   },
   onAccess: {
     heading: "الفحص عند الوصول",

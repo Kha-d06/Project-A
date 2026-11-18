@@ -95,13 +95,13 @@ class VerdictCache:
         self._store[(path, mtime)] = (allow, now)
 
 
-def ask_qalaa(sock_path: str, path: str, request_id: int, timeout: float = 4.0) -> bool:
-    """Ask the Qalaa app for a verdict. Returns True to allow. Fails open."""
+def ask_qalaa(sock_path: str, path: str, request_id: int, pid: int, timeout: float = 4.0) -> tuple[bool, bool]:
+    """Ask the Qalaa app for a verdict. Returns (allow, halt). Fails open."""
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
             client.settimeout(timeout)
             client.connect(sock_path)
-            client.sendall((f'{{"id":{request_id},"path":{_json_str(path)}}}\n').encode("utf-8"))
+            client.sendall((f'{{"id":{request_id},"path":{_json_str(path)},"pid":{pid}}}\n').encode("utf-8"))
             data = b""
             while b"\n" not in data:
                 chunk = client.recv(4096)
@@ -109,9 +109,11 @@ def ask_qalaa(sock_path: str, path: str, request_id: int, timeout: float = 4.0) 
                     break
                 data += chunk
             line = data.split(b"\n", 1)[0].decode("utf-8", "replace")
-            return '"verdict":"deny"' not in line  # anything but an explicit deny allows
+            allow = '"verdict":"deny"' not in line  # anything but an explicit deny allows
+            halt = '"halt":true' in line.replace(" ", "")
+            return allow, halt
     except (OSError, socket.timeout):
-        return True  # Qalaa not reachable: never block
+        return True, False  # Qalaa not reachable: never block
 
 
 def _json_str(value: str) -> str:
@@ -169,10 +171,19 @@ def run(socket_path: str, user: str, marks: list[str]) -> int:
                 except OSError:
                     mtime = 0
                 allow = cache.get(path, mtime)
+                halt = False
                 if allow is None:
-                    allow = ask_qalaa(socket_path, path, event.fd)
-                    cache.put(path, mtime, allow)
+                    allow, halt = ask_qalaa(socket_path, path, event.fd, event.pid)
+                    # A halt decision is never cached: it is specific to this process.
+                    if not halt:
+                        cache.put(path, mtime, allow)
                 os.write(fan_fd, response_bytes(event.fd, allow))
+                if halt and event.pid > 0:
+                    # Freeze the offending process so it cannot encrypt more files.
+                    try:
+                        os.kill(event.pid, __import__("signal").SIGSTOP)
+                    except OSError:
+                        pass
             finally:
                 try:
                     os.close(event.fd)

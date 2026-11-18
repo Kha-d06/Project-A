@@ -48,6 +48,7 @@ import { type Inventory, annotate, loadInventory, reconcile, saveInventory, setT
 import type { NetworkScan } from "./engine/network/types";
 import * as fanotify from "./engine/fanotify";
 import * as vpnGuard from "./engine/vpn-guard";
+import { RansomwareBurst, underAny } from "./engine/behaviour";
 import { posture } from "./engine/posture";
 import { IntegrityMonitor } from "./engine/integrity";
 import { Telemetry } from "./engine/telemetry";
@@ -130,6 +131,9 @@ const networkInventoryFile = () => join(dataDir(), "network-devices.json");
 let lastNetworkScan: NetworkScan | null = null;
 let networkScanning = false;
 let onAccess: fanotify.OnAccessServer | null = null;
+let ransomwareBurst: RansomwareBurst | null = null;
+/** Processes frozen for ransomware behaviour, awaiting a resume/kill decision. */
+const haltedPids = new Map<number, { reason: string; files: number; at: string }>();
 const onAccessSocket = () => join(dataDir(), "onaccess.sock");
 const onAccessHelper = () => join(__dirname, "onaccessd.py");
 const disabledStartupFile = () => join(dataDir(), "startup-disabled.json");
@@ -338,6 +342,9 @@ function notify(title: string, body: string) {
 /** Start answering the on-access helper's verdict requests (Linux only). */
 async function startOnAccessServer(): Promise<void> {
   if (onAccess || !fanotify.onAccessSupported()) return;
+  // Behavioural ransomware blocking watches opens inside the protected folders.
+  const roots = () => settings.protectedFolders;
+  ransomwareBurst = new RansomwareBurst();
   onAccess = new fanotify.OnAccessServer({
     socketPath: onAccessSocket(),
     scan: (path) => scanFile(path, context()),
@@ -346,6 +353,15 @@ async function startOnAccessServer(): Promise<void> {
       logEvent("on-access", "alert", `Blocked opening ${basename(path)}: ${result.findings[0]?.title ?? "known malware"}`);
       notify("Dangerous file blocked", `Qalaa stopped a program from opening ${basename(path)}.`);
       void record(result, true);
+    },
+    behaviour: {
+      feed: (pid, path) => (underAny(path, roots()) ? ransomwareBurst!.feed({ pid, path, at: Date.now() }) : null),
+    },
+    onHalt: (pid, reason, files) => {
+      haltedPids.set(pid, { reason, files, at: new Date().toISOString() });
+      logEvent("ransomware", "alert", `Froze process ${pid}: ${reason}`);
+      notify("Ransomware stopped", `Qalaa froze a program that was changing your files (${reason}). Open Qalaa to remove or release it.`);
+      send("ransomware-halt", { pid, reason, files, at: new Date().toISOString() });
     },
   });
   await onAccess.start().catch((error) => {
@@ -357,6 +373,21 @@ async function startOnAccessServer(): Promise<void> {
 async function stopOnAccessServer(): Promise<void> {
   await onAccess?.stop().catch(() => {});
   onAccess = null;
+}
+
+/** Release (SIGCONT) or remove (SIGKILL) a process frozen for ransomware behaviour. */
+async function resolveHaltedProcess(pid: number, action: "resume" | "kill") {
+  if (!haltedPids.has(pid)) return { error: "That process is no longer frozen." };
+  try {
+    // The root helper froze it, so changing its state needs root too.
+    await pkexec(`kill -${action === "kill" ? "KILL" : "CONT"} ${pid}`);
+    haltedPids.delete(pid);
+    ransomwareBurst?.clear(pid);
+    logEvent("ransomware", "info", `${action === "kill" ? "Removed" : "Released"} frozen process ${pid}`);
+    return { ok: true };
+  } catch (error) {
+    return { error: String(error instanceof Error ? error.message : error) };
+  }
 }
 
 async function onAccessStatus() {
@@ -1177,6 +1208,8 @@ function registerIpc() {
   ipcMain.handle("network-credential-check", (_event, ip: unknown, consent: unknown) => networkCredentialCheck(String(ip), Boolean(consent)));
   ipcMain.handle("onaccess-status", () => onAccessStatus());
   ipcMain.handle("onaccess-set", (_event, on: unknown) => setOnAccess(Boolean(on)));
+  ipcMain.handle("ransomware-halted", () => [...haltedPids.entries()].map(([pid, info]) => ({ pid, ...info })));
+  ipcMain.handle("ransomware-resolve", (_event, pid: unknown, action: unknown) => resolveHaltedProcess(Number(pid), action === "kill" ? "kill" : "resume"));
   // Posture, integrity, history, reports
   ipcMain.handle("posture", () => postureCheck());
   ipcMain.handle("integrity-state", () => integrity.state);

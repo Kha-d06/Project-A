@@ -156,8 +156,13 @@ class Assistant {
     document.documentElement.append(host);
   }
 
-  async load() {
+  async load(attempt = 0) {
     this.summary = await send<PageSummary>({ type: "assistant-summary", url: location.href, resourceHosts: resourceHosts() });
+    // No answer yet (the extension's worker was starting, or the check failed): try again a few times.
+    if (!this.summary?.result && attempt < 3) {
+      window.setTimeout(() => void this.load(attempt + 1), 2000 * (attempt + 1));
+      if (!this.summary) return;
+    }
     const verdict = this.summary?.result?.verdict;
     if (verdict) this.dot.style.background = TONE[verdict] ?? "#8d96b3";
     if (this.card) this.renderCard();

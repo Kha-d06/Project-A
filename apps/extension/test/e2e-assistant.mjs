@@ -82,9 +82,9 @@ const shop = await context.newPage();
 await shop.goto("https://paypa1-login.example.com/");
 const bubble = shop.locator("#sentinel-assistant-root .bubble");
 // On a slow machine the page can load before the new setting reaches it: reload once.
-await bubble.waitFor({ timeout: 10000 }).catch(async () => {
-  await shop.reload();
-  await bubble.waitFor({ timeout: 15000 });
+await bubble.waitFor({ timeout: 20000 }).catch(async (error) => {
+  console.error("No assistant bubble. Hosts the mock server was asked about:", seen.checks);
+  throw error;
 });
 assert.match(await bubble.innerText(), /Suspicious/);
 await shot(shop, "ext-assistant-warning");

@@ -9,7 +9,9 @@
  */
 import { execFile } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { readFile, readdir, realpath, rename, stat, writeFile } from "node:fs/promises";
+import { type FSWatcher, watch } from "node:fs";
+import { lstat, open, readFile, readdir, realpath, rename, stat, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { isAbsolute, join, normalize } from "node:path";
 
 import type { Finding } from "./types";
@@ -249,3 +251,105 @@ export function silentUntilFrom(hours: number, now = Date.now()): string | null 
   return new Date(now + Math.min(hours, 24) * 3_600_000).toISOString();
 }
 
+
+// --- Watching places malware drops programs and makes itself start (Linux, macOS) --------
+
+/** Folders where downloaded tools and droppers put programs to run. */
+export function executableDropFolders(platform: NodeJS.Platform = process.platform, home = homedir()): string[] {
+  const common = [join(home, ".local", "bin"), join(home, "bin")];
+  if (platform === "linux") return ["/tmp", "/var/tmp", "/dev/shm", ...common];
+  if (platform === "darwin") return ["/tmp", "/private/var/tmp", ...common];
+  return [];
+}
+
+/** Folders where programs register themselves to start automatically. */
+export function persistenceFolders(platform: NodeJS.Platform = process.platform, home = homedir()): string[] {
+  if (platform === "linux") return [join(home, ".config", "autostart"), join(home, ".config", "systemd", "user"), join(home, ".local", "share", "systemd", "user")];
+  if (platform === "darwin") return [join(home, "Library", "LaunchAgents")];
+  return [];
+}
+
+/** A program file: executable bit set, or a Linux/macOS program, or a script with #!. */
+export async function looksRunnable(path: string): Promise<boolean> {
+  try {
+    const info = await lstat(path);
+    if (!info.isFile() || info.size === 0) return false;
+    if ((info.mode & 0o111) !== 0) return true;
+    const handle = await open(path, "r");
+    try {
+      const head = Buffer.alloc(4);
+      await handle.read(head, 0, 4, 0);
+      return head.readUInt32BE(0) === 0x7f454c46 || [0xfeedface, 0xfeedfacf, 0xcefaedfe, 0xcffaedfe].includes(head.readUInt32BE(0)) || head.subarray(0, 2).toString("latin1") === "#!";
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    return false;
+  }
+}
+
+/** Watches folders (not recursively) and reports each new or changed file once it settles. */
+export class DropWatcher {
+  private watchers: FSWatcher[] = [];
+  private pending = new Map<string, NodeJS.Timeout>();
+  private missing: string[] = [];
+  private retry: NodeJS.Timeout | null = null;
+
+  constructor(
+    private readonly onFile: (path: string) => void,
+    private readonly settleMs = 800,
+    private readonly retryMs = 30_000,
+  ) {}
+
+  set(folders: string[]): void {
+    this.close();
+    this.missing = [];
+    for (const folder of folders) this.add(folder);
+    // Folders such as ~/.local/bin are often created later (by an installer): watch them once they exist.
+    if (this.missing.length) {
+      this.retry = setInterval(() => {
+        const waiting = this.missing;
+        this.missing = [];
+        for (const folder of waiting) this.add(folder);
+        if (!this.missing.length && this.retry) {
+          clearInterval(this.retry);
+          this.retry = null;
+        }
+      }, this.retryMs);
+      this.retry.unref();
+    }
+  }
+
+  private add(folder: string): void {
+    {
+      try {
+        const watcher = watch(folder, { persistent: false }, (_event, name) => {
+          if (!name) return;
+          const path = join(folder, String(name));
+          const previous = this.pending.get(path);
+          if (previous) clearTimeout(previous);
+          this.pending.set(
+            path,
+            setTimeout(() => {
+              this.pending.delete(path);
+              this.onFile(path);
+            }, this.settleMs),
+          );
+        });
+        watcher.on("error", () => watcher.close());
+        this.watchers.push(watcher);
+      } catch {
+        this.missing.push(folder); // not there (yet)
+      }
+    }
+  }
+
+  close(): void {
+    for (const watcher of this.watchers) watcher.close();
+    this.watchers = [];
+    for (const timer of this.pending.values()) clearTimeout(timer);
+    this.pending.clear();
+    if (this.retry) clearInterval(this.retry);
+    this.retry = null;
+  }
+}

@@ -34,6 +34,16 @@ Verdicts use the same words as the website: **Known malicious**, **Suspicious**,
   - Hidden **decoy files** in protected folders raise the ransomware alarm the moment one is touched, and are checked again at start in case something changed them while the app was closed.
   - **Silent mode** (1–24 hours): no pop-ups and no scheduled scans or backups. Threats are still quarantined.
   - **Exclusions**: trusted files and folders, chosen in a system dialog, are never scanned.
+- **Terminal protection** (Linux and macOS; Protection screen → Terminal protection, or `qalaa terminal on`). Commands typed in bash and zsh are checked before they run:
+  - scripts piped from the internet (`curl … | sh`, `bash <(curl …)`, `eval "$(wget -qO- …)"`) are downloaded and scanned first; HTTPS scripts from named sites without warning signs run with a one-line note;
+  - local scripts and programs about to run are scanned;
+  - pasted commands with hidden or look-alike characters, decoded hidden commands, reverse shells, disk wipes, and SSH keys or cron jobs fed from the internet are stopped (type "yes" to run anyway);
+  - switching off the firewall or SELinux/AppArmor, wiping history, and pip/npm package names one letter away from popular ones get a warning;
+  - files saved with `curl -o`/`-O` or `wget` are scanned when the command finishes.
+
+  It also adds `qalaa scan <path>` and `qalaa check "<command>"`. The command runs on the app's own runtime, so there is nothing else to install.
+- **System watch** (Linux and macOS): programs that appear in `/tmp`, `/var/tmp`, `/dev/shm`, `~/.local/bin` and `~/bin` are scanned at once (known threats are quarantined), and new autostart entries, systemd user units and launch agents are reported as they appear.
+- **Linux hardening**: the security posture includes kernel settings (ptrace restriction, pointer hiding, address randomisation, protected links, `dmesg` and BPF restrictions, each with the line to fix it). The deep check compares core programs (`ls`, `ps`, `ss`, `ssh`, `sudo`, `login`…) with their packages' checksums, using `dpkg --verify` or `rpm -V`.
 - **Tools** screen:
   - **Startup manager**: switch programs off at startup and back on. It uses Windows' own StartupApproved switch (as Task Manager does), a user override of the Linux autostart entry, `systemctl --user disable`, or parks a macOS launch agent. Entries that need administrator rights are left to the system's tools.
   - **Deep check**: scheduled tasks and cron jobs, WMI event subscriptions, debugger hijacks of accessibility tools, Winlogon shell changes, macOS login hooks, `/etc/ld.so.preload`, and processes or kernel modules hidden from the system's own lists (Linux).

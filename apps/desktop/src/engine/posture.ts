@@ -231,6 +231,30 @@ async function macChecks(): Promise<PostureCheck[]> {
   ];
 }
 
+/** Kernel settings that make attacks harder (values from /proc/sys); null = unreadable. */
+export const KERNEL_HARDENING: { key: string; path: string; ok: (value: number) => boolean; why: string }[] = [
+  { key: "kernel.yama.ptrace_scope", path: "/proc/sys/kernel/yama/ptrace_scope", ok: (v) => v >= 1, why: "any program can read other programs' memory (passwords, keys)" },
+  { key: "kernel.kptr_restrict", path: "/proc/sys/kernel/kptr_restrict", ok: (v) => v >= 1, why: "kernel addresses are visible, which helps exploits" },
+  { key: "kernel.dmesg_restrict", path: "/proc/sys/kernel/dmesg_restrict", ok: (v) => v === 1, why: "any user can read the kernel log" },
+  { key: "kernel.randomize_va_space", path: "/proc/sys/kernel/randomize_va_space", ok: (v) => v === 2, why: "memory layout randomisation is weakened" },
+  { key: "fs.protected_symlinks", path: "/proc/sys/fs/protected_symlinks", ok: (v) => v === 1, why: "symbolic-link tricks in shared folders are possible" },
+  { key: "fs.protected_hardlinks", path: "/proc/sys/fs/protected_hardlinks", ok: (v) => v === 1, why: "hard-link tricks on other users' files are possible" },
+  { key: "kernel.unprivileged_bpf_disabled", path: "/proc/sys/kernel/unprivileged_bpf_disabled", ok: (v) => v >= 1, why: "any user can load BPF programs into the kernel" },
+];
+
+export function kernelHardeningCheck(values: Record<string, number | null>): PostureCheck {
+  const known = KERNEL_HARDENING.filter((k) => values[k.key] !== null && values[k.key] !== undefined);
+  const weak = known.filter((k) => !k.ok(values[k.key]!));
+  return {
+    id: "kernel-hardening",
+    title: "Kernel hardening settings are on",
+    status: !known.length ? "unknown" : weak.length === 0 ? "pass" : weak.length <= 2 ? "warn" : "fail",
+    detail: weak.length ? weak.map((k) => `${k.key} = ${values[k.key]}: ${k.why}`).join("; ") : known.length ? `${known.length} settings checked.` : null,
+    fix: weak.length ? `Add to /etc/sysctl.d/90-hardening.conf and run "sudo sysctl --system": ${weak.map((k) => `${k.key} = ${k.key === "kernel.randomize_va_space" ? 2 : 1}`).join(", ")}` : null,
+    weight: 6,
+  };
+}
+
 async function linuxChecks(): Promise<PostureCheck[]> {
   const checks: PostureCheck[] = [];
   const apparmor = await run("aa-enabled", []);
@@ -261,6 +285,12 @@ async function linuxChecks(): Promise<PostureCheck[]> {
     const info = await stat(dir).catch(() => null);
     if (info?.isDirectory() && (info.mode & 0o002) !== 0 && (info.mode & 0o1000) === 0) writable.push(dir);
   }
+  const sysctl: Record<string, number | null> = {};
+  for (const k of KERNEL_HARDENING) {
+    const raw = await readFile(k.path, "utf8").catch(() => null);
+    sysctl[k.key] = raw === null || !/^\s*-?\d+/.test(raw) ? null : Number.parseInt(raw, 10);
+  }
+  checks.push(kernelHardeningCheck(sysctl));
   checks.push({ id: "path-writable", title: "No world-writable folders in PATH", status: writable.length ? "fail" : "pass", detail: writable.length ? writable.join(", ") : null, fix: "Remove write access for others: chmod o-w <folder>", weight: 6 });
   return checks;
 }

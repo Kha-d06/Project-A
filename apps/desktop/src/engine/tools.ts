@@ -608,6 +608,26 @@ export function parseWinlogon(text: string): { value: string; data: string }[] {
 
 const ACCESSIBILITY = /^(sethc|utilman|osk|magnify|narrator|displayswitch|atbroker)\.exe$/i;
 
+/** Packages whose programs rootkits like to replace (ls, ps, netstat, ssh, sudo, login...). */
+export const CORE_PACKAGES = {
+  dpkg: ["coreutils", "procps", "util-linux", "findutils", "grep", "psmisc", "iproute2", "net-tools", "openssh-client", "openssh-server", "sudo", "login", "passwd", "bash", "libpam-modules", "lsof"],
+  rpm: ["coreutils", "procps-ng", "util-linux", "findutils", "grep", "psmisc", "iproute", "net-tools", "openssh-clients", "openssh-server", "sudo", "shadow-utils", "bash", "pam", "lsof"],
+};
+
+/**
+ * `dpkg --verify` / `rpm -V` output: program files whose content no longer matches
+ * the package (5 = checksum differs). Configuration files ("c") are expected to change.
+ */
+export function parseVerify(text: string): string[] {
+  const changed: string[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const match = /^([.?SM5DLUGTP]{8,9})\s+(?:([cdglr])\s+)?(\/\S.*)$/.exec(line.trim());
+    if (!match || match[2] === "c" || match[1]![2] !== "5") continue;
+    if (/^\/(usr\/)?(s?bin|lib(32|64|x32)?)\//.test(match[3]!)) changed.push(match[3]!);
+  }
+  return changed;
+}
+
 export async function deepCheck(platform: NodeJS.Platform = process.platform, home = homedir()): Promise<{ findings: DeepFinding[]; checked: string[] }> {
   const findings: DeepFinding[] = [];
   const checked: string[] = [];
@@ -618,7 +638,13 @@ export async function deepCheck(platform: NodeJS.Platform = process.platform, ho
   };
 
   if (platform === "linux") {
-    checked.push("Scheduled jobs (cron)", "System services", "Preloaded libraries", "Hidden processes", "Hidden kernel modules");
+    checked.push("Scheduled jobs (cron)", "System services", "Preloaded libraries", "Hidden processes", "Hidden kernel modules", "Core system programs");
+    // Core programs compared with their packages' checksums (rootkits replace ls, ps, ssh...).
+    const dpkgOut = await run("dpkg", ["--verify", ...CORE_PACKAGES.dpkg], 120_000).catch(() => null);
+    const rpmOut = dpkgOut === null ? await run("rpm", ["-V", ...CORE_PACKAGES.rpm], 120_000).catch(() => null) : null;
+    for (const path of parseVerify(dpkgOut ?? rpmOut ?? "")) {
+      findings.push({ area: "Changed system program", item: path, severity: "high", detail: "This program no longer matches the copy its package installed. Rootkits replace programs like this one; reinstall the package and investigate." });
+    }
     const cron: { source: string; command: string }[] = [];
     cron.push(...parseCrontab(await run("crontab", ["-l"]).catch(() => ""), "your crontab"));
     cron.push(...parseCrontab(await readFile("/etc/crontab", "utf8").catch(() => ""), "/etc/crontab", true));

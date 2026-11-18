@@ -54,7 +54,8 @@ import { type DesktopSettings, defaultSettings, loadSettings, sanitizeChanges, s
 import { SignatureStore } from "./engine/signatures";
 import type { ScanResult } from "./engine/types";
 import { isDirectory, walk } from "./engine/walk";
-import { type DecoyRecord, RemovableWatcher, isExcluded, isSilent, plantDecoys, removableMounts, silentUntilFrom, tamperedDecoys } from "./engine/protection";
+import { type DecoyRecord, DropWatcher, RemovableWatcher, executableDropFolders, isExcluded, isSilent, looksRunnable, persistenceFolders, plantDecoys, removableMounts, silentUntilFrom, tamperedDecoys } from "./engine/protection";
+import { parseDesktopEntry, parseLaunchPlist, startupWarnings } from "./engine/security";
 import * as tools from "./engine/tools";
 import { disableTerminal, enableTerminal, terminalStatus } from "./engine/shell-init";
 import { FolderWatcher } from "./engine/watcher";
@@ -110,6 +111,8 @@ let telemetry: Telemetry | null = null;
 let integrity: IntegrityMonitor;
 let lastPosture: Awaited<ReturnType<typeof posture>> | null = null;
 let removable: RemovableWatcher | null = null;
+let dropWatcher: DropWatcher | null = null;
+let persistenceWatcher: DropWatcher | null = null;
 let decoys: DecoyRecord = {};
 let decoyKey = "";
 let disabledStartup: tools.DisabledStartup[] = [];
@@ -343,6 +346,46 @@ async function applyDecoys(force = false) {
   await saveJson(decoyFile(), decoys);
   // Events from writing the decoys arrive shortly; by then the new fingerprints are known.
   ransomware.setDecoys(decoys);
+}
+
+/** A program appeared in a temp or bin folder: scan it; a known threat is quarantined. */
+async function onDroppedFile(path: string) {
+  if (excluded(path) || !(await looksRunnable(path))) return;
+  const result = await scanFile(path, context());
+  if (result.verdict === "no_known_threat" || result.verdict === "not_scanned") return; // clean drops are not listed
+  logEvent("system-watch", result.verdict === "malicious" ? "alert" : "warning", `${result.verdict}: ${path}`);
+  await record(result, true);
+}
+
+/** Something registered itself to start automatically. */
+async function onPersistenceFile(path: string) {
+  let text: string;
+  try {
+    text = await readFile(path, "utf8");
+  } catch {
+    return; // removed
+  }
+  if (text.includes("Switched off by Qalaa Desktop") || /^Hidden=true$/m.test(text)) return; // Qalaa's own change
+  const location = basename(join(path, ".."));
+  let item: { name: string; command: string } | null = null;
+  if (path.endsWith(".desktop")) item = parseDesktopEntry(text, path, location);
+  else if (path.endsWith(".plist")) item = parseLaunchPlist(text, path, location);
+  else if (/\.(service|timer)$/.test(path)) {
+    const command = /^ExecStart=(.*)$/m.exec(text)?.[1];
+    if (command) item = { name: basename(path), command };
+  }
+  if (!item) return;
+  const warnings = startupWarnings(item.command);
+  logEvent("startup", warnings.length ? "alert" : "warning", `New startup entry: ${item.name} (${item.command.slice(0, 200)})`);
+  notify(warnings.length ? `Suspicious startup entry: ${item.name}` : `New startup entry: ${item.name}`, warnings.length ? `${warnings[0]}. Review it in Qalaa Desktop → Tools → Startup manager.` : `It will start with the computer: ${item.command.slice(0, 120)}`);
+  send("startup-added", { name: item.name, command: item.command, warnings });
+  void securityCheck().catch(() => undefined);
+}
+
+function applySystemWatch() {
+  const on = settings.watchSystemChanges && process.platform !== "win32";
+  dropWatcher?.set(on ? executableDropFolders() : []);
+  persistenceWatcher?.set(on ? persistenceFolders() : []);
 }
 
 async function onRemovable(mount: string) {
@@ -668,6 +711,7 @@ function applyWatching() {
   watcher.set(settings.watchEnabled ? settings.watchFolders : []);
   ransomware.set(settings.ransomwareWatch ? settings.protectedFolders : []);
   if (decoyKey) void applyDecoys();
+  applySystemWatch();
   tray?.setToolTip(settings.watchEnabled ? "Qalaa Desktop: watching for new files" : "Qalaa Desktop: watching paused");
 }
 
@@ -1146,6 +1190,9 @@ async function start() {
     testDrives ? async () => (await readdir(testDrives).catch(() => [] as string[])).map((name) => join(testDrives, name)) : () => removableMounts(),
   );
   removable.start(testDrives ? 1000 : 5000);
+  dropWatcher = new DropWatcher((path) => void onDroppedFile(path));
+  persistenceWatcher = new DropWatcher((path) => void onPersistenceFile(path), 1200);
+  applySystemWatch();
   setInterval(() => void updateSignatures(), SIGNATURE_REFRESH_MS).unref();
 
   account = await loadAccount(accountFile());

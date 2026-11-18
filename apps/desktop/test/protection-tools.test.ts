@@ -332,3 +332,75 @@ describe("firewall blocking", () => {
     expect(parseNetshRules(show)).toEqual(["C:\\Apps\\tool.exe"]);
   });
 });
+
+describe("Linux system watch", () => {
+  it("lists the folders malware drops programs into and makes itself start from", async () => {
+    const { executableDropFolders, persistenceFolders } = await import("../src/engine/protection");
+    expect(executableDropFolders("linux", "/home/a")).toEqual(["/tmp", "/var/tmp", "/dev/shm", "/home/a/.local/bin", "/home/a/bin"]);
+    expect(persistenceFolders("linux", "/home/a")).toContain("/home/a/.config/autostart");
+    expect(executableDropFolders("win32", "C:\\Users\\a")).toEqual([]);
+  });
+
+  it("recognises programs by permission or content", async () => {
+    const { looksRunnable } = await import("../src/engine/protection");
+    const dir = await temp();
+    await writeFile(join(dir, "data.txt"), "notes");
+    await writeFile(join(dir, "tool"), "binary", { mode: 0o755 });
+    await writeFile(join(dir, "script"), "#!/bin/sh\necho hi\n");
+    await writeFile(join(dir, "elf"), Buffer.from([0x7f, 0x45, 0x4c, 0x46, 2, 1]));
+    expect(await looksRunnable(join(dir, "data.txt"))).toBe(false);
+    expect(await looksRunnable(join(dir, "tool"))).toBe(true);
+    expect(await looksRunnable(join(dir, "script"))).toBe(true);
+    expect(await looksRunnable(join(dir, "elf"))).toBe(true);
+    expect(await looksRunnable(dir)).toBe(false);
+  });
+
+  it("reports files dropped into a watched folder once they settle", async () => {
+    const { DropWatcher } = await import("../src/engine/protection");
+    const dir = await temp();
+    const seen = vi.fn();
+    const watcher = new DropWatcher(seen, 200);
+    watcher.set([dir]);
+    await writeFile(join(dir, "x.sh"), "#!/bin/sh\n");
+    await writeFile(join(dir, "x.sh"), "#!/bin/sh\necho more\n");
+    await vi.waitFor(() => expect(seen).toHaveBeenCalledWith(join(dir, "x.sh")), { timeout: 3000 });
+    expect(seen).toHaveBeenCalledTimes(1);
+    watcher.close();
+  });
+});
+
+describe("Linux hardening and integrity", () => {
+  it("scores kernel hardening settings", async () => {
+    const { kernelHardeningCheck } = await import("../src/engine/posture");
+    const good = { "kernel.yama.ptrace_scope": 1, "kernel.kptr_restrict": 1, "kernel.dmesg_restrict": 1, "kernel.randomize_va_space": 2, "fs.protected_symlinks": 1, "fs.protected_hardlinks": 1, "kernel.unprivileged_bpf_disabled": 2 };
+    expect(kernelHardeningCheck(good).status).toBe("pass");
+    const weak = kernelHardeningCheck({ ...good, "kernel.yama.ptrace_scope": 0, "kernel.randomize_va_space": 0 });
+    expect(weak.status).toBe("warn");
+    expect(weak.detail).toMatch(/ptrace_scope = 0/);
+    expect(weak.fix).toMatch(/kernel.randomize_va_space = 2/);
+    expect(kernelHardeningCheck({}).status).toBe("unknown");
+  });
+
+  it("finds system programs changed since their package installed them", async () => {
+    const { parseVerify } = await import("../src/engine/tools");
+    const dpkg = "missing     /usr/share/doc/coreutils/NEWS.gz\n??5??????   /usr/bin/ls\n??5?????? c /etc/sudoers\n?????????   /usr/bin/ps\n??5??????   /usr/share/man/man1/ls.1.gz\n";
+    expect(parseVerify(dpkg)).toEqual(["/usr/bin/ls"]);
+    const rpm = "S.5....T.    /usr/bin/netstat\n.M.......  c /etc/ssh/sshd_config\n..5....T.    /usr/lib64/libprocps.so.8\n";
+    expect(parseVerify(rpm)).toEqual(["/usr/bin/netstat", "/usr/lib64/libprocps.so.8"]);
+  });
+});
+
+describe("Linux system watch: late folders", () => {
+  it("starts watching a folder once it is created", async () => {
+    const { DropWatcher } = await import("../src/engine/protection");
+    const dir = join(await temp(), "later", "bin");
+    const seen = vi.fn();
+    const watcher = new DropWatcher(seen, 100, 200);
+    watcher.set([dir]);
+    await mkdir(dir, { recursive: true });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await writeFile(join(dir, "dropper"), "#!/bin/sh\n");
+    await vi.waitFor(() => expect(seen).toHaveBeenCalledWith(join(dir, "dropper")), { timeout: 3000 });
+    watcher.close();
+  });
+});

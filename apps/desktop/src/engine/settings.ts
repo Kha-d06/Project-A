@@ -43,6 +43,8 @@ export interface DesktopSettings {
   scanRemovable: boolean;
   /** Hidden decoy files in protected folders: any change is an early ransomware alarm. */
   ransomwareDecoys: boolean;
+  /** Linux/macOS: scan programs dropped in temp and bin folders; report new startup entries. */
+  watchSystemChanges: boolean;
   /** Silent mode: no pop-ups or scheduled work until this time (ISO), or null. */
   silentUntil: string | null;
 }
@@ -60,6 +62,7 @@ export function defaultSettings(downloads: string, protectedFolders: string[] = 
     exclusions: [],
     scanRemovable: true,
     ransomwareDecoys: true,
+    watchSystemChanges: true,
     silentUntil: null,
     ransomwareWatch: true,
     protectedFolders,
@@ -123,7 +126,7 @@ export function sanitizeChanges(changes: unknown): Partial<DesktopSettings> {
     // At most a day ahead: silent mode must not be left on by accident for weeks.
     out.silentUntil = input.silentUntil === null ? null : new Date(Math.min(Date.parse(input.silentUntil), Date.now() + 24 * 3_600_000)).toISOString();
   }
-  for (const key of ["watchEnabled", "autoQuarantine", "useClamav", "cloudLookup", "ransomwareWatch", "allowRemote", "privacyWatch", "autoUpdate", "scanRemovable", "ransomwareDecoys"] as const) {
+  for (const key of ["watchEnabled", "autoQuarantine", "useClamav", "cloudLookup", "ransomwareWatch", "allowRemote", "privacyWatch", "autoUpdate", "scanRemovable", "ransomwareDecoys", "watchSystemChanges"] as const) {
     if (typeof input[key] === "boolean") out[key] = input[key];
   }
   if (input.language === "auto" || input.language === "en" || input.language === "ar") out.language = input.language;

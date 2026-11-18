@@ -83,7 +83,7 @@ const api = {
   accountLink: (code: string) => ipcRenderer.invoke("account-link", code),
   accountUnlink: () => ipcRenderer.invoke("account-unlink"),
   pathOf: (file: File) => webUtils.getPathForFile(file),
-  on: (channel: "scan-result" | "scan-progress" | "ransomware-alert" | "remote-activity" | "device-use" | "backup-progress" | "schedule-ran" | "update-state" | "monitor-sample" | "monitor-event" | "integrity-alert" | "removable-connected" | "removable-scanned" | "signatures-updated", listener: (payload: unknown) => void) => {
+  on: (channel: "scan-result" | "scan-progress" | "ransomware-alert" | "remote-activity" | "device-use" | "backup-progress" | "schedule-ran" | "update-state" | "monitor-sample" | "monitor-event" | "integrity-alert" | "removable-connected" | "removable-scanned" | "signatures-updated" | "startup-added", listener: (payload: unknown) => void) => {
     const wrapped = (_event: unknown, payload: unknown) => listener(payload);
     ipcRenderer.on(channel, wrapped);
     return () => ipcRenderer.removeListener(channel, wrapped);

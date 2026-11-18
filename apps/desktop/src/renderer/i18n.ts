@@ -36,6 +36,8 @@ const en = {
     credStopped: (why: string) => `Check stopped: ${why}.`,
     severity: { critical: "Critical", high: "High", medium: "Medium", low: "Low", info: "Note" },
     capUnavailable: "Some checks couldn't run on this system.",
+    watch: "Watch my network",
+    watchHint: "Rescan every few hours and warn me about new devices or newly open ports. Nothing leaves this computer.",
   },
   monitor: {
     heading: "System monitor",
@@ -613,6 +615,8 @@ const ar: Dict = {
     credStopped: (why: string) => `توقّف الفحص: ${why}.`,
     severity: { critical: "حرج", high: "مرتفع", medium: "متوسط", low: "منخفض", info: "ملاحظة" },
     capUnavailable: "تعذّر إجراء بعض الفحوصات على هذا النظام.",
+    watch: "راقب شبكتي",
+    watchHint: "أعد الفحص كل بضع ساعات ونبّهني بالأجهزة الجديدة أو المنافذ المفتوحة حديثًا. لا يغادر شيء هذا الحاسوب.",
   },
   monitor: {
     heading: "مراقبة النظام",

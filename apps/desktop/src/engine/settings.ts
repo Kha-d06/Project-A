@@ -49,6 +49,8 @@ export interface DesktopSettings {
   silentUntil: string | null;
   /** Linux on-access scanning (fanotify): scan files as they are opened. */
   onAccessScan: boolean;
+  /** Periodically rescan the home network and alert on new devices or open ports. */
+  networkWatch: boolean;
   /** VPN kill switch: block traffic outside the tunnel (Linux, nftables). */
   vpnKillSwitch: boolean;
   /** Keep the local network reachable while the kill switch is on. */
@@ -78,6 +80,7 @@ export function defaultSettings(downloads: string, protectedFolders: string[] = 
     watchSystemChanges: true,
     silentUntil: null,
     onAccessScan: false,
+    networkWatch: false,
     vpnKillSwitch: false,
     vpnKillSwitchAllowLan: true,
     vpnSplitMode: "full",
@@ -146,7 +149,7 @@ export function sanitizeChanges(changes: unknown): Partial<DesktopSettings> {
     // At most a day ahead: silent mode must not be left on by accident for weeks.
     out.silentUntil = input.silentUntil === null ? null : new Date(Math.min(Date.parse(input.silentUntil), Date.now() + 24 * 3_600_000)).toISOString();
   }
-  for (const key of ["watchEnabled", "autoQuarantine", "useClamav", "cloudLookup", "ransomwareWatch", "allowRemote", "privacyWatch", "autoUpdate", "scanRemovable", "ransomwareDecoys", "watchSystemChanges"] as const) {
+  for (const key of ["watchEnabled", "autoQuarantine", "useClamav", "cloudLookup", "ransomwareWatch", "allowRemote", "privacyWatch", "autoUpdate", "scanRemovable", "ransomwareDecoys", "watchSystemChanges", "networkWatch"] as const) {
     if (typeof input[key] === "boolean") out[key] = input[key];
   }
   if (input.language === "auto" || input.language === "en" || input.language === "ar") out.language = input.language;

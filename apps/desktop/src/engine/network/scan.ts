@@ -143,6 +143,16 @@ export async function scanNetwork(options: ScanOptions = {}): Promise<NetworkSca
   };
 }
 
+/**
+ * Risky findings in the newer scan that weren't in the previous one — for the
+ * scheduled-rescan alert, so the person only hears about changes (a newly open
+ * port, a new forwarding), not the same issues every time.
+ */
+export function newRiskyFindings(previous: NetworkScan | null, next: NetworkScan): NetworkFinding[] {
+  const seen = new Set((previous?.findings ?? []).map((f) => `${f.rule}:${f.device ?? ""}:${f.title}`));
+  return next.findings.filter((f) => (f.severity === "critical" || f.severity === "high") && !seen.has(`${f.rule}:${f.device ?? ""}:${f.title}`));
+}
+
 function sortDevices(a: Device, b: Device): number {
   const rank = (d: Device) => (d.role === "router" ? 0 : d.role === "self" ? 1 : 2);
   if (rank(a) !== rank(b)) return rank(a) - rank(b);

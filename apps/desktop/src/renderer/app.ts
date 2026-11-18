@@ -2115,7 +2115,8 @@ async function networkView(): Promise<(Node | null)[]> {
       Object.values(scan?.capabilities ?? {}).includes("unavailable") ? h("p", { class: "muted small" }, k.capUnavailable) : null,
       h("div", { class: "row" },
         h("button", { type: "button", id: "network-scan", disabled: networkBusy, onclick: () => void start() }, networkBusy ? k.scanning : scan ? k.rescan : k.scan)),
-      networkBusy && networkProgress ? h("p", { class: "muted small", id: "network-progress" }, k.phase(networkProgress.phase, networkProgress.done, networkProgress.total)) : null),
+      networkBusy && networkProgress ? h("p", { class: "muted small", id: "network-progress" }, k.phase(networkProgress.phase, networkProgress.done, networkProgress.total)) : null,
+      toggle(k.watch, status.settings.networkWatch, (value) => change({ networkWatch: value }), k.watchHint, "network-watch")),
     scan
       ? h("section", { class: "panel", id: "network-findings" },
           h("h2", {}, k.findings),

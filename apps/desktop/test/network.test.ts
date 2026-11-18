@@ -229,3 +229,25 @@ describe("credential check limits", () => {
     expect(MAX_TRIES).toBeLessThanOrEqual(5);
   });
 });
+
+describe("scheduled rescan diff", () => {
+  const scanWith = (findings: { severity: "critical" | "high" | "medium"; rule: string; title: string; device: string | null }[]) => ({
+    startedAt: "", finishedAt: "", cidr: "192.168.1.0/24", gateway: "192.168.1.1", interface: "eth0",
+    wifi: null, devices: [], router: null, newDevices: [], capabilities: {},
+    findings: findings.map((f) => ({ ...f, detail: "" })),
+  });
+
+  it("reports only new high/critical findings since the last scan", async () => {
+    const { newRiskyFindings } = await import("../src/engine/network/scan");
+    const prev = scanWith([{ severity: "critical", rule: "net_telnet", title: "cam: telnet", device: "192.168.1.30" }]);
+    const next = scanWith([
+      { severity: "critical", rule: "net_telnet", title: "cam: telnet", device: "192.168.1.30" }, // unchanged
+      { severity: "high", rule: "net_rdp", title: "pc: rdp", device: "192.168.1.40" }, // new
+      { severity: "medium", rule: "net_ssh", title: "x", device: null }, // not high/critical
+    ]);
+    const fresh = newRiskyFindings(prev as never, next as never);
+    expect(fresh.map((f) => f.rule)).toEqual(["net_rdp"]);
+    // With no previous scan, all risky findings are new.
+    expect(newRiskyFindings(null, next as never)).toHaveLength(2);
+  });
+});

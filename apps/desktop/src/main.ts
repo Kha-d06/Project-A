@@ -42,7 +42,7 @@ import * as monitor from "./engine/monitor";
 import * as explorer from "./engine/explorer";
 import { storage } from "./engine/storage";
 import * as nettools from "./engine/nettools";
-import { scanNetwork } from "./engine/network/scan";
+import { newRiskyFindings, scanNetwork } from "./engine/network/scan";
 import { checkHttp, checkLineService } from "./engine/network/credentials";
 import { type Inventory, annotate, loadInventory, reconcile, saveInventory, setTrusted } from "./engine/network/inventory";
 import type { NetworkScan } from "./engine/network/types";
@@ -428,7 +428,11 @@ async function runNetworkScan(): Promise<NetworkScan> {
     await saveInventory(networkInventoryFile(), updated);
     scan.devices = annotate(scan.devices, updated);
     scan.newDevices = newKeys;
+    // New high/critical issues since the last scan, for the scheduled-watch alert.
+    const freshRisky = newRiskyFindings(lastNetworkScan, scan);
+    const hadPrevious = lastNetworkScan !== null;
     lastNetworkScan = scan;
+    if (hadPrevious && freshRisky.length) notify("New risk on your network", freshRisky[0]!.title);
     logEvent("network-scan", scan.findings.some((f) => f.severity === "critical" || f.severity === "high") ? "alert" : "info", `${scan.devices.length} devices, ${scan.findings.length} findings on ${scan.cidr ?? "network"}`);
     // Only alert about genuinely new, untrusted devices — and never while the inventory was empty (first run).
     const freshDevices = newKeys.length && Object.keys(inventory).length > 0;
@@ -1475,6 +1479,10 @@ async function start() {
   if (settings.onAccessScan) void startOnAccessServer();
   // VPN auto-connect: watch Wi-Fi if enabled.
   applyVpnAutoConnect();
+  // Scheduled home-network rescan (every 6 hours) when the person turned it on.
+  setInterval(() => {
+    if (settings.networkWatch && !silent() && !networkScanning) void runNetworkScan().catch(() => {});
+  }, 6 * 60 * 60 * 1000).unref();
   setInterval(() => void updateSignatures(), SIGNATURE_REFRESH_MS).unref();
 
   account = await loadAccount(accountFile());

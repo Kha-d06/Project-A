@@ -41,6 +41,10 @@ import * as monitor from "./engine/monitor";
 import * as explorer from "./engine/explorer";
 import { storage } from "./engine/storage";
 import * as nettools from "./engine/nettools";
+import { scanNetwork } from "./engine/network/scan";
+import { checkHttp, checkLineService } from "./engine/network/credentials";
+import { type Inventory, annotate, loadInventory, reconcile, saveInventory, setTrusted } from "./engine/network/inventory";
+import type { NetworkScan } from "./engine/network/types";
 import { posture } from "./engine/posture";
 import { IntegrityMonitor } from "./engine/integrity";
 import { Telemetry } from "./engine/telemetry";
@@ -119,6 +123,9 @@ let disabledStartup: tools.DisabledStartup[] = [];
 /** Paths the person picked in a system dialog for shredding or firewall blocking, this session only. */
 const pickedPaths = new Set<string>();
 const decoyFile = () => join(dataDir(), "decoys.json");
+const networkInventoryFile = () => join(dataDir(), "network-devices.json");
+let lastNetworkScan: NetworkScan | null = null;
+let networkScanning = false;
 const disabledStartupFile = () => join(dataDir(), "startup-disabled.json");
 const excluded = (path: string) => isExcluded(path, settings.exclusions);
 const silent = () => isSilent(settings.silentUntil);
@@ -320,6 +327,54 @@ async function exclusive<T>(work: () => Promise<T>): Promise<T> {
 function notify(title: string, body: string) {
   if (silent()) return;
   if (Notification.isSupported()) new Notification({ title, body }).show();
+}
+
+/** Scan the home network, fold the result into the saved inventory, alert on new devices. */
+async function runNetworkScan(): Promise<NetworkScan> {
+  if (networkScanning && lastNetworkScan) return lastNetworkScan;
+  networkScanning = true;
+  try {
+    const inventory: Inventory = await loadInventory(networkInventoryFile());
+    // Test hook: scan an explicit host list instead of the live network.
+    const forceHosts = process.env.QALAA_TEST_NETWORK_HOST?.split(",").map((h) => h.trim()).filter(Boolean);
+    const scan = await scanNetwork({ forceHosts: forceHosts?.length ? forceHosts : undefined, onProgress: (done, total, phase) => send("network-progress", { done, total, phase }) });
+    const { inventory: updated, newKeys } = reconcile(inventory, scan.devices);
+    await saveInventory(networkInventoryFile(), updated);
+    scan.devices = annotate(scan.devices, updated);
+    scan.newDevices = newKeys;
+    lastNetworkScan = scan;
+    logEvent("network-scan", scan.findings.some((f) => f.severity === "critical" || f.severity === "high") ? "alert" : "info", `${scan.devices.length} devices, ${scan.findings.length} findings on ${scan.cidr ?? "network"}`);
+    // Only alert about genuinely new, untrusted devices — and never while the inventory was empty (first run).
+    const freshDevices = newKeys.length && Object.keys(inventory).length > 0;
+    if (freshDevices) notify("New device on your network", `${newKeys.length} device(s) joined ${scan.wifi?.ssid ?? "your network"}. Open Qalaa to review them.`);
+    send("network-scanned", scan);
+    return scan;
+  } finally {
+    networkScanning = false;
+  }
+}
+
+/**
+ * The opt-in, per-device default-password check. Requires explicit consent each
+ * time. Tries HTTP admin first, then Telnet/FTP if those ports are open. Results
+ * are returned, never stored.
+ */
+async function networkCredentialCheck(ip: string, consent: boolean) {
+  if (!consent) return { refused: "Consent is required for the default-password check." };
+  const device = lastNetworkScan?.devices.find((d) => d.ip === ip);
+  if (!device) return { refused: "Run a network scan first, then check a device from the list." };
+  const results = [];
+  if (device.services.some((s) => s.port === 80 || s.port === 8080)) {
+    results.push(await checkHttp(ip, device.services.some((s) => s.port === 80) ? 80 : 8080));
+  }
+  if (device.services.some((s) => s.port === 23 || s.port === 2323)) {
+    results.push(await checkLineService(ip, device.services.some((s) => s.port === 23) ? 23 : 2323, "telnet"));
+  }
+  if (device.services.some((s) => s.port === 21)) {
+    results.push(await checkLineService(ip, 21, "ftp"));
+  }
+  if (!results.length) return { refused: "This device has no login service (HTTP, Telnet or FTP) to check." };
+  return { results };
 }
 
 async function loadJson<T>(file: string, fallback: T): Promise<T> {
@@ -950,6 +1005,16 @@ function registerIpc() {
   ipcMain.handle("storage", () => storage());
   ipcMain.handle("net-lookup", (_event, query: unknown) => nettools.lookup(String(query).slice(0, 300)));
   ipcMain.handle("net-interfaces", () => nettools.interfaces());
+  ipcMain.handle("network-status", () => lastNetworkScan);
+  ipcMain.handle("network-scan", () => runNetworkScan());
+  ipcMain.handle("network-trust", async (_event, key: unknown, trusted: unknown) => {
+    const inventory = await loadInventory(networkInventoryFile());
+    const next = setTrusted(inventory, String(key), Boolean(trusted));
+    await saveInventory(networkInventoryFile(), next);
+    if (lastNetworkScan) lastNetworkScan = { ...lastNetworkScan, devices: annotate(lastNetworkScan.devices, next) };
+    return lastNetworkScan;
+  });
+  ipcMain.handle("network-credential-check", (_event, ip: unknown, consent: unknown) => networkCredentialCheck(String(ip), Boolean(consent)));
   // Posture, integrity, history, reports
   ipcMain.handle("posture", () => postureCheck());
   ipcMain.handle("integrity-state", () => integrity.state);

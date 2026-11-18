@@ -82,8 +82,12 @@ const api = {
   backupOpen: (mode: "verify" | "restore", password: string) => ipcRenderer.invoke("backup-open", mode, password),
   accountLink: (code: string) => ipcRenderer.invoke("account-link", code),
   accountUnlink: () => ipcRenderer.invoke("account-unlink"),
+  networkStatus: () => ipcRenderer.invoke("network-status"),
+  networkScan: () => ipcRenderer.invoke("network-scan"),
+  networkTrust: (key: string, trusted: boolean) => ipcRenderer.invoke("network-trust", key, trusted),
+  networkCredentialCheck: (ip: string, consent: boolean) => ipcRenderer.invoke("network-credential-check", ip, consent),
   pathOf: (file: File) => webUtils.getPathForFile(file),
-  on: (channel: "scan-result" | "scan-progress" | "ransomware-alert" | "remote-activity" | "device-use" | "backup-progress" | "schedule-ran" | "update-state" | "monitor-sample" | "monitor-event" | "integrity-alert" | "removable-connected" | "removable-scanned" | "signatures-updated" | "startup-added", listener: (payload: unknown) => void) => {
+  on: (channel: "scan-result" | "scan-progress" | "ransomware-alert" | "remote-activity" | "device-use" | "backup-progress" | "schedule-ran" | "update-state" | "monitor-sample" | "monitor-event" | "integrity-alert" | "removable-connected" | "removable-scanned" | "signatures-updated" | "startup-added" | "network-progress" | "network-scanned", listener: (payload: unknown) => void) => {
     const wrapped = (_event: unknown, payload: unknown) => listener(payload);
     ipcRenderer.on(channel, wrapped);
     return () => ipcRenderer.removeListener(channel, wrapped);

@@ -81,7 +81,19 @@ interface VpnView {
 }
 
 type Entry = ScanResult & { quarantined?: string };
-type Tab = "scan" | "protection" | "security" | "monitor" | "tools" | "quarantine" | "history" | "settings";
+type Tab = "scan" | "protection" | "security" | "network" | "monitor" | "tools" | "quarantine" | "history" | "settings";
+
+interface NetService { port: number; name: string; banner: string | null }
+interface NetDevice { ip: string; mac: string | null; vendor: string | null; hostname: string | null; role: "router" | "self" | "device"; services: NetService[]; trusted: boolean; firstSeen: string | null }
+interface NetFinding { severity: "critical" | "high" | "medium" | "low" | "info"; rule: string; title: string; detail: string; device: string | null }
+interface NetworkScanView {
+  startedAt: string; finishedAt: string; cidr: string | null; gateway: string | null; interface: string | null;
+  wifi: { ssid: string | null; risk: string } | null;
+  devices: NetDevice[];
+  router: { ip: string | null; adminHttp: boolean; hint: string | null; portForwards: { external: number; internal: string; protocol: string; description: string }[]; upnp: boolean; dns: { address: string; known: boolean }[] } | null;
+  findings: NetFinding[]; capabilities: Record<string, string>; newDevices: string[];
+}
+interface CredResult { device: string; service: string; defaultAccepted: boolean; user: string | null; tried: number; stopped: string | null }
 
 interface MonitorSnapshot {
   at: string;
@@ -150,6 +162,10 @@ let monitorExternalOnly = true;
 let monitorSecurityOnly = false;
 let monitorRunning = false;
 let vpnBusy = false;
+let networkScan: NetworkScanView | null = null;
+let networkBusy = false;
+let networkProgress: { done: number; total: number; phase: string } | null = null;
+const credResults = new Map<string, CredResult[] | { refused: string } | "loading">();
 
 type Child = Node | string | null | undefined | false;
 
@@ -160,6 +176,7 @@ const TAB_ICONS: Record<string, string[]> = {
   scan: ["M3 7V5a2 2 0 0 1 2-2h2", "M17 3h2a2 2 0 0 1 2 2v2", "M21 17v2a2 2 0 0 1-2 2h-2", "M7 21H5a2 2 0 0 1-2-2v-2", "M11 15a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z", "m16 16-2.2-2.2"],
   protection: ["M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.7 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1.2 1.2 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1Z", "m9 12 2 2 4-4"],
   security: ["M3 21V7h3v2h2V7h3v4h2V7h3v2h2V7h3v14Z", "M10 21v-4a2 2 0 0 1 4 0v4"],
+  network: ["M5 12.55a11 11 0 0 1 14 0", "M1.42 9a16 16 0 0 1 21.16 0", "M8.53 16.11a6 6 0 0 1 6.95 0", "M12 20h.01"],
   monitor: ["M22 12h-2.5a2 2 0 0 0-1.9 1.5l-2.4 8.4a.25.25 0 0 1-.5 0L9.2 2.2a.25.25 0 0 0-.5 0l-2.3 8.3A2 2 0 0 1 4.5 12H2"],
   quarantine: ["M21 8v13H3V8", "M1 3h22v5H1z", "M10 12h4"],
   tools: ["M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"],
@@ -1822,6 +1839,126 @@ async function securityView() {
   ];
 }
 
+// --- Home network -----------------------------------------------------------------------
+
+const sevBadge = (s: NetFinding["severity"]) => (s === "critical" || s === "high" ? "malicious" : s === "medium" ? "suspicious" : "no_known_threat");
+
+function deviceKeyOf(d: NetDevice): string {
+  return d.mac ? `mac:${d.mac}` : `ip:${d.ip}`;
+}
+
+function credPanel(device: NetDevice) {
+  const k = t.network;
+  const state = credResults.get(device.ip);
+  const canCheck = device.services.some((s) => [80, 8080, 23, 2323, 21].includes(s.port));
+  if (!canCheck) return null;
+  const run = async () => {
+    const box = document.getElementById(`cred-consent-${device.ip}`) as HTMLInputElement | null;
+    if (!box?.checked) { flash(k.credConsent, "error"); return; }
+    credResults.set(device.ip, "loading");
+    void render();
+    const result = await guard(() => api.networkCredentialCheck(device.ip, true) as Promise<{ results?: CredResult[]; refused?: string }>);
+    credResults.set(device.ip, result?.refused ? { refused: result.refused } : (result?.results ?? []));
+    void render();
+  };
+  return h(
+    "details",
+    { class: "cred" },
+    h("summary", {}, k.credTitle),
+    h("p", { class: "muted small" }, k.credIntro),
+    state === "loading"
+      ? h("p", { class: "muted" }, k.credChecking)
+      : state && "refused" in (state as object)
+        ? h("p", { class: "muted small" }, (state as { refused: string }).refused)
+        : Array.isArray(state)
+          ? h("div", {}, ...(state.length
+              ? state.map((r) =>
+                  r.defaultAccepted
+                    ? h("p", { class: "warning-text small" }, k.credDefault(r.service, r.user ?? "?"))
+                    : r.stopped
+                      ? h("p", { class: "muted small" }, k.credStopped(r.stopped))
+                      : h("p", { class: "muted small" }, k.credSafe))
+              : [h("p", { class: "muted small" }, k.credSafe)]))
+          : h("div", {},
+              h("label", { class: "check" }, h("input", { type: "checkbox", id: `cred-consent-${device.ip}` }), h("span", {}, k.credConsent)),
+              h("button", { type: "button", class: "secondary small-button", onclick: () => void run() }, k.credButton)),
+  );
+}
+
+function deviceCard(device: NetDevice, isNew: boolean) {
+  const k = t.network;
+  const name = device.hostname || device.vendor || (device.role === "router" ? k.router : device.role === "self" ? k.thisComputer : device.ip);
+  return h(
+    "li",
+    { class: device.services.some((s) => [23, 2323, 5555, 445].includes(s.port)) ? "item risky" : "item" },
+    h("div", { class: "row spread" },
+      h("span", {},
+        h("strong", { dir: "auto" }, name),
+        device.role === "router" ? h("span", { class: "badge no_known_threat" }, k.router) : null,
+        device.role === "self" ? h("span", { class: "muted small" }, ` ${k.thisComputer}`) : null,
+        isNew ? h("span", { class: "badge suspicious" }, k.newBadge) : null,
+        device.trusted ? h("span", { class: "badge no_known_threat" }, k.trusted) : null),
+      device.role === "device"
+        ? h("button", { type: "button", class: "link", onclick: async () => {
+            const next = await guard(() => api.networkTrust(deviceKeyOf(device), !device.trusted) as Promise<NetworkScanView | null>);
+            if (next) { networkScan = next; void render(); }
+          } }, device.trusted ? k.markUnknown : k.markKnown)
+        : null),
+    h("code", { class: "block muted small", dir: "ltr" }, `${device.ip}${device.mac ? ` · ${device.mac}` : ""}${device.vendor ? ` · ${device.vendor}` : ""}`),
+    device.services.length
+      ? h("p", { class: "small", dir: "ltr" }, `${k.services}: ${device.services.map((s) => `${s.name}/${s.port}`).join(", ")}`)
+      : h("p", { class: "muted small" }, k.noServices),
+    credPanel(device),
+  );
+}
+
+async function networkView(): Promise<(Node | null)[]> {
+  const k = t.network;
+  if (networkScan === null) {
+    networkScan = ((await guard(() => api.networkStatus() as Promise<NetworkScanView | null>)) ?? null) as NetworkScanView | null;
+  }
+  const scan = networkScan;
+  const newKeys = new Set(scan?.newDevices ?? []);
+  const start = async () => {
+    networkBusy = true;
+    networkProgress = null;
+    void render();
+    const result = await guard(() => api.networkScan() as Promise<NetworkScanView>);
+    if (result) networkScan = result;
+    networkBusy = false;
+    networkProgress = null;
+    void render();
+  };
+  return [
+    h("section", { class: "panel", id: "network-overview" },
+      h("h2", {}, k.heading),
+      h("p", { class: "muted" }, k.intro),
+      scan?.cidr ? h("p", { class: "small", dir: "ltr" }, k.onNetwork(scan.wifi?.ssid ?? null, scan.cidr)) : null,
+      scan ? h("p", { class: "muted small" }, k.lastScan(date(scan.finishedAt))) : null,
+      Object.values(scan?.capabilities ?? {}).includes("unavailable") ? h("p", { class: "muted small" }, k.capUnavailable) : null,
+      h("div", { class: "row" },
+        h("button", { type: "button", id: "network-scan", disabled: networkBusy, onclick: () => void start() }, networkBusy ? k.scanning : scan ? k.rescan : k.scan)),
+      networkBusy && networkProgress ? h("p", { class: "muted small", id: "network-progress" }, k.phase(networkProgress.phase, networkProgress.done, networkProgress.total)) : null),
+    scan
+      ? h("section", { class: "panel", id: "network-findings" },
+          h("h2", {}, k.findings),
+          scan.findings.length
+            ? h("ul", { class: "folders" }, ...scan.findings.map((f) =>
+                h("li", { class: f.severity === "critical" || f.severity === "high" ? "item risky" : "item" },
+                  h("div", { class: "row spread" }, h("strong", { dir: "auto" }, f.title), h("span", { class: `badge ${sevBadge(f.severity)}` }, k.severity[f.severity])),
+                  h("span", { class: "muted small block", dir: "auto" }, f.detail))))
+            : h("p", { class: "muted", id: "network-clean" }, k.noFindings))
+      : null,
+    scan && scan.devices.length
+      ? h("section", { class: "panel", id: "network-devices" },
+          h("h2", {}, `${k.devices} · ${k.deviceCount(scan.devices.length)}`),
+          h("ul", { class: "folders" }, ...scan.devices.map((d) => deviceCard(d, newKeys.has(deviceKeyOf(d))))))
+      : scan && !scan.cidr
+        ? h("section", { class: "panel" }, h("p", { class: "muted" }, k.noNetwork))
+        : null,
+  ];
+}
+
 let renderToken = 0;
 
 async function render() {
@@ -1863,6 +2000,7 @@ async function render() {
     scan: scanView,
     protection: protectionView,
     security: securityView,
+    network: networkView,
     monitor: monitorView,
     tools: toolsView,
     quarantine: quarantineView,
@@ -1940,6 +2078,16 @@ api.on("monitor-event", (payload) => {
   if (!monitorEvents) return;
   monitorEvents = [payload as MonitorEvent, ...monitorEvents].slice(0, 500);
   if (tab === "monitor" && monitorPane === "events") void renderPane();
+});
+
+api.on("network-progress", (payload) => {
+  networkProgress = payload as { done: number; total: number; phase: string };
+  const line = document.getElementById("network-progress");
+  if (line && tab === "network") line.textContent = t.network.phase(networkProgress.phase, networkProgress.done, networkProgress.total);
+});
+api.on("network-scanned", (payload) => {
+  networkScan = payload as NetworkScanView;
+  if (tab === "network") void render();
 });
 
 api.on("scan-progress", (payload) => {

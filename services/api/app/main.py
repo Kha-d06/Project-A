@@ -16,6 +16,7 @@ from app.api import (
     identity,
     intelligence,
     metrics,
+    network,
     push,
     reports,
     scans,
@@ -100,6 +101,7 @@ def create_app() -> FastAPI:
         vpn.router,
         assess.router,
         identity.router,
+        network.router,
     ):
         app.include_router(router, prefix=API_PREFIX)
     return app

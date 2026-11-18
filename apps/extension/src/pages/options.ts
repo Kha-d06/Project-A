@@ -182,7 +182,12 @@ async function main() {
   const themeSelect = byId<HTMLSelectElement>("theme");
   themeSelect.value = settings.theme;
   themeSelect.addEventListener("change", async () => {
-    await save({ theme: themeSelect.value as Settings["theme"] });
+    const choice = themeSelect.value as Settings["theme"];
+    // Reflect the choice on the page at once, so it doesn't wait on the save
+    // round-trip to the (possibly asleep) background service worker.
+    if (choice === "system") delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = choice;
+    await save({ theme: choice });
     await applyTheme();
   });
 

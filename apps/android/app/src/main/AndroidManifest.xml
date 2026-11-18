@@ -89,6 +89,25 @@
             android:name="androidx.browser.customtabs.CustomTabsActivity"
             android:exported="false" />
 
+        <!-- Warns about (or blocks, if the person chooses) calls from reported scam numbers. -->
+        <service
+            android:name="app.sentinel.protect.CallGuard"
+            android:exported="true"
+            android:permission="android.permission.BIND_SCREENING_SERVICE">
+            <intent-filter>
+                <action android:name="android.telecom.CallScreeningService" />
+            </intent-filter>
+        </service>
+        <!-- Optional: checks links in incoming message notifications, on the phone. -->
+        <service
+            android:name="app.sentinel.protect.MessageGuard"
+            android:exported="true"
+            android:label="${launcherName}"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
         <service
             android:name="app.sentinel.protect.CheckInJob"
             android:exported="false"

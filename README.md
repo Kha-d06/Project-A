@@ -172,7 +172,7 @@ Rules apply only to members who choose to follow the group's rules, and the comp
 
 **VPN.** An optional self-hosted WireGuard server (`docker compose --profile vpn`). Devices are added from Dashboard → VPN with keys made in the browser. See [docs/vpn.md](docs/vpn.md).
 
-**Android.** `apps/android` is a Trusted Web Activity for Google Play. See [apps/android/README.md](apps/android/README.md).
+**Android.** `apps/android` is a Trusted Web Activity for Google Play. Linked phones also warn about calls from community-verified scam numbers (optionally blocking them) and about dangerous links in incoming message notifications. Both match on the phone against downloaded lists. See [apps/android/README.md](apps/android/README.md).
 
 **Try it on your laptop.** `./scripts/demo.sh` starts everything in Docker and creates an administrator account. See [TESTING.md](TESTING.md).
 

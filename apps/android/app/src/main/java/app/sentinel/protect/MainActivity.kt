@@ -280,8 +280,51 @@ class MainActivity : Activity() {
             )
         }
 
+        renderGuards(linked != null)
+
         content.addView(button(t("website")) { startActivity(Intent(this, com.google.androidbrowserhelper.trusted.LauncherActivity::class.java)) })
         content.addView(text(t("limits"), 12f))
+    }
+
+    /** Call screening and message link checks: both opt-in, both matched on the phone. */
+    private fun renderGuards(linked: Boolean) {
+        content.addView(text(t("guards"), 18f, bold = true))
+        if (!linked) {
+            content.addView(card(text(t("guards_hint"), 13f), text(t("guards_need_account"), 14f)))
+            return
+        }
+        val prefs = getSharedPreferences("sentinel", MODE_PRIVATE)
+        val views = mutableListOf<View>(text(t("guards_hint"), 13f))
+        if (Build.VERSION.SDK_INT >= 29) {
+            val roles = getSystemService(android.app.role.RoleManager::class.java)
+            if (roles != null && roles.isRoleHeld(android.app.role.RoleManager.ROLE_CALL_SCREENING)) {
+                views.add(text(t("call_guard_on"), 14f, color = GOOD))
+                views.add(Switch(this).apply {
+                    text = t("block_calls")
+                    isChecked = prefs.getBoolean("block_scam_calls", false)
+                    setOnCheckedChangeListener { _, checked -> prefs.edit().putBoolean("block_scam_calls", checked).apply() }
+                })
+            } else if (roles != null && roles.isRoleAvailable(android.app.role.RoleManager.ROLE_CALL_SCREENING)) {
+                views.add(button(t("call_guard")) {
+                    @Suppress("DEPRECATION")
+                    startActivityForResult(roles.createRequestRoleIntent(android.app.role.RoleManager.ROLE_CALL_SCREENING), 7)
+                })
+            }
+        } else {
+            views.add(text(t("call_guard_unsupported"), 13f))
+        }
+        if (MessageGuard.enabled(this)) {
+            views.add(text(t("message_guard_on"), 14f, color = GOOD))
+        } else {
+            views.add(text(t("message_guard_hint"), 13f))
+            views.add(button(t("message_guard")) { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) })
+        }
+        views.add(text(Strings.format(lang, "lists_status", ScamLists.phones(this).size, ScamLists.hosts(this).size), 12f))
+        content.addView(card(*views.toTypedArray()))
+        // The first time the guards are shown, fetch the lists instead of waiting for the next check-in.
+        if (prefs.getLong("scam_lists_at", 0) == 0L) {
+            engine.account?.let { account -> background { ScamLists.refreshIfDue(this, account, force = true) } }
+        }
     }
 
     private fun requestFileAccess() {

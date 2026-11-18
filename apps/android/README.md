@@ -40,6 +40,18 @@
 | `scanner-core/` | All decisions: app risk rules, device checks, file checks, the account protocol, and the English and Arabic text. Plain Kotlin, unit-tested on the JVM. |
 | `app/` | The Android side: reading installed apps and settings, storage, quarantine, the 15-minute check-in job, and the screen. Platform APIs only, with no AndroidX in the scanner. |
 
+## Calls and messages
+
+Both need the phone to be linked to a SENTINEL account. The app then downloads two lists during its regular check-in, at most every 6 hours:
+- community-verified scam numbers (`GET /devices/phone-list`);
+- malicious domains and exact phishing/malware URLs (`GET /devices/blocklist`).
+
+Matching happens on the phone. No call, message or link is ever sent to the server.
+
+- **Call screening** (Android 10+): tap "Warn me about calls from reported scam numbers" and let SENTINEL be the call-screening app. A listed number shows a warning notification. It is rejected only if "Block reported scam numbers" is on. Local number forms (0501234567) match listed international numbers.
+- **Links in messages**: optional notification access lets SENTINEL read links in incoming message notifications (SMS, WhatsApp, Telegram and similar). A link to a listed domain, or an exact listed page, triggers a warning that names the app and the site. Only links are looked at, and nothing is stored. SENTINEL does not ask for SMS permissions, which Google Play reserves for default SMS apps.
+- "Share to SENTINEL" still sends a whole message to the message scanner when you want a full check.
+
 ## What it cannot do
 
 Android limits what any app can see, and these limits apply to every antivirus:

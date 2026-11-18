@@ -311,3 +311,22 @@ def test_device_blocklist_includes_exact_urls_for_the_history_check(db: Session)
     assert body["urls"] == ["https://shared.example.org/login/bank"]
     # The shared host itself is never blocked outright.
     assert "shared.example.org" not in body["hosts"]
+
+
+def test_phone_list_for_call_screening(db: Session) -> None:
+    from app.intel.feeds import COMMUNITY, FeedIndicator
+    from tests.conftest import seed_feed
+
+    seed_feed(
+        db,
+        COMMUNITY,
+        [
+            FeedIndicator("phone", "+971501234567", "scam_phone_number"),
+            FeedIndicator("host", "scam.example", "reported_scam"),
+        ],
+    )
+    owner, _ = account(db, "calls@example.com")
+    phone, auth = link_device(db, owner, name="Phone", platform="android")
+    assert phone.get(f"{API}/devices/phone-list").status_code == 401
+    body = phone.get(f"{API}/devices/phone-list", headers=auth).json()
+    assert body["numbers"] == ["+971501234567"]

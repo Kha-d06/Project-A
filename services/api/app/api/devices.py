@@ -20,6 +20,7 @@ Safeguards:
 - Commands expire after 15 minutes if the device is offline.
 """
 
+import hashlib
 import uuid
 from datetime import timedelta
 from typing import Annotated, Any, Literal
@@ -368,6 +369,37 @@ def device_blocklist(device: CurrentDevice, db: Db) -> Blocklist:
     no browsing history is sent to the server."""
     rate_limit.enforce(BLOCKLIST_LIMIT, f"device:{device.id}")
     return build_blocklist(db, url_sources=(OPENPHISH, URLHAUS, THREATFOX), max_urls=20_000)
+
+
+class PhoneList(BaseModel):
+    version: str
+    numbers: list[str]
+
+
+@router.get("/devices/phone-list", response_model=PhoneList)
+def device_phone_list(device: CurrentDevice, db: Db) -> PhoneList:
+    """Scam phone numbers confirmed by moderators from community reports, for the
+    Android app's call screening. The phone downloads the list and matches
+    incoming calls itself, so no call is ever reported to the server."""
+    from app.intel.feeds import COMMUNITY
+    from app.models import ThreatIndicator, ThreatSource
+
+    rate_limit.enforce(BLOCKLIST_LIMIT, f"device:{device.id}")
+    source = db.scalar(select(ThreatSource).where(ThreatSource.key == COMMUNITY))
+    numbers: list[str] = []
+    if source is not None:
+        numbers = sorted(
+            set(
+                db.scalars(
+                    select(ThreatIndicator.value)
+                    .where(ThreatIndicator.source_id == source.id, ThreatIndicator.kind == "phone")
+                    .order_by(ThreatIndicator.last_seen_at.desc())
+                    .limit(50_000)
+                )
+            )
+        )
+    digest = hashlib.sha256("\n".join(numbers).encode()).hexdigest()[:12]
+    return PhoneList(version=f"{len(numbers)}-{digest}", numbers=numbers)
 
 
 @router.post("/devices/commands/{command_id}/result", status_code=204)

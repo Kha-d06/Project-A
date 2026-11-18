@@ -133,6 +133,12 @@ Scope: the API (`services/api`), web app (`apps/web`), browser extension
 - **SafeSearch** uses redirect and header rules that work only after the person grants access to the search sites. Turning off another feature never revokes that access.
 - **STIX export** includes only indicators from moderator-verified community reports (this server's own data), never third-party feeds. It needs an account or API key by default, and is rate limited.
 - **Security score** is computed from settings the person controls. Its wording says it is not a guarantee of safety.
+- **Android call and message guards.**
+  - Lists (`/devices/phone-list`, `/devices/blocklist`) are fetched with the phone's own device token, rate limited, and stored in app-private storage.
+  - Calls and notifications are matched on the phone; nothing about them is sent or stored, beyond the warning shown.
+  - Blocking is opt-in; the default only warns.
+  - The notification listener needs the person to grant notification access, and ignores everything but message notifications.
+  - No SMS permissions are requested.
 - **Password autofill in the extension.**
   - The extension reads the encrypted vault (`GET /extension/vault`, linked installations only) and decrypts it in memory with the master password; the master password and decrypted vault are never stored, and the vault locks after 10 minutes idle or on demand.
   - Filling is click-only from the popup (never on page load), top frame only, `https://` (or localhost) only, logins for the same site or its subdomains only, refused on pages SENTINEL rates dangerous/suspicious or that you or your family blocked, and only into visible fields (a hidden-field trap stays empty in the end-to-end test).

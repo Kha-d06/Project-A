@@ -318,6 +318,8 @@ class Engine private constructor(private val context: Context) : RemoteHost {
         val agent = RemoteAgent(this, HttpTransport)
         agent.checkIn(linked)
         lastCheckInError = agent.lastError
+        // Lists for the call and message guards (on-phone matching only).
+        runCatching { ScamLists.refreshIfDue(context, linked) }
         prefs.edit().putLong("last_check_in", System.currentTimeMillis()).apply()
     }
 
@@ -356,6 +358,7 @@ class Engine private constructor(private val context: Context) : RemoteHost {
 
     override fun unlinked() {
         account = null
+        ScamLists.clear(context)
     }
 
     override fun activity(message: String) {}
@@ -370,5 +373,6 @@ class Engine private constructor(private val context: Context) : RemoteHost {
         val linked = account ?: return
         runCatching { HttpTransport.send("DELETE", Protocol.api(linked.server, "/devices/self"), null, linked.token) }
         account = null
+        ScamLists.clear(context)
     }
 }

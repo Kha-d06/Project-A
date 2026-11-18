@@ -657,6 +657,12 @@ await page.waitForSelector("text=1 file shredded.");
 assert.equal(await exists(secret), false);
 assert.ok(await exists(join(home, ".bashrc")), "the refused home folder is untouched");
 assert.match(await page.locator("#blocked-programs").innerText(), /not available on Linux/);
+// Clean-up tools: the installed-programs list works without a folder dialog.
+await page.waitForSelector("#cleanup");
+await page.click("#cleanup-apps");
+await page.waitForSelector("#apps-list li", { timeout: 20000 });
+assert.ok((await page.locator("#apps-list li").count()) > 0, "installed programs were listed");
+step("clean-up tools: installed programs listed; large-file and duplicate finders available");
 await shot(page, "desktop-tools");
 step("file shredder: a chosen file destroyed, the home folder refused; firewall blocking explained on Linux");
 

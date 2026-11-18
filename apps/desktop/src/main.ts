@@ -51,6 +51,7 @@ import * as vpnGuard from "./engine/vpn-guard";
 import { RansomwareBurst, underAny } from "./engine/behaviour";
 import * as cfa from "./engine/cfa";
 import * as privacyBlock from "./engine/privacy-block";
+import * as utilities from "./engine/utilities";
 import { posture } from "./engine/posture";
 import { IntegrityMonitor } from "./engine/integrity";
 import { Telemetry } from "./engine/telemetry";
@@ -375,6 +376,70 @@ async function startOnAccessServer(): Promise<void> {
 async function stopOnAccessServer(): Promise<void> {
   await onAccess?.stop().catch(() => {});
   onAccess = null;
+}
+
+/** Gather {path,size} for every file under a folder the person picks. */
+async function gatherFiles(): Promise<{ root: string; files: utilities.FileEntry[] } | null> {
+  const picked = await dialog.showOpenDialog({ properties: ["openDirectory"] });
+  if (picked.canceled || !picked.filePaths[0]) return null;
+  const root = picked.filePaths[0];
+  const files: utilities.FileEntry[] = [];
+  for await (const path of walk(root, 200_000, (p) => excluded(p))) {
+    try {
+      files.push({ path, size: (await stat(path)).size });
+    } catch {
+      // skip unreadable files
+    }
+  }
+  return { root, files };
+}
+
+async function scanSpace() {
+  const gathered = await gatherFiles();
+  if (!gathered) return null;
+  return {
+    root: gathered.root,
+    largest: utilities.largestFiles(gathered.files, 50),
+    folders: utilities.folderBreakdown(gathered.files, gathered.root),
+  };
+}
+
+/** A sha256 of the first `bytes` of a file, or the whole file when bytes is 0. */
+function hashFile(path: string, bytes: number): Promise<string | null> {
+  return new Promise((resolve) => {
+    const hash = createHash("sha256");
+    const stream = createReadStream(path, bytes > 0 ? { end: bytes - 1 } : {});
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("end", () => resolve(hash.digest("hex")));
+    stream.on("error", () => resolve(null));
+  });
+}
+
+async function findDuplicateFiles() {
+  const gathered = await gatherFiles();
+  if (!gathered) return null;
+  return { root: gathered.root, groups: await utilities.findDuplicates(gathered.files, hashFile) };
+}
+
+async function installedApps(): Promise<utilities.InstalledApp[]> {
+  try {
+    if (process.platform === "linux") {
+      const out = await new Promise<string>((resolve) =>
+        execFile("dpkg-query", ["-W", "-f=${Package}\\t${Version}\\n"], { timeout: 20_000, maxBuffer: 8 * 1024 * 1024 }, (_e, stdout) => resolve(String(stdout))),
+      );
+      return utilities.parseDpkg(out);
+    }
+    if (process.platform === "win32") {
+      const out = await new Promise<string>((resolve) =>
+        execFile("powershell.exe", ["-NoProfile", "-Command", "Get-Package | Select-Object Name,Version | ConvertTo-Json -Compress"], { timeout: 30_000, windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (_e, stdout) => resolve(String(stdout))),
+      );
+      return utilities.parseWindowsPackages(out);
+    }
+    const out = await new Promise<string>((resolve) => execFile("ls", ["/Applications"], { timeout: 10_000 }, (_e, stdout) => resolve(String(stdout))));
+    return utilities.parseMacApps(out);
+  } catch {
+    return [];
+  }
 }
 
 /** Camera / microphone block state and controls. */
@@ -1251,6 +1316,9 @@ function registerIpc() {
   ipcMain.handle("network-credential-check", (_event, ip: unknown, consent: unknown) => networkCredentialCheck(String(ip), Boolean(consent)));
   ipcMain.handle("onaccess-status", () => onAccessStatus());
   ipcMain.handle("onaccess-set", (_event, on: unknown) => setOnAccess(Boolean(on)));
+  ipcMain.handle("utilities-space", () => scanSpace());
+  ipcMain.handle("utilities-duplicates", () => findDuplicateFiles());
+  ipcMain.handle("utilities-apps", () => installedApps());
   ipcMain.handle("privacy-block-status", () => privacyBlockStatus());
   ipcMain.handle("privacy-block-set", (_event, device: unknown, block: unknown) => setPrivacyBlock(device === "microphone" ? "microphone" : "camera", Boolean(block)));
   ipcMain.handle("cfa-status", () => cfa.cfaStatus());

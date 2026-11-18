@@ -686,6 +686,51 @@ let extensionRows: ExtensionRow[] | null = null;
 let deepResult: DeepResult | null = null;
 let blockedRows: string[] | null = null;
 
+interface SpaceView { root: string; largest: { path: string; size: number }[]; folders: { path: string; size: number }[] }
+interface DupeView { root: string; groups: { hash: string; size: number; paths: string[]; wasted: number }[] }
+interface AppRow { name: string; version: string | null; removeHint: string }
+let spaceView: SpaceView | null = null;
+let dupeView: DupeView | null = null;
+let appsView: AppRow[] | null = null;
+let cleanupBusy = "";
+
+function cleanupPanel() {
+  const k = t.cleanup;
+  const run = async (what: "space" | "dupes" | "apps") => {
+    cleanupBusy = what;
+    void render();
+    try {
+      if (what === "space") spaceView = (await guard(() => api.utilitiesSpace() as Promise<SpaceView | null>)) ?? spaceView;
+      else if (what === "dupes") dupeView = (await guard(() => api.utilitiesDuplicates() as Promise<DupeView | null>)) ?? dupeView;
+      else appsView = (await guard(() => api.utilitiesApps() as Promise<AppRow[]>)) ?? appsView;
+    } finally {
+      cleanupBusy = "";
+      void render();
+    }
+  };
+  return h(
+    "section",
+    { class: "panel", id: "cleanup" },
+    h("h2", {}, k.heading),
+    h("p", { class: "muted" }, k.intro),
+    h("div", { class: "row" },
+      h("button", { type: "button", class: "secondary", id: "cleanup-space", disabled: Boolean(cleanupBusy), onclick: () => void run("space") }, cleanupBusy === "space" ? k.scanning : k.findSpace),
+      h("button", { type: "button", class: "secondary", id: "cleanup-dupes", disabled: Boolean(cleanupBusy), onclick: () => void run("dupes") }, cleanupBusy === "dupes" ? k.scanning : k.findDupes),
+      h("button", { type: "button", class: "secondary", id: "cleanup-apps", disabled: Boolean(cleanupBusy), onclick: () => void run("apps") }, k.listApps)),
+    spaceView ? h("div", {},
+      h("h3", {}, k.bySpace),
+      h("ul", { class: "folders", id: "space-folders" }, ...spaceView.folders.slice(0, 12).map((f) => h("li", { class: "row spread" }, h("code", { dir: "ltr" }, f.path), h("span", { class: "muted" }, bytes(f.size))))),
+      h("h3", {}, k.largest),
+      h("ul", { class: "folders" }, ...spaceView.largest.slice(0, 12).map((f) => h("li", { class: "row spread" }, h("code", { dir: "ltr" }, f.path), h("span", { class: "muted" }, bytes(f.size)))))) : null,
+    dupeView ? h("div", {},
+      h("h3", {}, k.duplicates(dupeView.groups.length, bytes(dupeView.groups.reduce((s, g) => s + g.wasted, 0)))),
+      ...dupeView.groups.slice(0, 20).map((g) => h("div", { class: "item" }, h("span", { class: "muted small" }, bytes(g.size)), ...g.paths.map((p) => h("code", { class: "block small", dir: "ltr" }, p))))) : null,
+    appsView ? h("div", {},
+      h("h3", {}, k.apps(appsView.length)),
+      h("ul", { class: "folders", id: "apps-list" }, ...appsView.slice(0, 200).map((a) => h("li", { class: "row spread" }, h("span", { dir: "auto" }, a.name, a.version ? h("span", { class: "muted small" }, ` ${a.version}`) : null), h("code", { class: "muted small", dir: "ltr" }, a.removeHint))))) : null,
+  );
+}
+
 async function toolsView() {
   const k = t.tools;
   const list = (await guard(() => api.startupList() as Promise<{ active: StartupRow[]; disabled: DisabledRow[] }>)) ?? { active: [], disabled: [] };
@@ -834,7 +879,7 @@ async function toolsView() {
       : null,
   );
 
-  return [h("h1", {}, k.heading), h("p", { class: "muted" }, k.intro), startup, deep, extensions, junk, shredder, firewall];
+  return [h("h1", {}, k.heading), h("p", { class: "muted" }, k.intro), startup, deep, extensions, junk, shredder, firewall, cleanupPanel()];
 }
 
 async function quarantineView() {

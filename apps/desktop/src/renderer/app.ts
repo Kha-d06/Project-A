@@ -88,6 +88,16 @@ interface MonitorSnapshot {
 interface MonitorConnection { protocol: string; local: string; remote: string | null; state: string; process: string | null; pid: number | null }
 interface MonitorService { name: string; description: string; state: "running" | "stopped" | "failed" | "other"; startup: string | null }
 interface MonitorEvent { at: string; level: "error" | "warning" | "info"; source: string; message: string; security: boolean }
+interface ProcessRow { pid: number; ppid: number | null; name: string; path: string | null; commandLine: string | null; user: string | null; threads: number | null; handles: number | null; memoryBytes: number | null; state: string | null }
+interface Inspection { sha256: string | null; signature: { status: string; signer: string | null; detail: string | null } }
+interface StorageView { disks: { name: string; model: string | null; kind: string; sizeBytes: number | null; health: string; healthDetail: string | null }[]; volumes: { mount: string; device: string | null; fileSystem: string | null; sizeBytes: number; usedBytes: number; label: string | null }[] }
+interface DnsView { query: string; addresses: { address: string; family: number; class: string | null }[]; reverse: string[]; mx: { exchange: string; priority: number }[]; txt: string[]; error: string | null }
+interface NicView { name: string; addresses: string[]; mac: string | null; rxBytes: number | null; txBytes: number | null; rxPackets: number | null; txPackets: number | null; errors: number | null; drops: number | null }
+interface HistoryView { at: string; cpu: number; memory: number; rx: number; tx: number; read: number; write: number }
+interface LogView { at: string; kind: string; level: "info" | "warning" | "alert"; message: string }
+interface PostureView { score: number | null; checkedAt: string; checks: { id: string; title: string; status: "pass" | "fail" | "warn" | "unknown"; detail: string | null; fix: string | null }[] }
+interface IntegrityView { paths: string[]; changes: { path: string; kind: string; at: string }[]; lastCheck: string | null; baseline: Record<string, { sha256: string | null }> }
+interface ServiceDetail { name: string; description: string | null; account: string | null; command: string | null; startup: string | null; dependsOn: string[]; requiredBy: string[] }
 
 const api = window.sentinel;
 let lang: Lang = "en";
@@ -105,7 +115,24 @@ let browsingReport: BrowsingReport | null = null;
 let browsingBusy = false;
 let vpnView: VpnView | null = null;
 let monitorSamples: MonitorSnapshot[] = [];
-let monitorPane: "connections" | "services" | "events" = "connections";
+let monitorPane: "processes" | "connections" | "services" | "events" | "storage" | "network" | "history" = "processes";
+let monitorProcesses: ProcessRow[] | null | undefined;
+const inspected = new Map<number, Inspection | "loading">();
+const suspended = new Set<number>();
+let monitorStorage: StorageView | null | undefined;
+let monitorNics: NicView[] | undefined;
+let dnsAnswer: DnsView | null = null;
+let historyHours = 24;
+let historyPoints: HistoryView[] | undefined;
+let securityLog: LogView[] | undefined;
+let eventSource: "system" | "security" = "system";
+let eventLevel: "all" | "error" | "warning" = "all";
+let securityNote: string | null = null;
+const serviceOpen = new Map<string, ServiceDetail | "loading">();
+let postureView: PostureView | null = null;
+let postureBusy = false;
+let integrityView: IntegrityView | null = null;
+let reportBusy: string | null = null;
 let monitorConnections: MonitorConnection[] | null | undefined;
 let monitorServices: MonitorService[] | null | undefined;
 let monitorEvents: MonitorEvent[] | null | undefined;
@@ -172,11 +199,15 @@ function bytes(n: number): string {
   return `${value.toFixed(unit ? 1 : 0)} ${units[unit]}`;
 }
 
+let toastTimer: number | undefined;
+
+/** Shows a message; a newer message restarts the timer so it is never cut short. */
 function flash(message: string, tone: "info" | "error" = "info") {
   const box = document.getElementById("toast")!;
   box.textContent = message;
   box.className = `toast ${tone}`;
-  window.setTimeout(() => (box.className = "toast hidden"), 4000);
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => (box.className = "toast hidden"), tone === "error" ? 7000 : 4500);
 }
 
 async function guard<T>(action: () => Promise<T>): Promise<T | undefined> {
@@ -1146,8 +1177,131 @@ async function renderPane() {
   const box = document.getElementById("monitor-pane");
   if (!box) return;
   const m = t.monitor;
-  const nodes: Node[] = [];
-  if (monitorPane === "connections") {
+  const nodes: (Node | null)[] = [];
+  if (monitorPane === "processes") {
+    if (monitorProcesses === undefined) monitorProcesses = (await guard(() => api.explorerList() as Promise<ProcessRow[] | null>)) ?? null;
+    const all = monitorProcesses ?? [];
+    const byPid = new Map(all.map((p) => [p.pid, p]));
+    const children = new Map<number | null, ProcessRow[]>();
+    for (const p of all) {
+      const parent = p.ppid !== null && byPid.has(p.ppid) ? p.ppid : null;
+      children.set(parent, [...(children.get(parent) ?? []), p]);
+    }
+    const ordered: { p: ProcessRow; depth: number }[] = [];
+    const walkTree = (parent: number | null, depth: number) => {
+      for (const p of (children.get(parent) ?? []).sort((a, b) => a.pid - b.pid)) {
+        ordered.push({ p, depth });
+        if (depth < 24) walkTree(p.pid, depth + 1);
+      }
+    };
+    walkTree(null, 0);
+    const filtering = monitorFilter.trim() !== "";
+    const shown = filtering ? ordered.filter(({ p }) => matches(p.name, p.pid, p.user, p.path, p.commandLine)).map(({ p }) => ({ p, depth: 0 })) : ordered;
+    const act = (p: ProcessRow, action: "end" | "suspend" | "resume", label: string) =>
+      h("button", { type: "button", class: action === "end" ? "secondary small-button danger-text" : "secondary small-button", onclick: async () => {
+        if (action !== "resume" && !window.confirm(m.confirmProcess(label, p.name, p.pid))) return;
+        const ok = await guard(() => api.explorerControl(p.pid, action, p.name));
+        if (!ok) return;
+        if (action === "suspend") suspended.add(p.pid); else suspended.delete(p.pid);
+        if (action === "end") monitorProcesses = undefined;
+        flash(m.processDone(label, p.name));
+        void renderPane();
+      } }, label);
+    const rows: Node[] = [];
+    for (const { p, depth } of shown.slice(0, 600)) {
+      const info = inspected.get(p.pid);
+      rows.push(h("tr", { class: suspended.has(p.pid) ? "flag" : "" },
+        h("td", { dir: "auto" }, h("span", { class: "tree", style: `padding-inline-start:${depth * 14}px` }, depth ? "└ " : "", h("strong", {}, p.name)), p.user ? h("span", { class: "muted block small" }, p.user) : null),
+        h("td", { class: "num" }, String(p.pid)),
+        h("td", { class: "num" }, p.memoryBytes !== null ? bytes(p.memoryBytes) : "—"),
+        h("td", { class: "num" }, p.threads === null ? "—" : String(p.threads)),
+        h("td", { class: "num" }, p.handles === null ? "—" : String(p.handles)),
+        h("td", {}, h("div", { class: "actions" },
+          h("button", { type: "button", class: "secondary small-button", "aria-expanded": info ? "true" : "false", onclick: async () => {
+            if (inspected.has(p.pid)) { inspected.delete(p.pid); void renderPane(); return; }
+            if (!p.path) { inspected.set(p.pid, { sha256: null, signature: { status: "unknown", signer: null, detail: m.noPath } }); void renderPane(); return; }
+            inspected.set(p.pid, "loading"); void renderPane();
+            const result = await guard(() => api.explorerInspect(p.path!) as Promise<Inspection>);
+            if (result) inspected.set(p.pid, result); else inspected.delete(p.pid);
+            void renderPane();
+          } }, m.inspect),
+          status.platform !== "win32" ? (suspended.has(p.pid) ? act(p, "resume", m.resume) : act(p, "suspend", m.suspend)) : null,
+          act(p, "end", m.end)))));
+      if (info) {
+        const sig = info === "loading" ? null : info.signature;
+        rows.push(h("tr", { class: "detail" }, h("td", { colspan: "6" }, h("dl", { class: "facts" },
+          h("dt", {}, m.path), h("dd", {}, p.path ? h("code", { dir: "ltr" }, p.path) : "—",
+            p.path ? h("button", { type: "button", class: "link-quiet", onclick: () => void navigator.clipboard.writeText(p.path!).then(() => flash(m.copied)) }, m.copy) : null,
+            p.path ? h("button", { type: "button", class: "link-quiet", onclick: () => void api.revealPath(p.path!) }, m.openFolder) : null),
+          h("dt", {}, m.commandLine), h("dd", {}, p.commandLine ? h("code", { dir: "ltr" }, p.commandLine) : "—"),
+          h("dt", {}, "SHA-256"), h("dd", {}, info === "loading" ? m.working : info.sha256 ? h("code", { dir: "ltr" }, info.sha256) : "—",
+            info !== "loading" && info.sha256 ? h("button", { type: "button", class: "link-quiet", onclick: () => void navigator.clipboard.writeText(info.sha256!).then(() => flash(m.copied)) }, m.copy) : null),
+          h("dt", {}, m.signature), h("dd", {}, info === "loading" || !sig ? m.working : h("span", { class: `sig sig-${sig.status}` }, m.signatureStates[sig.status] ?? sig.status, sig.signer ? ` · ${sig.signer}` : ""), sig?.detail ? h("span", { class: "muted block small" }, sig.detail) : null)))));
+      }
+    }
+    nodes.push(
+      h("p", { class: "muted small" }, m.processesHint),
+      paneControls(() => { monitorProcesses = undefined; inspected.clear(); void renderPane(); }, null),
+      monitorProcesses === null ? h("p", { class: "muted" }, m.unavailable) : shown.length === 0 ? h("p", { class: "muted" }, m.noRows) : table([m.process, "PID", m.memory, m.threads, m.handles, ""], rows),
+      h("p", { class: "muted small" }, m.rows(Math.min(shown.length, 600), all.length)),
+    );
+  } else if (monitorPane === "storage") {
+    if (monitorStorage === undefined) monitorStorage = (await guard(() => api.storage() as Promise<StorageView | null>)) ?? null;
+    const st = monitorStorage;
+    nodes.push(h("p", { class: "muted small" }, m.storageHint));
+    if (!st) nodes.push(h("p", { class: "muted" }, m.unavailable));
+    else {
+      nodes.push(h("h3", {}, m.disks), table([m.disk, m.model, m.kind, m.size, m.health], st.disks.map((d) =>
+        h("tr", { class: d.health === "failing" ? "flag" : "" }, h("td", {}, h("code", { dir: "ltr" }, d.name)), h("td", {}, d.model ?? "—"), h("td", {}, d.kind.toUpperCase()), h("td", { class: "num" }, d.sizeBytes ? bytes(d.sizeBytes) : "—"),
+          h("td", {}, h("span", { class: `sig sig-${d.health === "ok" ? "signed" : d.health === "failing" ? "invalid" : d.health === "warning" ? "warn" : "unknown"}` }, m.healthStates[d.health] ?? d.health), d.healthDetail ? h("span", { class: "muted block small" }, d.healthDetail) : null)))));
+      nodes.push(h("h3", {}, m.volumes), ...st.volumes.map((v) => h("div", { class: "volume" },
+        h("div", { class: "row spread" }, h("span", {}, h("strong", { dir: "ltr" }, v.mount), v.label ? ` · ${v.label}` : "", v.fileSystem ? h("span", { class: "muted" }, ` · ${v.fileSystem}`) : null), h("span", { class: "muted small" }, m.space(bytes(v.usedBytes), bytes(v.sizeBytes)))),
+        meter(v.sizeBytes ? v.usedBytes / v.sizeBytes : 0))));
+    }
+    nodes.push(h("div", { class: "row" }, h("button", { type: "button", class: "secondary", onclick: () => { monitorStorage = undefined; void renderPane(); } }, m.refresh)));
+  } else if (monitorPane === "network") {
+    if (monitorNics === undefined) monitorNics = ((await guard(() => api.netInterfaces() as Promise<NicView[]>)) ?? []);
+    const input = h("input", { type: "search", id: "dns-query", placeholder: m.dnsPlaceholder, "aria-label": m.dnsLookup, dir: "ltr" }) as HTMLInputElement;
+    const run = async () => {
+      if (!input.value.trim()) return;
+      dnsAnswer = (await guard(() => api.netLookup(input.value) as Promise<DnsView>)) ?? null;
+      void renderPane();
+    };
+    input.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") void run(); });
+    if (dnsAnswer) input.value = dnsAnswer.query;
+    nodes.push(h("h3", {}, m.dnsLookup), h("p", { class: "muted small" }, m.dnsHint), h("div", { class: "row" }, input, h("button", { type: "button", id: "dns-go", onclick: run }, m.lookUp)));
+    if (dnsAnswer) {
+      const a = dnsAnswer;
+      nodes.push(a.error ? h("p", { class: "warning-text" }, a.error) : h("dl", { class: "facts", id: "dns-result" },
+        a.addresses.length ? h("dt", {}, m.addresses) : null, a.addresses.length ? h("dd", {}, ...a.addresses.map((x) => h("span", { class: "block" }, h("code", { dir: "ltr" }, x.address), " ", h("span", { class: `ipclass ip-${x.class}` }, m.ipClasses[x.class ?? ""] ?? x.class ?? "")))) : null,
+        a.reverse.length ? h("dt", {}, m.reverse) : null, a.reverse.length ? h("dd", {}, h("code", { dir: "ltr" }, a.reverse.join(", "))) : null,
+        a.mx.length ? h("dt", {}, "MX") : null, a.mx.length ? h("dd", {}, ...a.mx.map((x) => h("code", { class: "block", dir: "ltr" }, `${x.priority} ${x.exchange}`))) : null,
+        a.txt.length ? h("dt", {}, "TXT") : null, a.txt.length ? h("dd", {}, ...a.txt.map((x) => h("code", { class: "block", dir: "ltr" }, x))) : null));
+    }
+    nodes.push(h("h3", {}, m.interfaces), table([m.interface, m.addresses, m.received, m.sent, m.errors], monitorNics.map((n) =>
+      h("tr", { class: n.errors ? "flag" : "" }, h("td", {}, h("strong", { dir: "ltr" }, n.name), n.mac ? h("span", { class: "muted block small", dir: "ltr" }, n.mac) : null), h("td", {}, ...n.addresses.map((x) => h("code", { class: "block", dir: "ltr" }, x))),
+        h("td", { class: "num" }, n.rxBytes !== null ? `${bytes(n.rxBytes)} · ${n.rxPackets ?? 0} pkts` : "—"), h("td", { class: "num" }, n.txBytes !== null ? `${bytes(n.txBytes)} · ${n.txPackets ?? 0} pkts` : "—"),
+        h("td", { class: "num" }, n.errors !== null ? `${n.errors} / ${n.drops ?? 0}` : "—")))));
+  } else if (monitorPane === "history") {
+    if (historyPoints === undefined) historyPoints = ((await guard(() => api.telemetryHistory(historyHours) as Promise<HistoryView[]>)) ?? []);
+    if (securityLog === undefined) securityLog = ((await guard(() => api.securityLog() as Promise<LogView[]>)) ?? []);
+    const range = (hours: number, label: string) => h("button", { type: "button", class: "secondary small-button", "aria-pressed": historyHours === hours ? "true" : "false", onclick: () => { historyHours = hours; historyPoints = undefined; void renderPane(); } }, label);
+    const pts = historyPoints;
+    const chart = (title: string, series: number[][], max: number, legend: string) => h("div", { class: "history-chart" }, h("div", { class: "row spread" }, h("strong", {}, title), h("span", { class: "muted small" }, legend)), sparkline(series, max));
+    nodes.push(h("p", { class: "muted small" }, m.historyHint), h("div", { class: "row" }, range(1, m.lastHour), range(24, m.lastDay), range(168, m.lastWeek)));
+    if (pts.length < 2) nodes.push(h("p", { class: "muted" }, m.historyEmpty));
+    else {
+      const peak = (f: (p: HistoryView) => number) => Math.max(1, ...pts.map(f));
+      nodes.push(h("div", { class: "history-grid" },
+        chart(m.cpu, [pts.map((p) => p.cpu)], 100, m.peak(`${Math.round(peak((p) => p.cpu))}%`)),
+        chart(m.memory, [pts.map((p) => p.memory)], 100, m.peak(`${Math.round(peak((p) => p.memory))}%`)),
+        chart(m.network, [pts.map((p) => p.rx), pts.map((p) => p.tx)], peak((p) => Math.max(p.rx, p.tx)), m.peak(`${bytes(peak((p) => Math.max(p.rx, p.tx)))}/s`)),
+        chart(m.disk, [pts.map((p) => p.read), pts.map((p) => p.write)], peak((p) => Math.max(p.read, p.write)), m.peak(`${bytes(peak((p) => Math.max(p.read, p.write)))}/s`))),
+        h("p", { class: "muted small" }, `${date(pts[0]!.at)} → ${date(pts[pts.length - 1]!.at)}`));
+    }
+    nodes.push(h("h3", {}, m.securityLog), securityLog.length === 0 ? h("p", { class: "muted" }, m.noRows) : table(["", m.events, ""], securityLog.slice(0, 200).map((e) =>
+      h("tr", { class: e.level === "alert" ? "flag" : "" }, h("td", { class: `level-${e.level === "alert" ? "error" : e.level}` }, m.logLevels[e.level] ?? e.level), h("td", { dir: "auto" }, h("strong", {}, e.kind), " ", e.message), h("td", { class: "muted" }, date(e.at))))));
+  } else if (monitorPane === "connections") {
     if (monitorConnections === undefined) monitorConnections = (await guard(() => api.monitorConnections() as Promise<MonitorConnection[] | null>)) ?? null;
     const all = monitorConnections ?? [];
     const shown = all.filter((c) => (!monitorExternalOnly || isExternal(c.remote)) && matches(c.process, c.local, c.remote, c.state, c.pid));
@@ -1172,19 +1326,60 @@ async function renderPane() {
     nodes.push(
       h("p", { class: "muted small" }, m.servicesHint),
       paneControls(() => { monitorServices = undefined; void renderPane(); }, null),
-      monitorServices === null ? h("p", { class: "muted" }, m.unavailable) : shown.length === 0 ? h("p", { class: "muted" }, m.noRows) : table([m.services, m.state, ""], shown.slice(0, 800).map((s) =>
+      monitorServices === null ? h("p", { class: "muted" }, m.unavailable) : shown.length === 0 ? h("p", { class: "muted" }, m.noRows) : table([m.services, m.state, ""], shown.slice(0, 800).flatMap((s) => [
         h("tr", { class: s.state === "failed" ? "flag" : "" },
           h("td", {}, h("code", { dir: "ltr" }, s.name), s.description ? h("span", { class: "muted block" }, s.description) : null),
           h("td", {}, (m.serviceStates[s.state] ?? s.state) + (s.startup ? ` · ${s.startup}` : "")),
-          h("td", {}, canControl ? h("div", { class: "actions" }, s.state === "running" ? act(s, "restart", m.restart) : null, s.state === "running" ? act(s, "stop", m.stop) : act(s, "start", m.start)) : null)))),
+          h("td", {}, h("div", { class: "actions" },
+            h("button", { type: "button", class: "secondary small-button", "aria-expanded": serviceOpen.has(s.name) ? "true" : "false", onclick: async () => {
+              if (serviceOpen.has(s.name)) { serviceOpen.delete(s.name); void renderPane(); return; }
+              serviceOpen.set(s.name, "loading"); void renderPane();
+              const detail = await guard(() => api.monitorServiceDetails(s.name) as Promise<ServiceDetail | null>);
+              if (detail) serviceOpen.set(s.name, detail); else serviceOpen.delete(s.name);
+              void renderPane();
+            } }, m.details),
+            canControl && s.state === "running" ? act(s, "restart", m.restart) : null,
+            canControl ? (s.state === "running" ? act(s, "stop", m.stop) : act(s, "start", m.start)) : null))),
+        ...(() => {
+          const d = serviceOpen.get(s.name);
+          if (!d) return [];
+          if (d === "loading") return [h("tr", { class: "detail" }, h("td", { colspan: "3" }, m.working))];
+          const startup = (enabled: boolean, label: string) => h("button", { type: "button", class: "secondary small-button", onclick: async () => {
+            if (!window.confirm(m.confirmService(label, s.name))) return;
+            const next = await guard(() => api.monitorServiceStartup(s.name, enabled) as Promise<MonitorService[] | null>);
+            if (next) { monitorServices = next; serviceOpen.delete(s.name); void renderPane(); }
+          } }, label);
+          return [h("tr", { class: "detail" }, h("td", { colspan: "3" }, h("dl", { class: "facts" },
+            h("dt", {}, m.account), h("dd", {}, d.account ?? "—"),
+            h("dt", {}, m.commandLine), h("dd", {}, d.command ? h("code", { dir: "ltr" }, d.command) : "—"),
+            h("dt", {}, m.startup), h("dd", {}, d.startup ?? "—", canControl ? h("span", { class: "actions inline" }, startup(true, m.enable), startup(false, m.disable)) : null),
+            h("dt", {}, m.dependsOn), h("dd", {}, d.dependsOn.length ? d.dependsOn.join(", ") : "—"),
+            h("dt", {}, m.requiredBy), h("dd", {}, d.requiredBy.length ? d.requiredBy.join(", ") : "—"))))];
+        })(),
+      ])),
       h("p", { class: "muted small" }, m.rows(Math.min(shown.length, 800), all.length)),
     );
   } else {
-    if (monitorEvents === undefined) monitorEvents = (await guard(() => api.monitorEvents(60) as Promise<MonitorEvent[] | null>)) ?? null;
+    if (monitorEvents === undefined) {
+      if (eventSource === "security") {
+        const result = await guard(() => api.monitorSecurityEvents(24 * 60) as Promise<{ events: MonitorEvent[] | null; note: string | null }>);
+        monitorEvents = result?.events ?? null;
+        securityNote = result?.note ?? null;
+      } else {
+        monitorEvents = (await guard(() => api.monitorEvents(60) as Promise<MonitorEvent[] | null>)) ?? null;
+        securityNote = null;
+      }
+    }
     const all = monitorEvents ?? [];
-    const shown = all.filter((e) => (!monitorSecurityOnly || e.security) && matches(e.source, e.message, e.level));
+    const shown = all.filter((e) => (!monitorSecurityOnly || e.security) && (eventLevel === "all" || e.level === eventLevel || (eventLevel === "warning" && e.level === "error")) && matches(e.source, e.message, e.level));
     nodes.push(
-      h("p", { class: "muted small" }, m.eventsHint),
+      h("p", { class: "muted small" }, eventSource === "security" ? m.securityEventsHint : m.eventsHint),
+      h("div", { class: "row" },
+        select("event-source", m.logSource, eventSource, [["system", m.systemLog], ["security", m.securityLogSource]], (v) => { eventSource = v; monitorEvents = undefined; void renderPane(); }),
+        select("event-level", m.severity, eventLevel, [["all", m.allLevels], ["warning", m.warningsUp], ["error", m.errorsOnly]], (v) => { eventLevel = v; void renderPane(); }),
+        h("button", { type: "button", class: "secondary", disabled: !shown.length, onclick: () => void guard(() => api.monitorEventsExport(shown, "csv")).then((path) => path && flash(m.saved(String(path)))) }, m.exportCsv),
+        h("button", { type: "button", class: "secondary", disabled: !shown.length, onclick: () => void guard(() => api.monitorEventsExport(shown, "json")).then((path) => path && flash(m.saved(String(path)))) }, m.exportJson)),
+      securityNote ? h("p", { class: "warning-text small" }, securityNote) : null,
       paneControls(() => { monitorEvents = undefined; void renderPane(); }, toggle(m.securityOnly, monitorSecurityOnly, (v) => { monitorSecurityOnly = v; void renderPane(); }, undefined, "monitor-security-only")),
       monitorEvents === null ? h("p", { class: "muted" }, m.unavailable) : shown.length === 0 ? h("p", { class: "muted" }, m.noRows) : table(["", m.events, ""], shown.slice(0, 300).map((e) =>
         h("tr", { class: e.security ? "flag" : "" },
@@ -1197,7 +1392,7 @@ async function renderPane() {
   if (tab !== "monitor") return;
   const focused = document.activeElement as HTMLInputElement | null;
   const keep = focused?.id === "monitor-filter" ? focused.selectionStart : null;
-  box.replaceChildren(...nodes);
+  box.replaceChildren(...nodes.filter((node): node is Node => node !== null));
   if (keep !== null) {
     const input = document.getElementById("monitor-filter") as HTMLInputElement | null;
     input?.focus();
@@ -1217,9 +1412,119 @@ async function monitorView() {
     h("h1", {}, m.heading),
     h("p", { class: "muted" }, m.intro),
     h("div", { class: "monitor-grid", id: "monitor-live" }, ...liveCards()),
-    h("div", { class: "tabs-inline", role: "group" }, pane("connections", m.connections), pane("services", m.services), pane("events", m.events)),
+    h("div", { class: "tabs-inline", role: "group" },
+      pane("processes", m.processes), pane("connections", m.connections), pane("services", m.services), pane("events", m.events),
+      pane("storage", m.storage), pane("network", m.networkTools), pane("history", m.history)),
     h("section", { class: "panel", id: "monitor-pane" }, h("p", { class: "muted" }, "…")),
   ];
+}
+
+// --- Security posture, file integrity and reports ---------------------------------------
+
+function postureRing(score: number | null) {
+  const ring = document.createElementNS(SVG, "svg");
+  ring.setAttribute("viewBox", "0 0 80 80");
+  ring.setAttribute("class", "posture-ring");
+  ring.setAttribute("aria-hidden", "true");
+  const track = document.createElementNS(SVG, "circle");
+  track.setAttribute("cx", "40"); track.setAttribute("cy", "40"); track.setAttribute("r", "34"); track.setAttribute("class", "ring-track");
+  const arc = document.createElementNS(SVG, "circle");
+  arc.setAttribute("cx", "40"); arc.setAttribute("cy", "40"); arc.setAttribute("r", "34");
+  arc.setAttribute("class", `ring-arc ${score === null ? "" : score >= 80 ? "good" : score >= 55 ? "fair" : "weak"}`);
+  const length = 2 * Math.PI * 34;
+  arc.setAttribute("stroke-dasharray", `${((score ?? 0) / 100) * length} ${length}`);
+  ring.append(track, arc);
+  return h("div", { class: "posture-score" }, ring, h("span", { class: "big", id: "posture-score" }, score === null ? "—" : String(score)));
+}
+
+function posturePanel() {
+  const c = t.security;
+  const p = postureView;
+  const run = async () => {
+    postureBusy = true;
+    void render();
+    postureView = (await guard(() => api.posture() as Promise<PostureView>)) ?? postureView;
+    postureBusy = false;
+    void render();
+  };
+  const order = { fail: 0, warn: 1, unknown: 2, pass: 3 } as const;
+  return h(
+    "section",
+    { class: "panel", id: "posture" },
+    h("h2", {}, c.posture),
+    h("p", { class: "muted" }, c.postureHint),
+    p
+      ? h("div", { class: "posture" }, postureRing(p.score), h("div", {},
+          h("p", { class: p.score === null ? "muted" : p.score >= 80 ? "good-text" : "warning-text" }, p.score === null ? c.postureUnknown : c.postureSummary(p.checks.filter((x) => x.status === "fail").length, p.checks.filter((x) => x.status === "warn").length)),
+          h("p", { class: "muted small" }, c.checkedAt(date(p.checkedAt)))))
+      : null,
+    p
+      ? h("ul", { class: "folders checks" }, ...p.checks.slice().sort((a, b) => order[a.status] - order[b.status]).map((check) =>
+          h("li", { class: `item check-${check.status}` },
+            h("span", { class: "row spread" }, h("strong", {}, check.title), h("span", { class: `sig sig-${check.status === "pass" ? "signed" : check.status === "fail" ? "invalid" : check.status}` }, c.checkStates[check.status])),
+            check.detail ? h("span", { class: "muted small block" }, check.detail) : null,
+            check.status !== "pass" && check.fix ? h("span", { class: "small block" }, check.fix) : null)))
+      : null,
+    h("div", { class: "row" }, h("button", { type: "button", id: "posture-run", disabled: postureBusy, onclick: run }, postureBusy ? c.checking : p ? c.recheck : c.postureRun)),
+  );
+}
+
+function integrityPanel() {
+  const c = t.security;
+  const view = integrityView;
+  if (!view) {
+    void api.integrityState().then((next) => {
+      integrityView = next as IntegrityView;
+      if (tab === "security") void render();
+    });
+    return h("section", { class: "panel", id: "integrity" }, h("h2", {}, c.integrity), h("div", { class: "skeleton-line" }));
+  }
+  const set = async (action: () => Promise<unknown>) => {
+    integrityView = ((await guard(action)) as IntegrityView | undefined) ?? integrityView;
+    void render();
+  };
+  return h(
+    "section",
+    { class: "panel", id: "integrity" },
+    h("h2", {}, c.integrity),
+    h("p", { class: "muted" }, c.integrityHint),
+    view.changes.length
+      ? h("ul", { class: "folders", id: "integrity-changes" }, ...view.changes.map((change) =>
+          h("li", { class: "item risky" },
+            h("span", { class: "row spread" }, h("strong", { dir: "ltr" }, change.path), h("button", { type: "button", class: "secondary small-button", onclick: () => set(() => api.integrityAccept(change.path)) }, c.acceptChange)),
+            h("span", { class: "warning-text small" }, `${c.changeKinds[change.kind] ?? change.kind} · ${date(change.at)}`))))
+      : h("p", { class: "good-text", id: "integrity-ok" }, c.integrityOk(view.paths.length)),
+    h("details", {}, h("summary", {}, c.watchedFiles(view.paths.length)),
+      h("ul", { class: "folders small" }, ...view.paths.map((path) =>
+        h("li", { class: "row spread" }, h("code", { dir: "ltr" }, path, view.baseline[path]?.sha256 ? "" : ` (${c.missing})`), h("button", { type: "button", class: "link", onclick: () => set(() => api.integrityRemove(path)) }, c.remove))))),
+    h("div", { class: "row" },
+      h("button", { type: "button", class: "secondary", id: "integrity-check", onclick: () => set(() => api.integrityCheck()) }, c.checkNow),
+      h("button", { type: "button", class: "secondary", onclick: () => set(() => api.integrityAdd()) }, c.addFiles),
+      h("button", { type: "button", class: "secondary", onclick: () => { if (window.confirm(c.confirmRebaseline)) void set(() => api.integrityReset()); } }, c.rebaseline)),
+    view.lastCheck ? h("p", { class: "muted small" }, c.checkedAt(date(view.lastCheck))) : null,
+  );
+}
+
+function reportsPanel() {
+  const c = t.security;
+  const make = (kind: "inventory" | "security" | "performance", format: "json" | "csv" | "html" | "pdf") =>
+    h("button", { type: "button", class: "secondary small-button", "data-report": `${kind}-${format}`, disabled: reportBusy !== null, onclick: async () => {
+      reportBusy = `${kind}-${format}`;
+      void render();
+      const path = await guard(() => api.report(kind, format));
+      reportBusy = null;
+      void render();
+      if (path) flash(t.monitor.saved(String(path)));
+    } }, reportBusy === `${kind}-${format}` ? c.checking : format.toUpperCase());
+  return h(
+    "section",
+    { class: "panel", id: "reports" },
+    h("h2", {}, c.reports),
+    h("p", { class: "muted" }, c.reportsHint),
+    ...(["security", "inventory", "performance"] as const).map((kind) =>
+      h("div", { class: "report-row" }, h("span", {}, h("strong", { class: "block" }, c.reportKinds[kind]), h("span", { class: "muted small" }, c.reportAbout[kind])),
+        h("div", { class: "actions" }, make(kind, "pdf"), make(kind, "html"), make(kind, "csv"), make(kind, "json")))),
+  );
 }
 
 async function securityView() {
@@ -1243,10 +1548,13 @@ async function securityView() {
       }, c.recheck),
       sec ? h("span", { class: "muted small" }, c.checkedAt(date(sec.checkedAt))) : null,
     ),
+    posturePanel(),
     ...(sec ? securityPanels(sec) : []),
+    integrityPanel(),
     programsPanel(),
     browsingPanel(),
     privacyPanel(sec),
+    reportsPanel(),
     schedulePanel(),
     backupPanel(),
   ];
@@ -1350,6 +1658,11 @@ api.on("schedule-ran", () => {
 api.on("update-state", (payload) => {
   status = { ...status, update: payload as UpdateView };
   if (tab === "settings") void render();
+});
+api.on("integrity-alert", (payload) => {
+  integrityView = payload as IntegrityView;
+  if (tab === "security") void render();
+  else flash(t.security.integrityAlert, "error");
 });
 api.on("monitor-sample", (payload) => {
   monitorSamples = [...monitorSamples, payload as MonitorSnapshot].slice(-90);

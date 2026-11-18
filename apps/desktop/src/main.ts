@@ -38,6 +38,14 @@ import { type HistoryReport, checkHistory } from "./engine/history";
 import { type ProcessConcern, concernsFor, groupByExecutable, listProcesses } from "./engine/processes";
 import * as vpn from "./engine/vpn";
 import * as monitor from "./engine/monitor";
+import * as explorer from "./engine/explorer";
+import { storage } from "./engine/storage";
+import * as nettools from "./engine/nettools";
+import { posture } from "./engine/posture";
+import { IntegrityMonitor } from "./engine/integrity";
+import { Telemetry } from "./engine/telemetry";
+import * as reports from "./engine/reports";
+import { buildReport } from "./engine/report-data";
 import { Quarantine } from "./engine/quarantine";
 import { type Detection, type OfferedFolder, type ScanOutcome, RemoteAgent } from "./engine/remote";
 import { type ScanContext, scanFile } from "./engine/scanner";
@@ -95,6 +103,82 @@ let monitorTimer: NodeJS.Timeout | null = null;
 let monitorHistory: monitor.Snapshot[] = [];
 let stopJournal: (() => void) | null = null;
 let monitorTicks = 0;
+let telemetry: Telemetry | null = null;
+let integrity: IntegrityMonitor;
+let lastPosture: Awaited<ReturnType<typeof posture>> | null = null;
+
+/** Writes to the local security event log (best effort). */
+function logEvent(kind: string, level: "info" | "warning" | "alert", message: string) {
+  try {
+    telemetry?.log(kind, level, message);
+  } catch {
+    // the log must never break the action it records
+  }
+}
+
+/** One reading a minute into the local history, independent of the Monitor screen. */
+function startTelemetry() {
+  const sampler = new monitor.Sampler();
+  const tick = async () => {
+    const s = await sampler.sample(false).catch(() => null);
+    if (!s || !telemetry) return;
+    try {
+      telemetry.record({
+        cpu: s.cpu.total,
+        memory: s.memory.total ? (s.memory.used / s.memory.total) * 100 : 0,
+        rx: s.network?.rxPerSec ?? 0,
+        tx: s.network?.txPerSec ?? 0,
+        read: s.disk?.readPerSec ?? 0,
+        write: s.disk?.writePerSec ?? 0,
+      });
+    } catch {
+      // disk full or database busy: skip this minute
+    }
+  };
+  void tick();
+  setInterval(() => void tick(), 60_000).unref();
+  setInterval(() => telemetry?.prune(), 6 * 3600_000).unref();
+}
+
+async function postureCheck() {
+  const [firewall, encryption, updates, ports, startup] = await Promise.all([
+    firewallStatus(),
+    diskEncryption(),
+    pendingUpdates().catch(() => null),
+    listeningPorts(),
+    startupItems().catch(() => []),
+  ]);
+  lastPosture = await posture({
+    firewall: firewall.state,
+    encryption: encryption.state,
+    pendingUpdates: updates ? updates.updates.length : null,
+    riskyPorts: ports ? ports.filter((p) => p.exposed && p.risk).length : null,
+    suspiciousStartup: startup.filter((item) => item.warnings.length).length,
+  });
+  logEvent("posture", lastPosture.score !== null && lastPosture.score < 60 ? "warning" : "info", `Security posture checked: ${lastPosture.score ?? "?"}/100`);
+  return lastPosture;
+}
+
+/** Saves text, or a PDF printed from HTML, where the person chooses. */
+async function saveExport(defaultName: string, format: "json" | "csv" | "html" | "pdf", content: string): Promise<string | null> {
+  const filters = { json: [{ name: "JSON", extensions: ["json"] }], csv: [{ name: "CSV", extensions: ["csv"] }], html: [{ name: "Web page", extensions: ["html"] }], pdf: [{ name: "PDF", extensions: ["pdf"] }] }[format];
+  const target = process.env.QALAA_EXPORT_DIR
+    ? join(process.env.QALAA_EXPORT_DIR, `${defaultName}.${format}`)
+    : (await dialog.showSaveDialog(window!, { defaultPath: `${defaultName}.${format}`, filters })).filePath;
+  if (!target) return null;
+  if (format === "pdf") {
+    const printer = new BrowserWindow({ show: false, webPreferences: { javascript: false, sandbox: true } });
+    try {
+      await printer.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(content)}`);
+      await writeFile(target, await printer.webContents.printToPDF({ printBackground: true, pageSize: "A4" }));
+    } finally {
+      printer.destroy();
+    }
+  } else {
+    await writeFile(target, content, { mode: 0o600 });
+  }
+  return target;
+}
 
 function startMonitor() {
   if (monitorTimer) return monitorHistory;
@@ -625,11 +709,76 @@ function registerIpc() {
   ipcMain.handle("process-check", () => processCheck());
   ipcMain.handle("history-check", (_event, days: unknown) => historyCheck(Math.min(90, Math.max(1, Number(days) || 30))));
   ipcMain.handle("history-last", () => lastHistoryReport);
+  // Process explorer
+  ipcMain.handle("explorer-list", () => explorer.processDetails());
+  ipcMain.handle("explorer-inspect", async (_event, path: unknown) => {
+    const file = String(path);
+    const [sha256, sig] = await Promise.all([explorer.sha256File(file).catch(() => null), explorer.signature(file)]);
+    return { sha256, signature: sig };
+  });
+  ipcMain.handle("explorer-control", async (_event, pid: unknown, action: unknown, name: unknown) => {
+    if (action !== "end" && action !== "suspend" && action !== "resume") throw new Error("Unknown action.");
+    await explorer.controlProcess(Number(pid), action);
+    logEvent("process", "warning", `${action === "end" ? "Ended" : action === "suspend" ? "Suspended" : "Resumed"} ${String(name).slice(0, 80)} (PID ${Number(pid)})`);
+    return true;
+  });
+  ipcMain.handle("reveal-path", (_event, path: unknown) => shell.showItemInFolder(String(path)));
+  // Storage and network tools
+  ipcMain.handle("storage", () => storage());
+  ipcMain.handle("net-lookup", (_event, query: unknown) => nettools.lookup(String(query).slice(0, 300)));
+  ipcMain.handle("net-interfaces", () => nettools.interfaces());
+  // Posture, integrity, history, reports
+  ipcMain.handle("posture", () => postureCheck());
+  ipcMain.handle("integrity-state", () => integrity.state);
+  ipcMain.handle("integrity-check", async () => {
+    await integrity.check();
+    return integrity.state;
+  });
+  ipcMain.handle("integrity-accept", async (_event, path: unknown) => {
+    logEvent("integrity", "info", `Change accepted: ${String(path)}`);
+    return integrity.accept(String(path));
+  });
+  ipcMain.handle("integrity-remove", (_event, path: unknown) => integrity.setPaths(integrity.state.paths.filter((p) => p !== String(path))));
+  ipcMain.handle("integrity-add", async () => {
+    const result = await dialog.showOpenDialog(window!, { properties: ["openFile", "multiSelections", "showHiddenFiles"] });
+    if (result.canceled) return integrity.state;
+    return integrity.setPaths([...integrity.state.paths, ...result.filePaths]);
+  });
+  ipcMain.handle("integrity-reset", () => integrity.rebaseline());
+  ipcMain.handle("telemetry-history", (_event, hours: unknown) => telemetry?.history(Math.min(168, Math.max(1, Number(hours) || 24))) ?? []);
+  ipcMain.handle("security-log", () => telemetry?.events(300) ?? []);
+  ipcMain.handle("report", async (_event, kind: unknown, format: unknown) => {
+    if (kind !== "inventory" && kind !== "security" && kind !== "performance") throw new Error("Unknown report.");
+    if (format !== "json" && format !== "csv" && format !== "html" && format !== "pdf") throw new Error("Unknown format.");
+    const report = await buildReport(kind, {
+      posture: lastPosture ?? (await postureCheck()),
+      integrity: integrity.state,
+      security: await securityCheck(),
+      sampler: monitorSampler ?? new monitor.Sampler(),
+      history: telemetry?.history(24) ?? [],
+      events: telemetry?.events(100) ?? [],
+    });
+    const content = reports.render(report, format === "pdf" ? "html" : format);
+    const saved = await saveExport(`qalaa-${kind}-${new Date().toISOString().slice(0, 10)}`, format, content);
+    if (saved) logEvent("report", "info", `${report.title} saved as ${format.toUpperCase()}`);
+    return saved;
+  });
   ipcMain.handle("monitor-start", () => startMonitor());
   ipcMain.handle("monitor-stop", () => stopMonitor());
   ipcMain.handle("monitor-connections", () => monitor.connections());
   ipcMain.handle("monitor-services", () => monitor.services());
   ipcMain.handle("monitor-events", (_event, minutes: unknown) => monitor.recentEvents(Math.min(24 * 60, Math.max(5, Number(minutes) || 60))));
+  ipcMain.handle("monitor-service-details", (_event, name: unknown) => monitor.serviceDetails(String(name)));
+  ipcMain.handle("monitor-service-startup", async (_event, name: unknown, enabled: unknown) => {
+    await monitor.setServiceStartup(String(name), Boolean(enabled));
+    logEvent("service", "warning", `${Boolean(enabled) ? "Enabled" : "Disabled"} service ${String(name)}`);
+    return monitor.services();
+  });
+  ipcMain.handle("monitor-security-events", (_event, minutes: unknown) => monitor.securityEvents(Math.min(7 * 24 * 60, Math.max(5, Number(minutes) || 24 * 60))));
+  ipcMain.handle("monitor-events-export", async (_event, events: unknown, format: unknown) => {
+    if (format !== "csv" && format !== "json" || !Array.isArray(events)) throw new Error("Unknown format.");
+    return saveExport(`qalaa-events-${new Date().toISOString().slice(0, 10)}`, format, monitor.exportEvents((events as monitor.LogEvent[]).slice(0, 10_000), format));
+  });
   ipcMain.handle("monitor-service-control", async (_event, name: unknown, action: unknown) => {
     if (action !== "start" && action !== "stop" && action !== "restart") throw new Error("Unknown action.");
     await monitor.controlService(String(name), action);
@@ -784,6 +933,18 @@ async function start() {
 
   // Nothing the page asks for (camera, notifications from web content, etc.) is granted.
   session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
+  telemetry = await Telemetry.open(join(dir, "telemetry.db")).catch(() => null);
+  integrity = new IntegrityMonitor(join(dir, "integrity.json"), (changes) => {
+    for (const change of changes) logEvent("integrity", "alert", `${change.kind}: ${change.path}`);
+    notify(
+      changes.length === 1 ? "A protected file changed" : `${changes.length} protected files changed`,
+      changes.map((c) => `${c.path} (${c.kind})`).join("\n").slice(0, 240),
+    );
+    send("integrity-alert", integrity.state);
+  });
+  await integrity.load();
+  integrity.start();
+  startTelemetry();
   registerIpc();
   createWindow();
   createTray();

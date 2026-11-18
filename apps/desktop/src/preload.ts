@@ -24,6 +24,27 @@ const api = {
   processCheck: () => ipcRenderer.invoke("process-check"),
   historyCheck: (days: number) => ipcRenderer.invoke("history-check", days),
   historyLast: () => ipcRenderer.invoke("history-last"),
+  explorerList: () => ipcRenderer.invoke("explorer-list"),
+  explorerInspect: (path: string) => ipcRenderer.invoke("explorer-inspect", path),
+  explorerControl: (pid: number, action: "end" | "suspend" | "resume", name: string) => ipcRenderer.invoke("explorer-control", pid, action, name),
+  revealPath: (path: string) => ipcRenderer.invoke("reveal-path", path),
+  storage: () => ipcRenderer.invoke("storage"),
+  netLookup: (query: string) => ipcRenderer.invoke("net-lookup", query),
+  netInterfaces: () => ipcRenderer.invoke("net-interfaces"),
+  posture: () => ipcRenderer.invoke("posture"),
+  integrityState: () => ipcRenderer.invoke("integrity-state"),
+  integrityCheck: () => ipcRenderer.invoke("integrity-check"),
+  integrityAccept: (path: string) => ipcRenderer.invoke("integrity-accept", path),
+  integrityRemove: (path: string) => ipcRenderer.invoke("integrity-remove", path),
+  integrityAdd: () => ipcRenderer.invoke("integrity-add"),
+  integrityReset: () => ipcRenderer.invoke("integrity-reset"),
+  telemetryHistory: (hours: number) => ipcRenderer.invoke("telemetry-history", hours),
+  securityLog: () => ipcRenderer.invoke("security-log"),
+  report: (kind: "inventory" | "security" | "performance", format: "json" | "csv" | "html" | "pdf") => ipcRenderer.invoke("report", kind, format),
+  monitorServiceDetails: (name: string) => ipcRenderer.invoke("monitor-service-details", name),
+  monitorServiceStartup: (name: string, enabled: boolean) => ipcRenderer.invoke("monitor-service-startup", name, enabled),
+  monitorSecurityEvents: (minutes: number) => ipcRenderer.invoke("monitor-security-events", minutes),
+  monitorEventsExport: (events: unknown[], format: "csv" | "json") => ipcRenderer.invoke("monitor-events-export", events, format),
   monitorStart: () => ipcRenderer.invoke("monitor-start"),
   monitorStop: () => ipcRenderer.invoke("monitor-stop"),
   monitorConnections: () => ipcRenderer.invoke("monitor-connections"),
@@ -46,7 +67,7 @@ const api = {
   accountLink: (code: string) => ipcRenderer.invoke("account-link", code),
   accountUnlink: () => ipcRenderer.invoke("account-unlink"),
   pathOf: (file: File) => webUtils.getPathForFile(file),
-  on: (channel: "scan-result" | "scan-progress" | "ransomware-alert" | "remote-activity" | "device-use" | "backup-progress" | "schedule-ran" | "update-state" | "monitor-sample" | "monitor-event", listener: (payload: unknown) => void) => {
+  on: (channel: "scan-result" | "scan-progress" | "ransomware-alert" | "remote-activity" | "device-use" | "backup-progress" | "schedule-ran" | "update-state" | "monitor-sample" | "monitor-event" | "integrity-alert", listener: (payload: unknown) => void) => {
     const wrapped = (_event: unknown, payload: unknown) => listener(payload);
     ipcRenderer.on(channel, wrapped);
     return () => ipcRenderer.removeListener(channel, wrapped);

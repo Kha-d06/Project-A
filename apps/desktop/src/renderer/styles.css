@@ -188,3 +188,42 @@ table.data td { border-bottom: 1px solid var(--line); padding: 5px 8px; vertical
 table.data tr.flag td { background: var(--warning-soft); }
 .table-wrap { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
 .level-error { color: var(--danger); font-weight: 600; } .level-warning { color: var(--warning); font-weight: 600; }
+
+/* Process explorer, storage, network tools, history */
+.tree { display: inline-flex; gap: 2px; align-items: baseline; color: var(--faint); }
+.tree strong { color: var(--ink); font-weight: 600; }
+table.data td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.data tr.detail td { background: color-mix(in srgb, var(--sunken) 60%, transparent); padding: 10px 12px; }
+dl.facts { display: grid; grid-template-columns: 110px 1fr; gap: 6px 14px; margin: 0; }
+dl.facts dt { color: var(--faint); font: 500 11px/1.8 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+dl.facts dd { margin: 0; overflow-wrap: anywhere; }
+.sig { display: inline-block; font: 600 11.5px/1 var(--font); padding: 4px 9px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--sunken); color: var(--muted); }
+.sig-signed, .sig-package, .sig-pass { background: var(--clear-soft); color: var(--clear); border-color: color-mix(in srgb, var(--clear) 30%, transparent); }
+.sig-unsigned, .sig-warn { background: var(--warning-soft); color: var(--warning); border-color: color-mix(in srgb, var(--warning) 30%, transparent); }
+.sig-invalid { background: var(--danger-soft); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
+button.link-quiet { background: none; box-shadow: none; color: var(--accent); padding: 0 6px; font-weight: 500; font-size: 12px; }
+button.link-quiet:hover { background: none; text-decoration: underline; transform: none; }
+button.danger-text { color: var(--danger); }
+.actions.inline { display: inline-flex; margin-inline-start: 10px; }
+.volume { display: grid; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.volume:last-of-type { border-bottom: 0; }
+.ipclass { font: 500 11px/1 var(--mono); padding: 3px 7px; border-radius: 6px; background: var(--sunken); color: var(--muted); }
+.ip-public { background: var(--accent-soft); color: var(--accent); }
+.ip-private, .ip-loopback { background: var(--clear-soft); color: var(--clear); }
+.history-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.history-chart { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: var(--surface); display: grid; gap: 6px; }
+.history-chart .spark { height: 72px; }
+.panel h3 { margin-top: 14px; }
+/* Posture */
+.posture { display: flex; align-items: center; gap: 18px; }
+.posture-score { position: relative; width: 84px; height: 84px; flex: none; display: grid; place-items: center; }
+.posture-score .big { position: relative; font-size: 26px; }
+.posture-ring { position: absolute; inset: 0; transform: rotate(-90deg); }
+.ring-track { fill: none; stroke: var(--sunken); stroke-width: 7; }
+.ring-arc { fill: none; stroke: var(--accent); stroke-width: 7; stroke-linecap: round; transition: stroke-dasharray .8s var(--ease); }
+.ring-arc.good { stroke: var(--clear); } .ring-arc.fair { stroke: var(--warning); } .ring-arc.weak { stroke: var(--danger); }
+.checks .item { gap: 4px; }
+.check-fail { border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
+.report-row { display: flex; gap: 14px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--line); }
+.skeleton-line { height: 14px; border-radius: 8px; background: linear-gradient(90deg, var(--sunken) 30%, var(--line) 50%, var(--sunken) 70%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+@keyframes shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }

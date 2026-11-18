@@ -684,3 +684,131 @@ export function followJournal(onEvent: (event: LogEvent) => void): () => void {
   child.on("error", () => undefined);
   return () => child.kill();
 }
+
+// --- Service details and start-up type --------------------------------------------------
+
+export interface ServiceDetails {
+  name: string;
+  description: string | null;
+  account: string | null;
+  command: string | null;
+  startup: string | null;
+  dependsOn: string[];
+  requiredBy: string[];
+}
+
+/** `systemctl show <unit> -p Description,User,ExecStart,UnitFileState,Requires,Wants,RequiredBy,WantedBy` */
+export function parseSystemctlShow(name: string, stdout: string): ServiceDetails {
+  const props = new Map<string, string>();
+  for (const line of stdout.split("\n")) {
+    const i = line.indexOf("=");
+    if (i > 0) props.set(line.slice(0, i), line.slice(i + 1));
+  }
+  const list = (...keys: string[]) => [...new Set(keys.flatMap((k) => (props.get(k) ?? "").split(/\s+/)).filter(Boolean))];
+  const exec = /argv\[\]=([^;]+);/.exec(props.get("ExecStart") ?? "")?.[1]?.trim() ?? null;
+  return {
+    name,
+    description: props.get("Description") || null,
+    account: props.get("User") || "root",
+    command: exec,
+    startup: props.get("UnitFileState") || null,
+    dependsOn: list("Requires", "Wants"),
+    requiredBy: list("RequiredBy", "WantedBy"),
+  };
+}
+
+/** Win32_Service row plus dependency names (Windows). */
+export function parseWindowsServiceDetails(name: string, json: string): ServiceDetails {
+  try {
+    const d = JSON.parse(json) as { DisplayName?: string; StartName?: string; PathName?: string; StartMode?: string; DependsOn?: string[] | string; Dependents?: string[] | string };
+    const arr = (x: string[] | string | undefined) => (Array.isArray(x) ? x : x ? [x] : []);
+    return { name, description: d.DisplayName ?? null, account: d.StartName ?? null, command: d.PathName ?? null, startup: d.StartMode ?? null, dependsOn: arr(d.DependsOn), requiredBy: arr(d.Dependents) };
+  } catch {
+    return { name, description: null, account: null, command: null, startup: null, dependsOn: [], requiredBy: [] };
+  }
+}
+
+export async function serviceDetails(name: string, platform = process.platform): Promise<ServiceDetails | null> {
+  if (!SERVICE_NAME.test(name)) throw new Error("That is not a valid service name.");
+  try {
+    if (platform === "linux") {
+      return parseSystemctlShow(name, await run("systemctl", ["show", name, "--no-pager", "-p", "Description,User,ExecStart,UnitFileState,Requires,Wants,RequiredBy,WantedBy"]));
+    }
+    if (platform === "win32") {
+      return parseWindowsServiceDetails(
+        name,
+        await powershell(
+          `$s = Get-CimInstance Win32_Service -Filter "Name='${name}'"; $g = Get-Service -Name '${name}'; @{ DisplayName = $s.DisplayName; StartName = $s.StartName; PathName = $s.PathName; StartMode = $s.StartMode; DependsOn = @($g.ServicesDependedOn | ForEach-Object Name); Dependents = @($g.DependentServices | ForEach-Object Name) } | ConvertTo-Json -Compress`,
+          20_000,
+        ),
+      );
+    }
+    if (platform === "darwin") {
+      const out = await run("launchctl", ["list", name]).catch(() => "");
+      const program = /"Program" = "([^"]+)"/.exec(out)?.[1] ?? /"ProgramArguments" = \(\s*"([^"]+)"/.exec(out)?.[1] ?? null;
+      return { name, description: null, account: null, command: program, startup: null, dependsOn: [], requiredBy: [] };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Enable (start at boot) or disable a service, through the system's own administrator prompt. */
+export async function setServiceStartup(name: string, enabled: boolean, platform = process.platform): Promise<void> {
+  if (!SERVICE_NAME.test(name)) throw new Error("That is not a valid service name.");
+  if (platform === "linux") {
+    await run("pkexec", ["systemctl", enabled ? "enable" : "disable", name], 120_000);
+    return;
+  }
+  if (platform === "win32") {
+    const mode = enabled ? "Automatic" : "Disabled";
+    await powershell(
+      `Start-Process powershell.exe -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '-NoProfile','-Command','Set-Service -Name ''${name}'' -StartupType ${mode}'`,
+      120_000,
+    );
+    return;
+  }
+  throw new Error("Changing services from Qalaa is not supported on this system.");
+}
+
+// --- Security log -------------------------------------------------------------------------
+
+/**
+ * Sign-in and privilege events: the auth facility of the journal on Linux, the
+ * Security log on Windows (readable only with administrator rights), and
+ * authorisation messages on macOS.
+ */
+export async function securityEvents(minutes = 24 * 60, platform = process.platform): Promise<{ events: LogEvent[] | null; note: string | null }> {
+  try {
+    if (platform === "linux") {
+      const out = await run("journalctl", ["-o", "json", "--no-pager", "--facility=auth,authpriv", "--since", `-${Math.round(minutes)}min`, "-n", "400"], 20_000);
+      return { events: parseJournal(out).map((e) => ({ ...e, security: true })).reverse(), note: null };
+    }
+    if (platform === "win32") {
+      const out = await powershell(
+        `Get-WinEvent -FilterHashtable @{LogName='Security';Id=4624,4625,4634,4648,4672,4720,4722,4724,4728,4732,4740,4756,1102;StartTime=(Get-Date).AddMinutes(-${Math.round(minutes)})} -MaxEvents 400 -ErrorAction Stop | Select-Object @{n='t';e={$_.TimeCreated.ToString('o')}},@{n='l';e={if($_.Id -in 4625,4740,1102){2}else{4}}},@{n='s';e={'Security'}},@{n='m';e={$_.Message}},@{n='id';e={$_.Id}} | ConvertTo-Json -Compress`,
+        30_000,
+      ).catch(() => null);
+      if (out === null || out.trim() === "") return { events: null, note: "Windows only shows the Security log to administrators. Run Qalaa as administrator to see sign-in events." };
+      return { events: parseWindowsEvents(out).map((e) => ({ ...e, security: true })), note: null };
+    }
+    if (platform === "darwin") {
+      const out = await run("log", ["show", "--style", "ndjson", "--last", `${Math.round(minutes)}m`, "--predicate", 'subsystem == "com.apple.Authorization" OR process == "sudo" OR process == "sshd"'], 40_000);
+      return { events: parseMacLog(out).slice(-400).reverse().map((e) => ({ ...e, security: true })), note: null };
+    }
+    return { events: null, note: null };
+  } catch {
+    return { events: null, note: null };
+  }
+}
+
+/** Events as CSV (formula characters neutralised) or JSON. */
+export function exportEvents(events: LogEvent[], format: "csv" | "json"): string {
+  if (format === "json") return JSON.stringify(events, null, 2);
+  const cell = (v: string) => {
+    const safe = /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
+    return /[",\n]/.test(safe) || safe !== v ? `"${safe.replace(/"/g, '""')}"` : safe;
+  };
+  return ["time,level,source,security,message", ...events.map((e) => [e.at, e.level, e.source, e.security ? "yes" : "no", e.message].map(cell).join(","))].join("\r\n") + "\r\n";
+}

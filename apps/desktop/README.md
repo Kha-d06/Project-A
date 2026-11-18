@@ -32,6 +32,16 @@ Verdicts use the same words as the website: **Known malicious**, **Suspicious**,
   - **Programs accepting connections**: which ports are reachable from the network and by which program. Services that are often attacked when exposed (SMB, Remote Desktop, VNC, Telnet, FTP, databases, the Docker API) are flagged. On Linux it reads `/proc/net/tcp` directly; on Windows `netstat` and `tasklist`; on macOS `lsof`.
   - **Programs that start automatically**: registry Run keys and Startup folders, launch agents and daemons, autostart entries and systemd user services. It flags common malware tricks (encoded PowerShell, scripts from temp or Downloads folders, `curl … | sh`, `mshta`/`rundll32` running scripts) and points out entries that are new since you last reviewed the list. Any listed program can be scanned in one click.
   - **Camera and microphone**: optional notifications when an app starts using them (Windows: the system's own usage record; Linux: `/dev/video*` and PipeWire/PulseAudio). macOS does not let other apps see this; it shows its own indicator dots.
+  - **Security posture score** (0–100): hardening checks in the spirit of the CIS benchmarks, each with how to fix it. Every system: firewall, disk encryption, pending updates, risky open ports, suspicious startup entries. Windows: Defender real-time protection and signatures, UAC, unquoted service paths, the Guest account, Remote Desktop. macOS: Gatekeeper, System Integrity Protection, automatic updates. Linux: AppArmor/SELinux, SSH root and password sign-in, automatic updates, world-writable folders in `PATH`. Checks that cannot be read count as unknown and do not lower the score.
+  - **File integrity monitoring**: SHA-256 baselines of files attackers like to change (hosts file, SSH `authorized_keys` and config, shell start-up files, `sudoers`, `/etc/passwd`, `ld.so.preload`, crontab, PowerShell profiles), watched in real time and re-checked every 10 minutes. A change raises a notification until you accept it; you can add or remove files.
+  - **Reports**: hardware inventory, security audit and performance snapshot as JSON, CSV, HTML or PDF, made on the computer. CSV cells that start with a formula character are neutralised; the HTML has no scripts.
+- **Monitor.** Besides live CPU, memory, graphics, disk and network:
+  - **Processes**: every program as a tree of which started which, with memory, threads and open handles. Inspect shows the file path (open its folder), command line, SHA-256 and who signed it (Authenticode, `codesign`, or the Linux package that installed it). Suspend, resume or end a program after confirming (not system processes or Qalaa itself; suspending is not offered on Windows).
+  - **Storage**: each disk's type (SSD/HDD/NVMe), model and SMART health where the system reports it (`Get-PhysicalDisk`, `diskutil`, `smartctl` on Linux when installed), and space per volume.
+  - **Network tools**: DNS lookup (A, AAAA, MX, TXT, reverse) that also says what kind of address it is (this computer, local network, carrier, public…), and per-interface traffic and error counters.
+  - **Services**: details (account, command, dependencies) and start-up type, which you can switch on or off with the system's administrator prompt.
+  - **System and security logs**: filter by level, switch to sign-in and privilege events (Linux auth log, macOS unified log, the Windows Security log when run as administrator), and export to CSV or JSON.
+  - **History**: a sample every minute is kept for 7 days in a local SQLite database (Node's built-in `node:sqlite`), charted over 1 hour, 24 hours or 7 days, with a log of security activity (file changes, posture checks, programs ended, services changed) kept 90 days.
 - **Scheduled scans**, daily or weekly, quick (watched folders) or full (home folder). A computer that was off at the time catches up once when it starts. The schedule counts from the first run, so there is no scan straight after installation.
 - **Encrypted backup** of chosen folders into one `.sbk` file, saved on a USB drive or in a folder that OneDrive, iCloud Drive, Google Drive or Dropbox syncs. It can run on a schedule and keeps the newest N backups.
   - Every 1 MiB record is encrypted with AES-256-GCM. The key comes from your password through scrypt (N=2¹⁵), and each record's sequence number is authenticated, so records cannot be reordered, removed or swapped. A closing record detects a cut-off file. File names are encrypted too.
@@ -43,7 +53,7 @@ Verdicts use the same words as the website: **Known malicious**, **Suspicious**,
 
 It is not a replacement for Microsoft Defender, XProtect or your distribution's security tools:
 
-- it does not monitor running programs or memory;
+- it shows and controls running programs but does not block them in real time or scan their memory;
 - it cannot stop a browser from writing a file (it scans right after);
 - it has no kernel driver;
 - its fingerprint list covers recently reported samples, not all malware ever seen.

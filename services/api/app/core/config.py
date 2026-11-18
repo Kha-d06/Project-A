@@ -42,10 +42,14 @@ class Settings(BaseSettings):
     run_scans_inline: bool = False
 
     # --- Providers. Anything left unset is reported to users as unavailable. ---
+    # Free abuse.ch Auth-Key (https://auth.abuse.ch/). Since October 2026 abuse.ch serves
+    # its URLhaus, ThreatFox and MalwareBazaar data only with a key; it is also used for
+    # live URLhaus lookups.
     urlhaus_auth_key: str | None = None
-    urlhaus_feed_url: str = "https://urlhaus.abuse.ch/downloads/csv_recent/"
-    malwarebazaar_feed_url: str = "https://bazaar.abuse.ch/export/txt/sha256/recent/"
-    threatfox_feed_url: str = "https://threatfox.abuse.ch/export/csv/recent/"
+    # Leave empty to use abuse.ch's keyed exports. An override may contain "{auth_key}".
+    urlhaus_feed_url: str = ""
+    malwarebazaar_feed_url: str = ""
+    threatfox_feed_url: str = ""
     # Free for non-commercial use; see https://openphish.com/terms.html.
     openphish_feed_url: str = "https://openphish.com/feed.txt"
     feed_sync_enabled: bool = True

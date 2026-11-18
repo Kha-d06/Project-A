@@ -25,6 +25,13 @@ URLHAUS_SAMPLE = """\
 URLHAUS_FEED = next(feed for feed in FEEDS if feed.key == "urlhaus")
 
 
+@pytest.fixture(autouse=True)
+def feed_addresses(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests stub the download, so any address will do (no abuse.ch key needed)."""
+    for name in ("urlhaus_feed_url", "threatfox_feed_url", "malwarebazaar_feed_url"):
+        monkeypatch.setattr(get_settings(), name, f"https://feeds.test/{name}.csv")
+
+
 def test_urlhaus_csv_is_parsed_into_url_and_host_indicators() -> None:
     indicators = list(parse_urlhaus_csv(URLHAUS_SAMPLE))
     urls = [i for i in indicators if i.kind == "url"]

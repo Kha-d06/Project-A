@@ -6,12 +6,14 @@ means a scan does not disclose the user's URL or file hash to a third party.
 
 import csv
 import io
+import json
 import logging
+import zipfile
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from itertools import batched
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 import httpx
 from sqlalchemy import delete, func, insert, select, update
@@ -32,6 +34,58 @@ OPENPHISH = "openphish"
 # Development-only indicators on reserved domains; see app.cli load-test-fixtures.
 TEST_FIXTURES = "test-fixtures"
 MAX_FEED_BYTES = 80 * 1024 * 1024
+
+# abuse.ch since October 2026: the key goes in the export path (exports) or in an
+# Auth-Key header (the MalwareBazaar query API). The old keyless URLs answer 410 Gone.
+URLHAUS_EXPORT = "https://urlhaus-api.abuse.ch/v2/files/exports/{auth_key}/recent.csv"
+THREATFOX_EXPORT = "https://threatfox-api.abuse.ch/v2/files/exports/{auth_key}/recent.csv"
+MALWAREBAZAAR_API = "https://mb-api.abuse.ch/api/v1/"
+
+
+class FeedNotConfiguredError(ValueError):
+    """The feed needs a setting (an abuse.ch Auth-Key) that is not set."""
+
+
+def _auth_key() -> str | None:
+    return get_settings().urlhaus_auth_key or None
+
+
+def redact(text: str) -> str:
+    """Removes the abuse.ch key from text that may contain a URL (errors, logs)."""
+    key = _auth_key()
+    return text.replace(key, "***") if key else text
+
+
+class _RedactAuthKey(logging.Filter):
+    """httpx logs every request URL; exports carry the key in the URL."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        key = _auth_key()
+        if key:
+            message = record.getMessage()
+            if key in message:
+                record.msg, record.args = message.replace(key, "***"), ()
+        return True
+
+
+for _name in ("httpx", "httpcore"):
+    logging.getLogger(_name).addFilter(_RedactAuthKey())
+
+
+def abusech_url(configured: str, template: str) -> str:
+    """The configured override, or abuse.ch's keyed export address."""
+    key = _auth_key()
+    url = configured or template
+    if "{auth_key}" in url:
+        if not key:
+            raise FeedNotConfiguredError(
+                "abuse.ch needs a free Auth-Key for this feed: set SENTINEL_URLHAUS_AUTH_KEY "
+                "(create one at https://auth.abuse.ch/)"
+            )
+        url = url.replace("{auth_key}", quote(key, safe=""))
+    return url
+
+
 _BATCH_SIZE = 500
 _SHA256_LENGTH = 64
 
@@ -104,6 +158,28 @@ def parse_threatfox_csv(text: str) -> Iterator[FeedIndicator]:
             yield FeedIndicator("sha256", value.lower(), threat, tags, reference, first_seen)
 
 
+def parse_malwarebazaar(text: str) -> Iterator[FeedIndicator]:
+    """The MalwareBazaar query API (JSON: data[].sha256_hash), or a plain list of hashes."""
+    if not text.lstrip().startswith("{"):
+        yield from parse_sha256_list(text)
+        return
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError("MalwareBazaar answered with invalid JSON") from exc
+    status = payload.get("query_status")
+    if status not in ("ok", "no_results"):
+        raise ValueError(f"MalwareBazaar refused the request: {status}")
+    for item in payload.get("data") or []:
+        value = str(item.get("sha256_hash", "")).strip().lower()
+        if len(value) == _SHA256_LENGTH and all(char in "0123456789abcdef" for char in value):
+            threat = item.get("signature") or "malware"
+            tags = ", ".join(item.get("tags") or [])[:300] or None
+            reference = f"https://bazaar.abuse.ch/sample/{value}/"
+            first_seen = _parse_timestamp(item.get("first_seen") or "")
+            yield FeedIndicator("sha256", value, str(threat)[:200], tags, reference, first_seen)
+
+
 def parse_sha256_list(text: str) -> Iterator[FeedIndicator]:
     for line in text.splitlines():
         value = line.strip().lower()
@@ -135,11 +211,16 @@ class Feed:
 
 
 FEEDS = (
-    Feed(URLHAUS, "URLhaus (abuse.ch)", lambda: get_settings().urlhaus_feed_url, parse_urlhaus_csv),
+    Feed(
+        URLHAUS,
+        "URLhaus (abuse.ch)",
+        lambda: abusech_url(get_settings().urlhaus_feed_url, URLHAUS_EXPORT),
+        parse_urlhaus_csv,
+    ),
     Feed(
         THREATFOX,
         "ThreatFox (abuse.ch)",
-        lambda: get_settings().threatfox_feed_url,
+        lambda: abusech_url(get_settings().threatfox_feed_url, THREATFOX_EXPORT),
         parse_threatfox_csv,
     ),
     Feed(
@@ -151,16 +232,40 @@ FEEDS = (
     Feed(
         MALWAREBAZAAR,
         "MalwareBazaar (abuse.ch)",
-        lambda: get_settings().malwarebazaar_feed_url,
-        parse_sha256_list,
+        lambda: get_settings().malwarebazaar_feed_url or MALWAREBAZAAR_API,
+        parse_malwarebazaar,
     ),
 )
 
 
+def unwrap(data: bytes) -> bytes:
+    """abuse.ch serves some exports zipped: return the first file inside, size-limited."""
+    if not data.startswith(b"PK\x03\x04"):
+        return data
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        members = [info for info in archive.infolist() if not info.is_dir()]
+        if not members:
+            return b""
+        if members[0].file_size > MAX_FEED_BYTES:
+            raise ValueError("Feed is larger than the configured safety limit")
+        with archive.open(members[0]) as member:
+            return member.read(MAX_FEED_BYTES + 1)[:MAX_FEED_BYTES]
+
+
 def download_feed(url: str) -> str:
-    # abuse.ch may require an Auth-Key for downloads; send it when one is configured.
-    key = get_settings().urlhaus_auth_key
+    key = _auth_key()
     headers = {"Auth-Key": key} if key else {}
+    if url == MALWAREBAZAAR_API:
+        # The query API: the most recent samples (last hour's worth, refreshed each sync).
+        if not key:
+            raise FeedNotConfiguredError(
+                "MalwareBazaar needs a free abuse.ch Auth-Key: set SENTINEL_URLHAUS_AUTH_KEY "
+                "(create one at https://auth.abuse.ch/)"
+            )
+        query = {"query": "get_recent", "selector": "time"}
+        response = httpx.post(url, data=query, headers=headers, timeout=60)
+        response.raise_for_status()
+        return response.text[:MAX_FEED_BYTES]
     with httpx.stream("GET", url, timeout=60, follow_redirects=True, headers=headers) as response:
         response.raise_for_status()
         chunks: list[bytes] = []
@@ -170,7 +275,7 @@ def download_feed(url: str) -> str:
             if size > MAX_FEED_BYTES:
                 raise ValueError("Feed is larger than the configured safety limit")
             chunks.append(chunk)
-    return b"".join(chunks).decode("utf-8", errors="replace")
+    return unwrap(b"".join(chunks)).decode("utf-8", errors="replace")
 
 
 def get_or_create_source(db: Session, key: str, name: str) -> ThreatSource:
@@ -270,10 +375,16 @@ def sync_feed(db: Session, feed: Feed, fetch: Callable[[str], str] = download_fe
         source.last_success_at = utcnow()
         source.last_error = None
         db.commit()
-    except (httpx.HTTPError, ValueError) as exc:
+    except FeedNotConfiguredError as exc:
         db.rollback()
-        logger.warning("Feed %s failed to sync: %s", feed.key, exc)
-        source.last_error = f"{type(exc).__name__}: {exc}"[:500]
+        logger.info("Feed %s skipped: %s", feed.key, exc)
+        source.last_error = str(exc)[:500]
+        db.commit()
+    except (httpx.HTTPError, ValueError, zipfile.BadZipFile) as exc:
+        db.rollback()
+        message = redact(f"{type(exc).__name__}: {exc}")
+        logger.warning("Feed %s failed to sync: %s", feed.key, message)
+        source.last_error = message[:500]
         db.commit()
     return source
 

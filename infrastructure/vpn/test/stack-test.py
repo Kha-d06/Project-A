@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
 
 SITE = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8080"
@@ -32,17 +33,35 @@ def call(method: str, path: str, body: object | None = None) -> dict:
         return json.loads(response.read() or b"{}")
 
 
+def healthy() -> bool:
+    try:
+        with urllib.request.urlopen(f"{SITE}/api/v1/system/health", timeout=5) as response:
+            return response.status == 200
+    except OSError:
+        return False
+
+
 def run(*args: str, stdin: str | None = None) -> str:
     return subprocess.run(args, input=stdin, capture_output=True, text=True, check=True).stdout.strip()
 
 
 def wait(what: str, check, seconds: int = 60) -> None:
+    last_error = ""
     for _ in range(seconds):
-        if check():
-            print(f"✓ {what}")
-            return
+        try:
+            if check():
+                print(f"✓ {what}")
+                return
+        except urllib.error.HTTPError as error:  # e.g. 502 while a container restarts
+            last_error = f"HTTP {error.code}: {error.read()[:300]!r}"
+        except (OSError, subprocess.CalledProcessError) as error:
+            last_error = str(error)
         time.sleep(1)
-    raise SystemExit(f"✗ {what}: timed out")
+    raise SystemExit(f"✗ {what}: timed out {last_error}")
+
+
+# The API container was just recreated; wait until it answers through Caddy.
+wait("API is up", healthy, 90)
 
 
 session = call("POST", "/auth/register", {"email": f"vpn-{int(time.time())}@example.com", "password": "a-strong-password-123"})

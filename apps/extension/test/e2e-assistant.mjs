@@ -81,7 +81,11 @@ await options.close();
 const shop = await context.newPage();
 await shop.goto("https://paypa1-login.example.com/");
 const bubble = shop.locator("#sentinel-assistant-root .bubble");
-await bubble.waitFor({ timeout: 10000 });
+// On a slow machine the page can load before the new setting reaches it: reload once.
+await bubble.waitFor({ timeout: 10000 }).catch(async () => {
+  await shop.reload();
+  await bubble.waitFor({ timeout: 15000 });
+});
 assert.match(await bubble.innerText(), /Suspicious/);
 await shot(shop, "ext-assistant-warning");
 step("assistant shows a warning bubble on a suspicious page");

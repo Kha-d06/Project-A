@@ -144,7 +144,7 @@ jobs:
         run: sh infrastructure/vpn/test/sync-test.sh
       - name: VPN end to end (WireGuard server, a real handshake from the runner)
         run: |
-          sudo apt-get install -y wireguard-tools
+          sudo apt-get update && sudo apt-get install -y wireguard-tools
           sed -i 's|^SENTINEL_VPN_ENDPOINT=.*|SENTINEL_VPN_ENDPOINT=127.0.0.1:51820|' .env
           docker compose --profile vpn up -d --build api vpn
           python3 infrastructure/vpn/test/stack-test.py http://localhost:8080

@@ -451,6 +451,38 @@ async function resolveHalted(pid: number, action: "resume" | "kill") {
   void render();
 }
 
+interface CfaView { supported: boolean; state: "on" | "off" | "audit" | "unknown"; folders: string[]; allowedApps: string[] }
+let cfaView: CfaView | null | undefined;
+
+function cfaPanel() {
+  const k = t.cfa;
+  if (status.platform !== "win32") return null;
+  if (cfaView === undefined) {
+    cfaView = null;
+    void guard(() => api.cfaStatus() as Promise<CfaView>).then((value) => { cfaView = value; if (tab === "protection") void render(); });
+  }
+  if (!cfaView || !cfaView.supported) return null;
+  const on = cfaView.state === "on" || cfaView.state === "audit";
+  const apply = async (action: string, path?: string) => {
+    const next = await guard(() => api.cfaApply(action, path) as Promise<CfaView | { error: string }>);
+    if (next && "error" in next) { flash(next.error, "error"); return; }
+    if (next) { cfaView = next; void render(); }
+  };
+  const stateText = cfaView.state === "on" ? k.on : cfaView.state === "audit" ? k.audit : cfaView.state === "off" ? k.off : k.unknown;
+  return h(
+    "section",
+    { class: "panel", id: "cfa" },
+    h("h2", {}, k.heading),
+    h("p", { class: "muted" }, k.intro),
+    h("p", { id: "cfa-state" }, stateText),
+    h("div", { class: "row" },
+      h("button", { type: "button", class: on ? "secondary" : "", id: on ? "cfa-off" : "cfa-on", onclick: () => void apply(on ? "disable" : "enable") }, on ? k.turnOff : k.turnOn)),
+    on ? h("h3", {}, k.foldersHeading) : null,
+    on ? (cfaView.folders.length ? h("ul", { class: "folders" }, ...cfaView.folders.map((f) => h("li", {}, h("code", { dir: "ltr" }, f)))) : h("p", { class: "muted small" }, k.none)) : null,
+    on ? h("button", { type: "button", class: "secondary", id: "cfa-add-folder", onclick: async () => { const path = await guard(() => api.cfaPickFolder() as Promise<string | null>); if (path) void apply("add-folder", path); } }, k.addFolder) : null,
+  );
+}
+
 function protectionView() {
   const s = status.settings;
   const p = t.protection;
@@ -458,6 +490,7 @@ function protectionView() {
   if (status.platform === "linux" && !haltedProcs.length) void api.ransomwareHalted().then((list) => { const next = list as HaltedProc[]; if (next.length) { haltedProcs = next; if (tab === "protection") void render(); } });
   return [
     ransomwarePanel(),
+    cfaPanel(),
     h("h1", {}, p.heading),
     alert
       ? h(

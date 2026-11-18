@@ -49,6 +49,7 @@ import type { NetworkScan } from "./engine/network/types";
 import * as fanotify from "./engine/fanotify";
 import * as vpnGuard from "./engine/vpn-guard";
 import { RansomwareBurst, underAny } from "./engine/behaviour";
+import * as cfa from "./engine/cfa";
 import { posture } from "./engine/posture";
 import { IntegrityMonitor } from "./engine/integrity";
 import { Telemetry } from "./engine/telemetry";
@@ -1208,6 +1209,20 @@ function registerIpc() {
   ipcMain.handle("network-credential-check", (_event, ip: unknown, consent: unknown) => networkCredentialCheck(String(ip), Boolean(consent)));
   ipcMain.handle("onaccess-status", () => onAccessStatus());
   ipcMain.handle("onaccess-set", (_event, on: unknown) => setOnAccess(Boolean(on)));
+  ipcMain.handle("cfa-status", () => cfa.cfaStatus());
+  ipcMain.handle("cfa-apply", async (_event, action: unknown, path: unknown) => {
+    try {
+      await cfa.cfaApply(action as Parameters<typeof cfa.cfaApplyScript>[0], typeof path === "string" ? path : undefined);
+      logEvent("cfa", "info", `Controlled folder access: ${String(action)}`);
+      return await cfa.cfaStatus();
+    } catch (error) {
+      return { error: String(error instanceof Error ? error.message : error) };
+    }
+  });
+  ipcMain.handle("cfa-pick-folder", async () => {
+    const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
   ipcMain.handle("ransomware-halted", () => [...haltedPids.entries()].map(([pid, info]) => ({ pid, ...info })));
   ipcMain.handle("ransomware-resolve", (_event, pid: unknown, action: unknown) => resolveHaltedProcess(Number(pid), action === "kill" ? "kill" : "resume"));
   // Posture, integrity, history, reports

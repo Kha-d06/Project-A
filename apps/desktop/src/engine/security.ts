@@ -281,6 +281,8 @@ export interface StartupItem {
   location: string;
   /** Path of the program it starts, when we can tell, so it can be scanned. */
   program: string | null;
+  /** Where the entry lives (file, registry key or unit), so it can be switched off. */
+  source?: string;
   warnings: string[];
 }
 
@@ -306,8 +308,21 @@ export function programOf(command: string): string | null {
   return /^([a-z]:)?[\\/]/i.test(first) || first.startsWith("~") ? first : null;
 }
 
-function item(name: string, command: string, location: string): StartupItem {
-  return { id: `${location}|${name}`, name, command, location, program: programOf(command), warnings: startupWarnings(command) };
+function item(name: string, command: string, location: string, source?: string): StartupItem {
+  return { id: `${location}|${name}`, name, command, location, program: programOf(command), warnings: startupWarnings(command), source };
+}
+
+/**
+ * `reg query ...\Explorer\StartupApproved\Run` output: entries switched off in Task
+ * Manager (or by Qalaa) have an odd first byte (03...).
+ */
+export function parseStartupApproved(stdout: string): Set<string> {
+  const off = new Set<string>();
+  for (const line of stdout.split(/\r?\n/)) {
+    const match = /^\s{2,}(.+?)\s{2,}REG_BINARY\s{2,}([0-9A-F]{2})/i.exec(line);
+    if (match && Number.parseInt(match[2]!, 16) % 2 === 1) off.add(match[1]!);
+  }
+  return off;
 }
 
 /** `reg query <key>` output: lines of "    Name    REG_SZ    value". */
@@ -315,7 +330,7 @@ export function parseRegRun(stdout: string, location: string): StartupItem[] {
   const items: StartupItem[] = [];
   for (const line of stdout.split(/\r?\n/)) {
     const match = /^\s{2,}(.+?)\s{2,}REG_(?:EXPAND_)?SZ\s{2,}(.*)$/.exec(line);
-    if (match) items.push(item(match[1]!.trim(), match[2]!.trim(), location));
+    if (match) items.push(item(match[1]!.trim(), match[2]!.trim(), location, location));
   }
   return items;
 }
@@ -327,7 +342,7 @@ export function parseDesktopEntry(text: string, file: string, location: string):
   if (get("Hidden") === "true" || get("X-GNOME-Autostart-enabled") === "false") return null;
   const exec = get("Exec");
   if (!exec) return null;
-  return item(get("Name") ?? basename(file, ".desktop"), exec, location);
+  return item(get("Name") ?? basename(file, ".desktop"), exec, location, file);
 }
 
 /** A launchd plist (XML form). */
@@ -339,7 +354,7 @@ export function parseLaunchPlist(text: string, file: string, location: string): 
   const command = [program, ...parts.slice(program ? 1 : 0)].filter(Boolean).join(" ") || parts.join(" ");
   if (!command) return null;
   if (/<key>Disabled<\/key>\s*<true\/>/.test(text)) return null;
-  return item(label, command, location);
+  return item(label, command, location, file);
 }
 
 async function readDirFiles(dir: string, extension: string): Promise<string[]> {
@@ -360,9 +375,18 @@ export async function startupItems(platform = process.platform, home = homedir()
       "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce",
       "HKLM\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Run",
     ];
+    const approved = async (hive: "HKCU" | "HKLM", kind: string) => {
+      try {
+        return parseStartupApproved(await run("reg", ["query", `${hive}\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\${kind}`]));
+      } catch {
+        return new Set<string>();
+      }
+    };
+    const off = { HKCU: await approved("HKCU", "Run"), HKLM: await approved("HKLM", "Run"), folder: await approved("HKCU", "StartupFolder") };
     for (const key of keys) {
       try {
-        items.push(...parseRegRun(await run("reg", ["query", key]), key));
+        const disabled = key.startsWith("HKCU") ? off.HKCU : off.HKLM;
+        items.push(...parseRegRun(await run("reg", ["query", key]), key).filter((entry) => !disabled.has(entry.name)));
       } catch {
         // key absent
       }
@@ -374,9 +398,9 @@ export async function startupItems(platform = process.platform, home = homedir()
     for (const folder of folders) {
       try {
         for (const name of await readdir(folder)) {
-          if (name.toLowerCase() === "desktop.ini") continue;
+          if (name.toLowerCase() === "desktop.ini" || off.folder.has(name)) continue;
           const path = join(folder, name);
-          items.push({ ...item(name, path, "Startup folder"), program: path });
+          items.push({ ...item(name, path, "Startup folder", path), program: path });
         }
       } catch {
         // folder absent
@@ -397,8 +421,12 @@ export async function startupItems(platform = process.platform, home = homedir()
       }
     }
   } else {
-    for (const dir of [join(home, ".config", "autostart"), "/etc/xdg/autostart"]) {
+    // A file in the user's autostart folder replaces the system one with the same name.
+    const userAutostart = join(home, ".config", "autostart");
+    const overridden = new Set((await readDirFiles(userAutostart, ".desktop")).map((file) => basename(file)));
+    for (const dir of [userAutostart, "/etc/xdg/autostart"]) {
       for (const file of await readDirFiles(dir, ".desktop")) {
+        if (dir !== userAutostart && overridden.has(basename(file))) continue;
         try {
           const parsed = parseDesktopEntry(await readFile(file, "utf8"), file, dir);
           if (parsed) items.push(parsed);
@@ -411,7 +439,7 @@ export async function startupItems(platform = process.platform, home = homedir()
       const units = await run("systemctl", ["--user", "list-unit-files", "--state=enabled", "--no-legend", "--type=service"]);
       for (const line of units.split(/\r?\n/)) {
         const unit = line.trim().split(/\s+/)[0];
-        if (unit) items.push(item(unit, unit, "systemd user services"));
+        if (unit) items.push(item(unit, unit, "systemd user services", unit));
       }
     } catch {
       // no systemd user session

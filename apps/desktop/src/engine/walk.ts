@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 const SKIP_DIRS = new Set(["node_modules", ".git", "$Recycle.Bin", "System Volume Information"]);
 
-export async function* walk(root: string, limit = 50_000): AsyncGenerator<string> {
+export async function* walk(root: string, limit = 50_000, skip: (path: string) => boolean = () => false): AsyncGenerator<string> {
   const stack = [root];
   let count = 0;
   while (stack.length && count < limit) {
@@ -17,7 +17,7 @@ export async function* walk(root: string, limit = 50_000): AsyncGenerator<string
     }
     for (const entry of entries) {
       const path = join(dir, entry.name);
-      if (entry.isSymbolicLink()) continue;
+      if (entry.isSymbolicLink() || skip(path)) continue;
       if (entry.isDirectory()) {
         if (!SKIP_DIRS.has(entry.name)) stack.push(path);
       } else if (entry.isFile()) {

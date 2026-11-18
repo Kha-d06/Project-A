@@ -1,5 +1,6 @@
 import { readFile, rename, writeFile } from "node:fs/promises";
 
+import { sanitizeExclusions } from "./protection";
 import { DEFAULT_SCHEDULE, type Schedule, sanitizeSchedule } from "./schedule";
 
 export interface DesktopSettings {
@@ -36,6 +37,14 @@ export interface DesktopSettings {
   lastBackupError: string | null;
   /** Download and install updates from the Qalaa server automatically. */
   autoUpdate: boolean;
+  /** Files and folders never scanned (absolute paths). */
+  exclusions: string[];
+  /** Scan USB drives and memory cards when they are connected. */
+  scanRemovable: boolean;
+  /** Hidden decoy files in protected folders: any change is an early ransomware alarm. */
+  ransomwareDecoys: boolean;
+  /** Silent mode: no pop-ups or scheduled work until this time (ISO), or null. */
+  silentUntil: string | null;
 }
 
 export function defaultSettings(downloads: string, protectedFolders: string[] = [], deviceName = "This computer"): DesktopSettings {
@@ -48,6 +57,10 @@ export function defaultSettings(downloads: string, protectedFolders: string[] = 
     cloudLookup: false,
     language: "auto",
     theme: "system",
+    exclusions: [],
+    scanRemovable: true,
+    ransomwareDecoys: true,
+    silentUntil: null,
     ransomwareWatch: true,
     protectedFolders,
     allowRemote: false,
@@ -104,7 +117,13 @@ export function sanitizeChanges(changes: unknown): Partial<DesktopSettings> {
   if (backup) out.backupSchedule = backup;
   if (input.scheduledScanKind === "quick" || input.scheduledScanKind === "full") out.scheduledScanKind = input.scheduledScanKind;
   if (Number.isInteger(input.backupKeep) && (input.backupKeep as number) >= 1 && (input.backupKeep as number) <= 50) out.backupKeep = input.backupKeep as number;
-  for (const key of ["watchEnabled", "autoQuarantine", "useClamav", "cloudLookup", "ransomwareWatch", "allowRemote", "privacyWatch", "autoUpdate"] as const) {
+  const exclusions = sanitizeExclusions(input.exclusions);
+  if (exclusions) out.exclusions = exclusions;
+  if (input.silentUntil === null || (typeof input.silentUntil === "string" && Number.isFinite(Date.parse(input.silentUntil)))) {
+    // At most a day ahead: silent mode must not be left on by accident for weeks.
+    out.silentUntil = input.silentUntil === null ? null : new Date(Math.min(Date.parse(input.silentUntil), Date.now() + 24 * 3_600_000)).toISOString();
+  }
+  for (const key of ["watchEnabled", "autoQuarantine", "useClamav", "cloudLookup", "ransomwareWatch", "allowRemote", "privacyWatch", "autoUpdate", "scanRemovable", "ransomwareDecoys"] as const) {
     if (typeof input[key] === "boolean") out[key] = input[key];
   }
   if (input.language === "auto" || input.language === "en" || input.language === "ar") out.language = input.language;

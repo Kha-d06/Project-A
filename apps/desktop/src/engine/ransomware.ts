@@ -5,9 +5,10 @@
  * folders for that pattern and raises an alert so the person can disconnect the
  * computer quickly. It cannot stop the encryption.
  */
+import { createHash } from "node:crypto";
 import { type FSWatcher, watch } from "node:fs";
-import { open, stat } from "node:fs/promises";
-import { basename, extname, join } from "node:path";
+import { open, readFile, stat } from "node:fs/promises";
+import { basename, dirname, extname, join } from "node:path";
 
 const WINDOW_MS = 60_000;
 const ALERT_COOLDOWN_MS = 10 * 60_000;
@@ -68,6 +69,32 @@ export class RansomwareDetector {
 export class RansomwareMonitor {
   private watchers: FSWatcher[] = [];
   private detector = new RansomwareDetector();
+  /** Decoy path -> SHA-256 as planted. */
+  private decoys = new Map<string, string>();
+  private lastDecoyAlert = -Infinity;
+
+  setDecoys(record: Record<string, string>): void {
+    this.decoys = new Map(Object.entries(record));
+  }
+
+  private async checkDecoy(path: string): Promise<boolean> {
+    const expected = this.decoys.get(path);
+    if (!expected) return false;
+    let state: "changed" | "missing" | null;
+    try {
+      state = createHash("sha256").update(await readFile(path)).digest("hex") === expected ? null : "changed";
+    } catch {
+      state = "missing";
+    }
+    if (state && Date.now() - this.lastDecoyAlert > ALERT_COOLDOWN_MS) {
+      this.lastDecoyAlert = Date.now();
+      this.onAlert({
+        reasons: [`a hidden decoy file that nothing should touch was ${state === "missing" ? "deleted or renamed" : "changed"} (${basename(path)} in ${basename(dirname(path))})`],
+        examples: [path],
+      });
+    }
+    return true;
+  }
 
   constructor(private readonly onAlert: (alert: RansomwareAlert) => void) {}
 
@@ -87,6 +114,7 @@ export class RansomwareMonitor {
   }
 
   private async observe(path: string): Promise<void> {
+    if (await this.checkDecoy(path)) return;
     let value: number | undefined;
     try {
       const info = await stat(path);

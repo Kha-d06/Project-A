@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, stat, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createServer as createTcpServer } from "node:net";
 import { createRequire } from "node:module";
@@ -159,12 +159,25 @@ await writeFile(join(files, "sample.bin"), SAMPLE);
 await writeFile(join(files, "notes.txt"), "Shopping list: milk, bread, eggs");
 await writeFile(join(files, "invoice.pdf"), Buffer.concat([Buffer.from("MZ"), Buffer.alloc(300)]));
 
+// Removable drives appear as folders here; the app's own temp folder is sandboxed for the junk cleaner.
+const drives = join(work, "drives");
+const appTemp = join(work, "tmp");
+await mkdir(drives);
+await mkdir(appTemp);
+// A sideloaded browser extension with broad access, for the extension audit.
+const fakeExtension = join(home, ".config", "google-chrome", "Default", "Extensions", "abcdefghijklmnopabcdefghijklmnop", "2.1.0_0");
+await mkdir(fakeExtension, { recursive: true });
+await writeFile(join(fakeExtension, "manifest.json"), JSON.stringify({ name: "Coupon Helper", version: "2.1.0", update_url: "https://198.51.100.7/update.xml", permissions: ["cookies", "webRequest"], host_permissions: ["<all_urls>"] }));
+const exists = (path) => stat(path).then(() => true, () => false);
+
 const app = await electron.launch({
   executablePath: require("electron"),
   args: [join(root, "dist", "main.js"), "--no-sandbox"],
-  env: { ...process.env, HOME: home, SENTINEL_DESKTOP_PROFILE: profile, SENTINEL_DESKTOP_HOME: files, QALAA_EXPORT_DIR: exports },
+  env: { ...process.env, HOME: home, SENTINEL_DESKTOP_PROFILE: profile, SENTINEL_DESKTOP_HOME: files, QALAA_EXPORT_DIR: exports, QALAA_TEST_REMOVABLE_ROOT: drives },
 });
+app.process().stderr?.on("data", (chunk) => { if (process.env.E2E_DEBUG) process.stderr.write(`[app] ${chunk}`); });
 const page = await app.firstWindow();
+if (process.env.E2E_DEBUG) page.on("pageerror", (error) => process.stderr.write(`[page] ${error.message}\n`));
 await page.waitForSelector("nav button");
 
 // Isolation: the page has no Node.js and only the bridge.
@@ -215,6 +228,50 @@ await page.waitForSelector("text=Possible ransomware activity", { timeout: 10000
 await page.waitForSelector("#wifi-status");
 await shot(page, "desktop-ransomware");
 step("ransomware watch alerts on mass renames with a ransomware extension");
+
+// Decoy files: planted hidden in protected folders; touching one is an immediate alarm.
+const decoy = join(documents, ".qalaa-decoy.docx");
+assert.ok(await exists(decoy), "a decoy was planted in the protected folder");
+assert.ok(await exists(join(documents, ".~qalaa-decoy.xlsx")));
+await writeFile(decoy, "ENCRYPTED BY RANSOMWARE");
+await page.waitForSelector("text=/hidden decoy file that nothing should touch was changed/", { timeout: 10000 });
+step("ransomware decoys: hidden decoy files planted; changing one raises the alarm at once");
+
+// Exclusions: a trusted folder is skipped by scans.
+const trusted = join(work, "trusted");
+await mkdir(trusted);
+await writeFile(join(trusted, "test-virus.com"), EICAR);
+await page.click('[data-tab="protection"]');
+await page.evaluate(() => document.getElementById("more-protection")?.scrollIntoView());
+await app.evaluate(({ dialog }, chosen) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: chosen }); }, [trusted]);
+await page.click("#exclude-folder");
+await page.waitForSelector(`#exclusions >> text="${trusted}"`);
+assert.equal((await page.evaluate((p) => window.sentinel.scan([p]), trusted)).scanned, 0);
+assert.deepEqual(JSON.parse(await readFile(join(profile, "settings.json"), "utf8")).exclusions, [trusted]);
+step("exclusions: a trusted folder chosen in a dialog is skipped by scans");
+
+// Silent mode: on for an hour, then ended.
+await page.click('[data-silent="1"]');
+await page.waitForSelector("#silent-state >> text=/Silent until/");
+await shot(page, "desktop-more-protection");
+await page.click("#silent-off");
+await page.waitForFunction(() => !/Silent until/.test(document.getElementById("silent-state")?.textContent ?? ""));
+step("silent mode: on for a chosen time, then ended");
+
+// Removable drives: a newly connected drive is scanned, including its autorun.inf.
+const stick = join(drives, "USB-STICK");
+await mkdir(stick);
+await writeFile(join(stick, "autorun.inf"), "[autorun]\r\nopen=setup.exe\r\n");
+await writeFile(join(stick, "photos.txt"), "holiday list");
+let driveResult = null;
+for (let i = 0; i < 60 && !driveResult; i++) {
+  driveResult = (await page.evaluate(() => window.sentinel.history())).find((r) => r.path === join(stick, "autorun.inf"));
+  if (!driveResult) await new Promise((r) => setTimeout(r, 250));
+}
+assert.ok(driveResult, "the new drive was scanned");
+assert.equal(driveResult.verdict, "suspicious");
+assert.ok(driveResult.findings.some((f) => f.rule === "autorun_program"));
+step("removable drives: a newly connected drive is scanned; an autorun file that starts a program is flagged");
 
 // Account link and a scan started from the website.
 await page.click('[data-tab="settings"]');
@@ -472,6 +529,64 @@ assert.equal(await canvas(), "rgb(247, 244, 238)");
 assert.equal(JSON.parse(await readFile(join(profile, "settings.json"), "utf8")).theme, "light");
 step("appearance: dark and light themes chosen in Settings, saved");
 
+// Tools: startup manager, deep check, extensions, junk cleanup, shredder, firewall.
+await page.click('[data-tab="tools"]');
+await page.waitForSelector("#startup-manager");
+const updaterFile = join(home, ".config", "autostart", "updater.desktop");
+await page.locator("#startup-manager li", { hasText: "System Updater" }).getByRole("button", { name: "Switch off" }).click();
+await page.waitForSelector("#startup-disabled >> text=System Updater");
+assert.match(await readFile(updaterFile, "utf8"), /Hidden=true/);
+await page.locator("#startup-disabled li", { hasText: "System Updater" }).getByRole("button", { name: "Switch back on" }).click();
+await page.waitForFunction(() => !document.getElementById("startup-disabled"));
+assert.doesNotMatch(await readFile(updaterFile, "utf8"), /Hidden=true/);
+step("startup manager: a program is switched off at startup and back on");
+
+await page.click("#deep-run");
+await page.waitForSelector("#deep-summary", { timeout: 120000 });
+assert.match(await page.locator("#deep-summary").innerText(), /Hidden processes/);
+step("deep check: cron, services, preloaded libraries, hidden processes and kernel modules checked");
+
+await page.click("#extensions-check");
+await page.waitForSelector("#extensions >> text=Coupon Helper");
+const extensionText = await page.locator("#extensions").innerText();
+assert.match(extensionText, /Review/);
+assert.match(extensionText, /not installed from the browser's store/);
+step("browser extensions: a sideloaded extension with access to every site is marked for review");
+
+const thumbs = join(home, ".cache", "thumbnails", "large");
+await mkdir(thumbs, { recursive: true });
+await writeFile(join(thumbs, "old.png"), Buffer.alloc(4096, 1));
+const lastWeek = new Date(Date.now() - 7 * 86_400_000);
+await utimes(join(thumbs, "old.png"), lastWeek, lastWeek);
+await page.click("#junk-measure");
+await page.waitForSelector('[data-junk="thumbnails"]');
+for (const box of await page.locator("[data-junk]").all()) {
+  if ((await box.getAttribute("data-junk")) === "thumbnails") await box.check(); else await box.uncheck();
+}
+page.once("dialog", (d) => d.accept());
+await page.click("#junk-clean");
+await page.waitForSelector("text=/Removed 1 files/");
+assert.equal(await exists(join(thumbs, "old.png")), false);
+step("junk cleanup: junk measured per category; only the chosen category cleaned");
+
+const secret = join(work, "bank-details.txt");
+await writeFile(secret, "IBAN DE00 0000 0000 0000");
+await app.evaluate(({ dialog }, chosen) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: chosen }); }, [home]);
+await page.click("#shred-folders");
+await page.waitForSelector("#shred-queue >> text=/whole home folder/");
+await app.evaluate(({ dialog }, chosen) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: chosen }); }, [secret]);
+await page.click("#shred-files");
+await page.waitForSelector(`#shred-queue >> text="${secret}"`);
+page.once("dialog", (d) => d.accept());
+await page.click("#shred-go");
+await page.waitForSelector("text=1 file shredded.");
+assert.equal(await exists(secret), false);
+assert.ok(await exists(join(home, ".bashrc")), "the refused home folder is untouched");
+assert.match(await page.locator("#blocked-programs").innerText(), /not available on Linux/);
+await shot(page, "desktop-tools");
+step("file shredder: a chosen file destroyed, the home folder refused; firewall blocking explained on Linux");
+
+await page.click('[data-tab="settings"]');
 await page.selectOption("#language", "ar");
 await page.waitForSelector("text=الحماية");
 assert.equal(await page.evaluate(() => document.documentElement.dir), "rtl");

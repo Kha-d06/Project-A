@@ -21,6 +21,20 @@ const api = {
   updateCheck: () => ipcRenderer.invoke("update-check"),
   updateInstall: () => ipcRenderer.invoke("update-install"),
   securityCheck: () => ipcRenderer.invoke("security-check"),
+  exclusionAdd: (kind: "file" | "folder") => ipcRenderer.invoke("exclusion-add", kind),
+  silent: (hours: number) => ipcRenderer.invoke("silent", hours),
+  startupList: () => ipcRenderer.invoke("startup-list"),
+  startupOff: (id: string) => ipcRenderer.invoke("startup-off", id),
+  startupOn: (id: string) => ipcRenderer.invoke("startup-on", id),
+  junkMeasure: () => ipcRenderer.invoke("junk-measure"),
+  junkClean: (ids: string[]) => ipcRenderer.invoke("junk-clean", ids),
+  pickPaths: (kind: "file" | "folder") => ipcRenderer.invoke("pick-paths", kind),
+  shred: (paths: string[], passes: number) => ipcRenderer.invoke("shred", paths, passes),
+  extensions: () => ipcRenderer.invoke("extensions"),
+  deepCheck: () => ipcRenderer.invoke("deep-check"),
+  firewallBlocked: () => ipcRenderer.invoke("firewall-blocked"),
+  firewallBlock: (path: string) => ipcRenderer.invoke("firewall-block", path),
+  firewallUnblock: (path: string) => ipcRenderer.invoke("firewall-unblock", path),
   processCheck: () => ipcRenderer.invoke("process-check"),
   historyCheck: (days: number) => ipcRenderer.invoke("history-check", days),
   historyLast: () => ipcRenderer.invoke("history-last"),
@@ -67,7 +81,7 @@ const api = {
   accountLink: (code: string) => ipcRenderer.invoke("account-link", code),
   accountUnlink: () => ipcRenderer.invoke("account-unlink"),
   pathOf: (file: File) => webUtils.getPathForFile(file),
-  on: (channel: "scan-result" | "scan-progress" | "ransomware-alert" | "remote-activity" | "device-use" | "backup-progress" | "schedule-ran" | "update-state" | "monitor-sample" | "monitor-event" | "integrity-alert", listener: (payload: unknown) => void) => {
+  on: (channel: "scan-result" | "scan-progress" | "ransomware-alert" | "remote-activity" | "device-use" | "backup-progress" | "schedule-ran" | "update-state" | "monitor-sample" | "monitor-event" | "integrity-alert" | "removable-connected" | "removable-scanned" | "signatures-updated", listener: (payload: unknown) => void) => {
     const wrapped = (_event: unknown, payload: unknown) => listener(payload);
     ipcRenderer.on(channel, wrapped);
     return () => ipcRenderer.removeListener(channel, wrapped);

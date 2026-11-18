@@ -25,6 +25,7 @@ import {
   stringFindings,
 } from "./analysis";
 import { clamScan } from "./clamav";
+import { autorunFindings } from "./protection";
 import {
   archiveKind,
   isIso,
@@ -101,7 +102,7 @@ function contentFindings(name: string, content: Buffer, signatures: SignatureSto
     // The archive check already reports that a .docx/.xlsx has macros; here only what they do.
     findings.push(...tag(macroFindings(content).filter((f) => !(member && f.rule === "office_macros"))));
   }
-  findings.push(...tag(rtfFindings(content)), ...tag(web), ...tag(oneNoteFindings(name, content)), ...tag(shortcutFindings(name, content)));
+  findings.push(...tag(rtfFindings(content)), ...tag(web), ...tag(oneNoteFindings(name, content)), ...tag(shortcutFindings(name, content)), ...tag(autorunFindings(name, content)));
   if (member) findings.push(...tag(ooxmlPartFindings(member, content)));
   return findings;
 }

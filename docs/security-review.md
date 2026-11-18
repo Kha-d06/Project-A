@@ -145,6 +145,17 @@ Scope: the API (`services/api`), web app (`apps/web`), browser extension
   - Filling is click-only from the popup (never on page load), top frame only, `https://` (or localhost) only, logins for the same site or its subdomains only, refused on pages Qalaa rates dangerous/suspicious or that you or your family blocked, and only into visible fields (a hidden-field trap stays empty in the end-to-end test).
   - Secret-returning messages are accepted only from the extension's own popup page; content scripts and web pages get "Not allowed".
 
+## Round 7 additions, reviewed
+
+- **Threat feeds (abuse.ch).** The Auth-Key is required since October 2026 and sits in the export URL path. A logging filter redacts it from httpx/httpcore request lines, and sync errors are redacted before they are logged or stored. Feeds without a key are skipped with a plain message.
+- **Scanner analysis.** All parsers work on bounded buffers, with counts capped: sections 96, imported DLLs 256, functions 4096, macro modules 50, 1 MB per decompressed macro. They catch their own exceptions, so a malformed file cannot crash a scan. Nothing is executed. A sweep of about 87,000 legitimate files produced no new false positives.
+- **Shredder.** It acts only on paths picked in a system dialog during this session (not on paths sent by the page). It refuses system folders, Qalaa's data and the home folder (or anything containing it), and unlinks symbolic links without following them. SSD wear-levelling limits are stated in the interface.
+- **Junk cleanup.** It works only inside fixed per-system cache folders, never follows links, and skips files changed within each category's minimum age.
+- **Startup manager.** It is reversible: each change is recorded and undone exactly. System-wide entries are never edited in place (Linux uses a user override; HKLM goes through the UAC prompt). Entries that need administrator tools are not offered.
+- **Firewall blocking.** It needs administrator approval through the system's own prompt (UAC, or macOS's authorisation dialog). The program must come from a dialog or the live process list. Rule names carry a fixed prefix, so only Qalaa's own rules are listed or removed.
+- **Decoy files.** They are random data written atomically and hidden, with owner-only permissions. Their fingerprints are stored in the app's data folder. Re-planting clears the expected fingerprints first, so planting never raises an alarm.
+- **Deep check.** It is read-only. The hidden-process sweep signals with signal 0 only, and a PID counts as hidden only if it is missing from two listings and is not a thread.
+
 ## Open items
 
 | Risk | Item | Recommendation |

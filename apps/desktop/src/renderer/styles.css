@@ -227,3 +227,9 @@ button.danger-text { color: var(--danger); }
 .report-row { display: flex; gap: 14px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--line); }
 .skeleton-line { height: 14px; border-radius: 8px; background: linear-gradient(90deg, var(--sunken) 30%, var(--line) 50%, var(--sunken) 70%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
 @keyframes shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+
+/* Tools and extra protection */
+label.check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+label.check input { accent-color: var(--accent); width: 16px; height: 16px; }
+#more-protection h3, #startup-manager h3 { margin: 18px 0 6px; font-size: 13px; }
+#deep .item, #extensions .item { padding: 8px 0; }

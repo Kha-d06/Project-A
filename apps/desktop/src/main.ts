@@ -8,7 +8,7 @@
  */
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { readFile, rm, stat, writeFile } from "node:fs/promises";
+import { readFile, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { basename, join } from "node:path";
 
@@ -54,6 +54,8 @@ import { type DesktopSettings, defaultSettings, loadSettings, sanitizeChanges, s
 import { SignatureStore } from "./engine/signatures";
 import type { ScanResult } from "./engine/types";
 import { isDirectory, walk } from "./engine/walk";
+import { type DecoyRecord, RemovableWatcher, isExcluded, isSilent, plantDecoys, removableMounts, silentUntilFrom, tamperedDecoys } from "./engine/protection";
+import * as tools from "./engine/tools";
 import { FolderWatcher } from "./engine/watcher";
 
 const SIGNATURE_REFRESH_MS = 6 * 60 * 60 * 1000;
@@ -106,6 +108,16 @@ let monitorTicks = 0;
 let telemetry: Telemetry | null = null;
 let integrity: IntegrityMonitor;
 let lastPosture: Awaited<ReturnType<typeof posture>> | null = null;
+let removable: RemovableWatcher | null = null;
+let decoys: DecoyRecord = {};
+let decoyKey = "";
+let disabledStartup: tools.DisabledStartup[] = [];
+/** Paths the person picked in a system dialog for shredding or firewall blocking, this session only. */
+const pickedPaths = new Set<string>();
+const decoyFile = () => join(dataDir(), "decoys.json");
+const disabledStartupFile = () => join(dataDir(), "startup-disabled.json");
+const excluded = (path: string) => isExcluded(path, settings.exclusions);
+const silent = () => isSilent(settings.silentUntil);
 
 /** Writes to the local security event log (best effort). */
 function logEvent(kind: string, level: "info" | "warning" | "alert", message: string) {
@@ -240,7 +252,8 @@ async function record(result: ScanResult, automatic: boolean): Promise<ScanResul
   void persistHistory();
   const entry = { ...result, quarantined };
   send("scan-result", entry);
-  if (automatic && result.verdict !== "no_known_threat" && result.verdict !== "not_scanned" && Notification.isSupported()) {
+  // Silent mode: still quarantined and listed, just no pop-up.
+  if (automatic && !silent() && result.verdict !== "no_known_threat" && result.verdict !== "not_scanned" && Notification.isSupported()) {
     new Notification({
       title: result.verdict === "malicious" ? `Threat found: ${result.name}` : `Suspicious file: ${result.name}`,
       body: (quarantined ? "Moved to quarantine. " : "") + (result.findings[0]?.title ?? ""),
@@ -256,6 +269,7 @@ async function scanLabelled(
   const totals = { scanned: 0, malicious: 0, suspicious: 0, quarantined: 0 };
   const detections: Detection[] = [];
   const scanOne = async (path: string, label: string | null) => {
+    if (excluded(path)) return;
     const result = await scanFile(path, context());
     await record(result, false);
     totals.scanned += 1;
@@ -276,7 +290,7 @@ async function scanLabelled(
   };
   for (const { path, label } of targets) {
     if (await isDirectory(path)) {
-      for await (const file of walk(path)) await scanOne(file, label);
+      for await (const file of walk(path, 50_000, excluded)) await scanOne(file, label);
     } else {
       await scanOne(path, label);
     }
@@ -300,7 +314,46 @@ async function exclusive<T>(work: () => Promise<T>): Promise<T> {
 }
 
 function notify(title: string, body: string) {
+  if (silent()) return;
   if (Notification.isSupported()) new Notification({ title, body }).show();
+}
+
+async function loadJson<T>(file: string, fallback: T): Promise<T> {
+  try {
+    return JSON.parse(await readFile(file, "utf8")) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+async function saveJson(file: string, value: unknown) {
+  await writeFile(file, JSON.stringify(value), { mode: 0o600 });
+}
+
+/** Plants (or removes) ransomware decoys to match the settings; only when something changed. */
+async function applyDecoys(force = false) {
+  const wanted = settings.ransomwareWatch && settings.ransomwareDecoys ? settings.protectedFolders : [];
+  const key = JSON.stringify(wanted);
+  if (!force && key === decoyKey) return;
+  decoyKey = key;
+  ransomware.setDecoys({});
+  for (const path of Object.keys(decoys)) await unlink(path).catch(() => undefined);
+  decoys = wanted.length ? await plantDecoys(wanted) : {};
+  await saveJson(decoyFile(), decoys);
+  // Events from writing the decoys arrive shortly; by then the new fingerprints are known.
+  ransomware.setDecoys(decoys);
+}
+
+async function onRemovable(mount: string) {
+  logEvent("removable", "info", `Drive connected: ${mount}`);
+  send("removable-connected", mount);
+  if (!settings.scanRemovable || excluded(mount)) return;
+  notify("Drive connected", `Scanning ${mount} for threats.`);
+  const outcome = await exclusive(() => scanLabelled([{ path: mount, label: basename(mount) || mount }]));
+  const threats = outcome.malicious + outcome.suspicious;
+  if (threats) logEvent("removable", "warning", `${threats} threat(s) on ${mount}`);
+  notify(threats ? "Threats found on the drive" : "Drive checked", threats ? `${threats} file(s) on ${mount} need your attention.` : `${outcome.scanned} files checked. No known threats found.`);
+  send("removable-scanned", { mount, outcome });
 }
 
 async function persistSettings() {
@@ -522,6 +575,8 @@ async function checkSchedules() {
     settings = { ...settings, lastScheduledScan: now.toISOString() };
     await persistSettings();
   }
+  // Silent mode postpones scheduled work; it runs once silent mode ends.
+  if (silent()) return;
   if (!scanning && isDue(settings.scanSchedule, settings.lastScheduledScan, now)) {
     // Recorded first, so a crash or quit mid-scan does not repeat it in a loop.
     settings = { ...settings, lastScheduledScan: now.toISOString() };
@@ -591,6 +646,8 @@ async function updateSignatures(): Promise<void> {
   } catch (error) {
     lastSignatureError = error instanceof Error ? error.message : String(error);
   }
+  // The window may have read its status before the list arrived.
+  send("signatures-updated", { count: signatures.size, error: lastSignatureError });
 }
 
 function onRansomware(alert: RansomwareAlert) {
@@ -609,6 +666,7 @@ function onRansomware(alert: RansomwareAlert) {
 function applyWatching() {
   watcher.set(settings.watchEnabled ? settings.watchFolders : []);
   ransomware.set(settings.ransomwareWatch ? settings.protectedFolders : []);
+  if (decoyKey) void applyDecoys();
   tray?.setToolTip(settings.watchEnabled ? "Qalaa Desktop: watching for new files" : "Qalaa Desktop: watching paused");
 }
 
@@ -626,6 +684,9 @@ async function status() {
     backup: { running: backingUp, hasPassword: Boolean(await storedBackupPassword()), keychain: safeStorage.isEncryptionAvailable() },
     privacyWatchSupported: process.platform !== "darwin",
     update: updateState,
+    silent: silent(),
+    decoys: Object.keys(decoys).length,
+    firewallBlock: tools.firewallBlockSupported(),
     installKind: installKind(process.platform, process.env, app.isPackaged),
     platform: process.platform,
     version: app.getVersion(),
@@ -707,6 +768,101 @@ function registerIpc() {
     autoUpdater.quitAndInstall();
   });
   ipcMain.handle("security-check", () => securityCheck());
+
+  // --- Protection settings that need a system dialog -------------------------------------
+  ipcMain.handle("exclusion-add", async (_event, kind: unknown) => {
+    const result = await dialog.showOpenDialog(window!, { properties: kind === "folder" ? ["openDirectory"] : ["openFile", "multiSelections"] });
+    if (!result.canceled && result.filePaths.length) {
+      settings = { ...settings, ...sanitizeChanges({ exclusions: [...settings.exclusions, ...result.filePaths] }) };
+      await persistSettings();
+      logEvent("settings", "info", `Excluded from scans: ${result.filePaths.join(", ")}`);
+    }
+    return status();
+  });
+  ipcMain.handle("silent", async (_event, hours: unknown) => {
+    settings = { ...settings, silentUntil: silentUntilFrom(typeof hours === "number" ? hours : 0) };
+    await persistSettings();
+    return status();
+  });
+
+  // --- Tools ------------------------------------------------------------------------------
+  // The person's real home: startup entries, browser profiles and caches live there.
+  const homeDir = () => homedir();
+  ipcMain.handle("startup-list", () => ({
+    active: lastStartup.map((item) => ({ ...item, canSwitchOff: tools.canSwitchOff(item, process.platform, homeDir()) })),
+    disabled: disabledStartup,
+  }));
+  ipcMain.handle("startup-off", async (_event, id: unknown) => {
+    const item = lastStartup.find((entry) => entry.id === id);
+    if (!item) throw new Error("That entry is no longer listed. Check again.");
+    const entry = await tools.switchOffStartup(item, process.platform, homeDir());
+    disabledStartup = [entry, ...disabledStartup.filter((d) => d.id !== entry.id)];
+    await saveJson(disabledStartupFile(), disabledStartup);
+    logEvent("startup", "info", `Switched off at startup: ${item.name}`);
+    await securityCheck();
+    return disabledStartup;
+  });
+  ipcMain.handle("startup-on", async (_event, id: unknown) => {
+    const entry = disabledStartup.find((d) => d.id === id);
+    if (!entry) throw new Error("Unknown entry.");
+    await tools.switchOnStartup(entry);
+    disabledStartup = disabledStartup.filter((d) => d.id !== id);
+    await saveJson(disabledStartupFile(), disabledStartup);
+    logEvent("startup", "info", `Switched back on at startup: ${entry.name}`);
+    await securityCheck();
+    return disabledStartup;
+  });
+  const junk = () => tools.junkCategories(process.platform, homeDir());
+  ipcMain.handle("junk-measure", () => tools.measureJunk(junk()));
+  ipcMain.handle("junk-clean", async (_event, ids: unknown) => {
+    const chosen = stringArray(ids, 10);
+    const result = await tools.cleanJunk(junk(), chosen);
+    logEvent("cleanup", "info", `Removed ${result.files} junk files (${Math.round(result.bytes / 1e6)} MB)`);
+    return result;
+  });
+  ipcMain.handle("pick-paths", async (_event, kind: unknown) => {
+    const result = await dialog.showOpenDialog(window!, { properties: kind === "folder" ? ["openDirectory", "multiSelections"] : ["openFile", "multiSelections"] });
+    for (const path of result.filePaths) pickedPaths.add(path);
+    return result.canceled ? [] : result.filePaths.map((path) => ({ path, refusal: tools.shredRefusal(path, tools.shredGuard(process.platform, homeDir(), [dataDir()])) }));
+  });
+  ipcMain.handle("shred", async (_event, paths: unknown, passes: unknown) => {
+    const totals = { files: 0, bytes: 0, refused: [] as string[] };
+    for (const path of stringArray(paths, 100)) {
+      // Only what was picked in the system dialog, and never system folders or Qalaa's data.
+      if (!pickedPaths.has(path) || tools.shredRefusal(path, tools.shredGuard(process.platform, homeDir(), [dataDir()]))) {
+        totals.refused.push(path);
+        continue;
+      }
+      const done = await tools.shred(path, typeof passes === "number" ? passes : 1);
+      pickedPaths.delete(path);
+      totals.files += done.files;
+      totals.bytes += done.bytes;
+    }
+    logEvent("shredder", "info", `Shredded ${totals.files} file(s)`);
+    return totals;
+  });
+  ipcMain.handle("extensions", () => tools.browserExtensions(process.platform, homeDir()));
+  ipcMain.handle("deep-check", async () => {
+    const result = await tools.deepCheck(process.platform, homeDir());
+    for (const finding of result.findings) logEvent("deep-check", finding.severity === "high" ? "alert" : "warning", `${finding.area}: ${finding.item}`);
+    return { ...result, checkedAt: new Date().toISOString() };
+  });
+  ipcMain.handle("firewall-blocked", () => tools.blockedPrograms());
+  ipcMain.handle("firewall-block", async (_event, path: unknown) => {
+    if (typeof path !== "string") throw new Error("Expected a program path.");
+    // A program from the process explorer (its path is known) or one picked in a dialog.
+    const known = pickedPaths.has(path) || ((await explorer.processDetails()) ?? []).some((p) => p.path === path);
+    if (!known) throw new Error("Choose the program first.");
+    await tools.blockProgram(path);
+    logEvent("firewall", "info", `Blocked network access: ${path}`);
+    return tools.blockedPrograms();
+  });
+  ipcMain.handle("firewall-unblock", async (_event, path: unknown) => {
+    if (typeof path !== "string") throw new Error("Expected a program path.");
+    await tools.unblockProgram(path);
+    logEvent("firewall", "info", `Unblocked network access: ${path}`);
+    return tools.blockedPrograms();
+  });
   ipcMain.handle("process-check", () => processCheck());
   ipcMain.handle("history-check", (_event, days: unknown) => historyCheck(Math.min(90, Math.max(1, Number(days) || 30))));
   ipcMain.handle("history-last", () => lastHistoryReport);
@@ -931,6 +1087,7 @@ async function start() {
   sevenZip = await findSevenZip();
   ransomware = new RansomwareMonitor(onRansomware);
   watcher = new FolderWatcher((path) => {
+    if (excluded(path)) return;
     void scanFile(path, context()).then((result) => record(result, true));
   });
 
@@ -953,6 +1110,20 @@ async function start() {
   createTray();
   applyWatching();
   void updateSignatures();
+  // Decoys changed while Qalaa was not running are reported before new ones are planted.
+  decoys = await loadJson<DecoyRecord>(decoyFile(), {});
+  const tampered = await tamperedDecoys(decoys);
+  if (tampered.length) {
+    onRansomware({ reasons: [`${tampered.length} hidden decoy file(s) were changed or deleted while Qalaa was not running`], examples: tampered.map((t) => t.path).slice(0, 5) });
+  }
+  await applyDecoys(true);
+  disabledStartup = await loadJson<tools.DisabledStartup[]>(disabledStartupFile(), []);
+  const testDrives = process.env.QALAA_TEST_REMOVABLE_ROOT;
+  removable = new RemovableWatcher(
+    (mount) => void onRemovable(mount),
+    testDrives ? async () => (await readdir(testDrives).catch(() => [] as string[])).map((name) => join(testDrives, name)) : () => removableMounts(),
+  );
+  removable.start(testDrives ? 1000 : 5000);
   setInterval(() => void updateSignatures(), SIGNATURE_REFRESH_MS).unref();
 
   account = await loadAccount(accountFile());

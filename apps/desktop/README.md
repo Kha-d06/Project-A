@@ -28,6 +28,19 @@ Verdicts use the same words as the website: **Known malicious**, **Suspicious**,
 - **Software updates.** Lists pending updates from `winget`, `softwareupdate` or `apt`. Installing them is left to the system's own tools.
 - **Tray icon.** Watching continues after the window closes. Quit from the tray menu.
 - **Appearance.** Light, dark, or the same as the system (Settings → Appearance).
+- **Deeper file analysis.** Windows programs are parsed (packers, encrypted code, imports that inject into other programs, hollow them out or hook the keyboard). Programs, scripts and web files are searched for ransom notes, recovery-copy deletion, crypto miners, information stealers, reverse shells and security tampering. Office macros are decompressed and read (auto-run macros that start programs or download files). Also checked: RTF Equation Editor exploits, remote templates, Follina-style links, DDE, Excel 4.0 macro sheets, HTML smuggling, phishing attachments, scripted SVGs, OneNote droppers, and shortcuts to remote programs. Weak signals only count when several appear together.
+- **More protection** (Protection screen):
+  - USB drives and memory cards are scanned when connected, including `autorun.inf` files that start programs.
+  - Hidden **decoy files** in protected folders raise the ransomware alarm the moment one is touched, and are checked again at start in case something changed them while the app was closed.
+  - **Silent mode** (1–24 hours): no pop-ups and no scheduled scans or backups. Threats are still quarantined.
+  - **Exclusions**: trusted files and folders, chosen in a system dialog, are never scanned.
+- **Tools** screen:
+  - **Startup manager**: switch programs off at startup and back on. It uses Windows' own StartupApproved switch (as Task Manager does), a user override of the Linux autostart entry, `systemctl --user disable`, or parks a macOS launch agent. Entries that need administrator rights are left to the system's tools.
+  - **Deep check**: scheduled tasks and cron jobs, WMI event subscriptions, debugger hijacks of accessibility tools, Winlogon shell changes, macOS login hooks, `/etc/ld.so.preload`, and processes or kernel modules hidden from the system's own lists (Linux).
+  - **Browser extensions**: Chrome, Edge, Brave, Chromium and Firefox extensions, with their permissions in plain words. Sideloaded ones and ones that can read every site are marked for review. Read-only.
+  - **Junk cleanup**: temporary files, browser and application caches, thumbnails, crash reports and the trash, measured first. Recent files are left alone and links are never followed.
+  - **File shredder**: overwrites, renames and deletes files chosen in a system dialog. It refuses system folders, Qalaa's own data and the home folder itself. On SSDs, copies can survive inside the drive.
+  - **Block a program from the internet** (Windows firewall rules, or the macOS application firewall; the system asks for administrator approval). Not available on Linux.
 - **Security centre.** One screen that checks:
   - **Firewall**: whether it is on (`netsh`, `socketfilterfw`, `firewall-cmd` or `ufw`), and how to turn it on if not. Reports "could not be read" rather than guessing when the tool needs administrator rights.
   - **Programs accepting connections**: which ports are reachable from the network and by which program. Services that are often attacked when exposed (SMB, Remote Desktop, VNC, Telnet, FTP, databases, the Docker API) are flagged. On Linux it reads `/proc/net/tcp` directly; on Windows `netstat` and `tasklist`; on macOS `lsof`.

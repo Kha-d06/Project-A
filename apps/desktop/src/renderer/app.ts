@@ -29,7 +29,16 @@ interface Status {
   version: string;
   update: UpdateView;
   installKind: string;
+  silent: boolean;
+  decoys: number;
+  firewallBlock: boolean;
 }
+
+interface StartupRow { id: string; name: string; command: string; location: string; warnings: string[]; canSwitchOff: boolean }
+interface DisabledRow { id: string; name: string; command: string; location: string; at: string }
+interface JunkRow { id: string; label: string; files: number; bytes: number }
+interface ExtensionRow { browser: string; profile: string; id: string; name: string; version: string; fromStore: boolean; enabled: boolean; risk: "high" | "medium" | "low"; reasons: string[] }
+interface DeepResult { findings: { area: string; item: string; severity: "high" | "medium" | "low"; detail: string }[]; checked: string[]; checkedAt: string }
 
 type UpdateView =
   | { state: "idle" }
@@ -72,7 +81,7 @@ interface VpnView {
 }
 
 type Entry = ScanResult & { quarantined?: string };
-type Tab = "scan" | "protection" | "security" | "monitor" | "quarantine" | "history" | "settings";
+type Tab = "scan" | "protection" | "security" | "monitor" | "tools" | "quarantine" | "history" | "settings";
 
 interface MonitorSnapshot {
   at: string;
@@ -153,6 +162,7 @@ const TAB_ICONS: Record<string, string[]> = {
   security: ["M3 21V7h3v2h2V7h3v4h2V7h3v2h2V7h3v14Z", "M10 21v-4a2 2 0 0 1 4 0v4"],
   monitor: ["M22 12h-2.5a2 2 0 0 0-1.9 1.5l-2.4 8.4a.25.25 0 0 1-.5 0L9.2 2.2a.25.25 0 0 0-.5 0l-2.3 8.3A2 2 0 0 1 4.5 12H2"],
   quarantine: ["M21 8v13H3V8", "M1 3h22v5H1z", "M10 12h4"],
+  tools: ["M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"],
   history: ["M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", "M3 3v5h5", "M12 7v5l4 2"],
   settings: ["M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z", "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"],
 };
@@ -454,10 +464,214 @@ function protectionView() {
       ),
       h("button", { type: "button", class: "secondary", onclick: async () => { const next = await guard(() => api.addProtectedFolder()); if (next) { status = next as Status; render(); } } }, p.addFolder),
     ),
+    morePanel(),
     updatesPanel(),
     vpnPanel(),
     h("section", { class: "panel subtle" }, h("h2", {}, p.limits), h("p", { class: "muted" }, p.limitsBody)),
   ];
+}
+
+/** Removable drives, decoys, silent mode and exclusions. */
+function morePanel() {
+  const s = status.settings;
+  const p = t.protection;
+  const setSilent = async (hours: number) => {
+    const next = await guard(() => api.silent(hours));
+    if (next) { status = next as Status; flash(hours ? p.silentOn : p.silentOff); void render(); }
+  };
+  const addExclusion = async (kind: "file" | "folder") => {
+    const next = await guard(() => api.exclusionAdd(kind));
+    if (next) { status = next as Status; void render(); }
+  };
+  return h(
+    "section",
+    { class: "panel", id: "more-protection" },
+    h("h2", {}, p.more),
+    toggle(p.removable, s.scanRemovable, (value) => change({ scanRemovable: value }), p.removableHint, "scan-removable"),
+    toggle(p.decoys, s.ransomwareDecoys, (value) => change({ ransomwareDecoys: value }), p.decoysHint(status.decoys), "ransomware-decoys"),
+    h("h3", {}, p.silent),
+    h("p", { class: "muted", id: "silent-state" }, status.silent && s.silentUntil ? p.silentUntil(date(s.silentUntil)) : p.silentHint),
+    h(
+      "div",
+      { class: "row" },
+      ...[1, 3, 8].map((hours) => h("button", { type: "button", class: "secondary", "data-silent": String(hours), onclick: () => void setSilent(hours) }, p.silentFor(hours))),
+      status.silent ? h("button", { type: "button", class: "link", id: "silent-off", onclick: () => void setSilent(0) }, p.silentEnd) : null,
+    ),
+    h("h3", {}, p.exclusions),
+    h("p", { class: "muted" }, p.exclusionsHint),
+    s.exclusions.length
+      ? h(
+          "ul",
+          { class: "folders", id: "exclusions" },
+          ...s.exclusions.map((path) =>
+            h("li", { class: "row spread" }, h("code", { dir: "ltr" }, path), h("button", { type: "button", class: "link", onclick: () => change({ exclusions: s.exclusions.filter((e) => e !== path) }) }, p.remove)),
+          ),
+        )
+      : h("p", { class: "muted small", id: "exclusions" }, p.exclusionsNone),
+    h("div", { class: "row" },
+      h("button", { type: "button", class: "secondary", id: "exclude-folder", onclick: () => void addExclusion("folder") }, p.excludeFolder),
+      h("button", { type: "button", class: "secondary", id: "exclude-file", onclick: () => void addExclusion("file") }, p.excludeFile),
+    ),
+  );
+}
+
+// --- Tools --------------------------------------------------------------------------------
+
+let junkRows: JunkRow[] | null = null;
+let shredQueue: { path: string; refusal: string | null }[] = [];
+let extensionRows: ExtensionRow[] | null = null;
+let deepResult: DeepResult | null = null;
+let blockedRows: string[] | null = null;
+
+async function toolsView() {
+  const k = t.tools;
+  const list = (await guard(() => api.startupList() as Promise<{ active: StartupRow[]; disabled: DisabledRow[] }>)) ?? { active: [], disabled: [] };
+  if (!list.active.length && !list.disabled.length) {
+    await guard(() => api.securityCheck());
+    Object.assign(list, (await guard(() => api.startupList() as Promise<{ active: StartupRow[]; disabled: DisabledRow[] }>)) ?? {});
+  }
+  const startup = h(
+    "section",
+    { class: "panel", id: "startup-manager" },
+    h("h2", {}, k.startup),
+    h("p", { class: "muted" }, k.startupHint),
+    h(
+      "ul",
+      { class: "folders" },
+      ...list.active.map((item) =>
+        h("li", { class: item.warnings.length ? "item risky" : "item" },
+          h("div", { class: "row spread" },
+            h("strong", { dir: "auto" }, item.name),
+            item.canSwitchOff
+              ? h("button", { type: "button", class: "secondary small-button", "data-startup-off": item.id, onclick: async () => {
+                  if (await guard(() => api.startupOff(item.id))) { flash(k.switchedOff(item.name)); void render(); }
+                } }, k.switchOff)
+              : h("span", { class: "muted small" }, k.needsAdmin)),
+          h("code", { class: "block muted", dir: "ltr" }, item.command),
+          ...item.warnings.map((warning) => h("span", { class: "warning-text block small" }, warning)))),
+    ),
+    list.disabled.length ? h("h3", {}, k.switchedOffList) : null,
+    list.disabled.length
+      ? h("ul", { class: "folders", id: "startup-disabled" },
+          ...list.disabled.map((item) =>
+            h("li", { class: "row spread" },
+              h("span", {}, h("strong", { dir: "auto" }, item.name), h("span", { class: "muted small block" }, date(item.at))),
+              h("button", { type: "button", class: "secondary small-button", "data-startup-on": item.id, onclick: async () => {
+                if (await guard(() => api.startupOn(item.id))) { flash(k.switchedOn(item.name)); void render(); }
+              } }, k.switchOn))))
+      : null,
+  );
+
+  const junkTotal = (junkRows ?? []).reduce((sum, row) => sum + row.bytes, 0);
+  const junk = h(
+    "section",
+    { class: "panel", id: "junk" },
+    h("h2", {}, k.junk),
+    h("p", { class: "muted" }, k.junkHint),
+    junkRows
+      ? h("ul", { class: "folders" },
+          ...junkRows.map((row) => h("li", { class: "row spread" },
+            h("label", { class: "check" }, h("input", { type: "checkbox", "data-junk": row.id, checked: row.bytes > 0 && row.id !== "trash" }), h("span", {}, k.junkNames[row.id as keyof typeof k.junkNames] ?? row.label)),
+            h("span", { class: "muted" }, `${bytes(row.bytes)} · ${k.files(row.files)}`))))
+      : null,
+    h("div", { class: "row" },
+      h("button", { type: "button", class: "secondary", id: "junk-measure", onclick: async () => {
+        junkRows = (await guard(() => api.junkMeasure() as Promise<JunkRow[]>)) ?? null;
+        void render();
+      } }, junkRows ? k.measureAgain : k.measure),
+      junkRows
+        ? h("button", { type: "button", id: "junk-clean", disabled: junkTotal === 0, onclick: async () => {
+            const ids = [...document.querySelectorAll<HTMLInputElement>("[data-junk]")].filter((box) => box.checked).map((box) => box.dataset.junk!);
+            if (!ids.length || !window.confirm(k.confirmClean)) return;
+            const done = await guard(() => api.junkClean(ids) as Promise<{ files: number; bytes: number; skipped: number }>);
+            if (done) { flash(k.cleaned(done.files, bytes(done.bytes), done.skipped)); junkRows = (await guard(() => api.junkMeasure() as Promise<JunkRow[]>)) ?? null; void render(); }
+          } }, k.clean)
+        : null),
+  );
+
+  const shredder = h(
+    "section",
+    { class: "panel", id: "shredder" },
+    h("h2", {}, k.shredder),
+    h("p", { class: "muted" }, k.shredderHint),
+    shredQueue.length
+      ? h("ul", { class: "folders", id: "shred-queue" },
+          ...shredQueue.map((item) => h("li", { class: "row spread" },
+            h("code", { dir: "ltr" }, item.path),
+            item.refusal ? h("span", { class: "warning-text small" }, item.refusal) : h("button", { type: "button", class: "link", onclick: () => { shredQueue = shredQueue.filter((q) => q !== item); void render(); } }, t.protection.remove))))
+      : null,
+    h("div", { class: "row" },
+      h("button", { type: "button", class: "secondary", id: "shred-files", onclick: async () => { shredQueue = [...shredQueue, ...((await guard(() => api.pickPaths("file") as Promise<typeof shredQueue>)) ?? [])]; void render(); } }, k.addFiles),
+      h("button", { type: "button", class: "secondary", id: "shred-folders", onclick: async () => { shredQueue = [...shredQueue, ...((await guard(() => api.pickPaths("folder") as Promise<typeof shredQueue>)) ?? [])]; void render(); } }, k.addFolders),
+      shredQueue.some((q) => !q.refusal)
+        ? h("button", { type: "button", class: "danger", id: "shred-go", onclick: async () => {
+            const paths = shredQueue.filter((q) => !q.refusal).map((q) => q.path);
+            if (!window.confirm(k.confirmShred(paths.length))) return;
+            const done = await guard(() => api.shred(paths, 1) as Promise<{ files: number; bytes: number; refused: string[] }>);
+            if (done) { flash(k.shredded(done.files)); shredQueue = []; void render(); }
+          } }, k.shred)
+        : null),
+  );
+
+  const extensions = h(
+    "section",
+    { class: "panel", id: "extensions" },
+    h("h2", {}, k.extensions),
+    h("p", { class: "muted" }, k.extensionsHint),
+    extensionRows
+      ? extensionRows.length
+        ? h("ul", { class: "folders" },
+            ...extensionRows.map((row) => h("li", { class: row.risk === "high" ? "item risky" : "item" },
+              h("div", { class: "row spread" },
+                h("span", {}, h("strong", { dir: "auto" }, row.name), h("span", { class: "muted small" }, ` ${row.browser} · ${row.version}${row.enabled ? "" : ` · ${k.disabled}`}`)),
+                h("span", { class: `badge ${row.risk === "high" ? "malicious" : row.risk === "medium" ? "suspicious" : "no_known_threat"}` }, k.risk[row.risk])),
+              row.reasons.length ? h("span", { class: "muted small block" }, row.reasons.join("; ")) : null)))
+        : h("p", { class: "muted" }, k.noExtensions)
+      : null,
+    h("p", { class: "muted small" }, k.extensionsRemove),
+    h("button", { type: "button", class: "secondary", id: "extensions-check", onclick: async () => { extensionRows = (await guard(() => api.extensions() as Promise<ExtensionRow[]>)) ?? null; void render(); } }, extensionRows ? k.checkAgain : k.check),
+  );
+
+  const deep = h(
+    "section",
+    { class: "panel", id: "deep" },
+    h("h2", {}, k.deep),
+    h("p", { class: "muted" }, k.deepHint),
+    deepResult
+      ? h("div", {},
+          h("p", { id: "deep-summary" }, deepResult.findings.length ? k.deepFound(deepResult.findings.length) : k.deepNone, h("span", { class: "muted small block" }, `${k.deepChecked}: ${deepResult.checked.join(", ")} · ${date(deepResult.checkedAt)}`)),
+          ...deepResult.findings.map((f) => h("div", { class: f.severity === "high" ? "item risky" : "item" }, h("strong", {}, `${f.area}: `), h("span", { dir: "auto" }, f.item), h("span", { class: "muted small block", dir: "auto" }, f.detail))))
+      : null,
+    h("button", { type: "button", class: "secondary", id: "deep-run", onclick: async (event: Event) => {
+      const button = event.currentTarget as HTMLButtonElement;
+      button.disabled = true;
+      button.textContent = k.deepRunning;
+      deepResult = (await guard(() => api.deepCheck() as Promise<DeepResult>)) ?? deepResult;
+      void render();
+    } }, deepResult ? k.checkAgain : k.deepRun),
+  );
+
+  if (status.firewallBlock && blockedRows === null) blockedRows = (await guard(() => api.firewallBlocked() as Promise<string[]>)) ?? [];
+  const firewall = h(
+    "section",
+    { class: "panel", id: "blocked-programs" },
+    h("h2", {}, k.firewall),
+    h("p", { class: "muted" }, status.firewallBlock ? k.firewallHint : k.firewallLinux),
+    status.firewallBlock
+      ? h("div", {},
+          (blockedRows ?? []).length
+            ? h("ul", { class: "folders" }, ...(blockedRows ?? []).map((path) => h("li", { class: "row spread" }, h("code", { dir: "ltr" }, path),
+                h("button", { type: "button", class: "link", onclick: async () => { blockedRows = (await guard(() => api.firewallUnblock(path) as Promise<string[]>)) ?? blockedRows; void render(); } }, k.unblock))))
+            : h("p", { class: "muted small" }, k.noneBlocked),
+          h("button", { type: "button", class: "secondary", onclick: async () => {
+            const picked = (await guard(() => api.pickPaths("file") as Promise<{ path: string }[]>)) ?? [];
+            for (const { path } of picked) blockedRows = (await guard(() => api.firewallBlock(path) as Promise<string[]>)) ?? blockedRows;
+            void render();
+          } }, k.blockProgram))
+      : null,
+  );
+
+  return [h("h1", {}, k.heading), h("p", { class: "muted" }, k.intro), startup, deep, extensions, junk, shredder, firewall];
 }
 
 async function quarantineView() {
@@ -1232,6 +1446,13 @@ async function renderPane() {
             void renderPane();
           } }, m.inspect),
           status.platform !== "win32" ? (suspended.has(p.pid) ? act(p, "resume", m.resume) : act(p, "suspend", m.suspend)) : null,
+          status.firewallBlock && p.path
+            ? h("button", { type: "button", class: "secondary small-button", onclick: async () => {
+                if (!window.confirm(t.tools.confirmBlock(p.name))) return;
+                const next = await guard(() => api.firewallBlock(p.path!) as Promise<string[]>);
+                if (next) { blockedRows = next; flash(t.tools.blocked(p.name)); }
+              } }, t.tools.blockShort)
+            : null,
           act(p, "end", m.end)))));
       if (info) {
         const sig = info === "loading" ? null : info.signature;
@@ -1608,6 +1829,7 @@ async function render() {
     protection: protectionView,
     security: securityView,
     monitor: monitorView,
+    tools: toolsView,
     quarantine: quarantineView,
     history: historyView,
     settings: settingsView,
@@ -1633,6 +1855,10 @@ api.on("scan-result", (payload) => {
     if (list) list.prepend(resultRow(payload as Entry));
     else void render();
   }
+});
+api.on("signatures-updated", () => {
+  if (tab === "protection" || tab === "scan") void refresh();
+  else void api.status().then((next) => { status = next as Status; });
 });
 api.on("ransomware-alert", (payload) => {
   ransomwareAlert = payload as Status["ransomwareAlert"];

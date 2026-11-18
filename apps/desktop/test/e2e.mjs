@@ -471,7 +471,13 @@ await page.click('[data-tab="security"]');
 await page.selectOption("#scan-frequency", "daily");
 await page.selectOption("#scan-hour", "3");
 await page.waitForSelector("#schedule >> text=Next run");
-const savedSchedule = JSON.parse(await readFile(join(profile, "settings.json"), "utf8")).scanSchedule;
+// The settings file is written asynchronously after each change: wait for it rather than read once.
+let savedSchedule = null;
+for (let i = 0; i < 40; i++) {
+  savedSchedule = JSON.parse(await readFile(join(profile, "settings.json"), "utf8")).scanSchedule;
+  if (savedSchedule.frequency === "daily" && savedSchedule.hour === 3) break;
+  await new Promise((r) => setTimeout(r, 250));
+}
 assert.deepEqual(savedSchedule, { frequency: "daily", day: 0, hour: 3 });
 step("scheduled scan saved");
 

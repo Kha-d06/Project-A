@@ -218,7 +218,7 @@ export function parseProcNetTcp(text: string, owners: Map<string, { name: string
 }
 
 /** Socket inode to process, for the processes this user can see. */
-async function socketOwners(): Promise<Map<string, { name: string; pid: number }>> {
+export async function socketOwners(): Promise<Map<string, { name: string; pid: number }>> {
   const owners = new Map<string, { name: string; pid: number }>();
   let pids: string[];
   try {

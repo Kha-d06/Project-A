@@ -37,6 +37,7 @@ import { diskEncryption } from "./engine/encryption";
 import { type HistoryReport, checkHistory } from "./engine/history";
 import { type ProcessConcern, concernsFor, groupByExecutable, listProcesses } from "./engine/processes";
 import * as vpn from "./engine/vpn";
+import * as monitor from "./engine/monitor";
 import { Quarantine } from "./engine/quarantine";
 import { type Detection, type OfferedFolder, type ScanOutcome, RemoteAgent } from "./engine/remote";
 import { type ScanContext, scanFile } from "./engine/scanner";
@@ -86,6 +87,38 @@ const UPDATE_CHECK_MS = 6 * 60 * 60 * 1000;
 // Executable scan results, reused while the file is unchanged (path → size+mtime).
 const programCache = new Map<string, { stamp: string; verdict: ScanResult["verdict"]; title: string | null }>();
 let lastHistoryReport: HistoryReport | null = null;
+// System monitor: sampled only while its screen is open.
+const MONITOR_MS = 2000;
+const MONITOR_HISTORY = 90;
+let monitorSampler: monitor.Sampler | null = null;
+let monitorTimer: NodeJS.Timeout | null = null;
+let monitorHistory: monitor.Snapshot[] = [];
+let stopJournal: (() => void) | null = null;
+let monitorTicks = 0;
+
+function startMonitor() {
+  if (monitorTimer) return monitorHistory;
+  monitorSampler ??= new monitor.Sampler();
+  const tick = async () => {
+    // GPU tools are slower to ask; every other sample is enough.
+    const snapshot = await monitorSampler!.sample(monitorTicks++ % 2 === 0).catch(() => null);
+    if (!snapshot) return;
+    if (!snapshot.gpus.length && monitorHistory.length) snapshot.gpus = monitorHistory[monitorHistory.length - 1]!.gpus;
+    monitorHistory = [...monitorHistory, snapshot].slice(-MONITOR_HISTORY);
+    send("monitor-sample", snapshot);
+  };
+  void tick();
+  monitorTimer = setInterval(() => void tick(), MONITOR_MS);
+  stopJournal = monitor.followJournal((event) => send("monitor-event", event));
+  return monitorHistory;
+}
+
+function stopMonitor() {
+  if (monitorTimer) clearInterval(monitorTimer);
+  monitorTimer = null;
+  stopJournal?.();
+  stopJournal = null;
+}
 const vpnFile = () => join(dataDir(), `${vpn.CONNECTION_NAME}.conf`);
 
 function send(channel: string, payload: unknown) {
@@ -592,6 +625,16 @@ function registerIpc() {
   ipcMain.handle("process-check", () => processCheck());
   ipcMain.handle("history-check", (_event, days: unknown) => historyCheck(Math.min(90, Math.max(1, Number(days) || 30))));
   ipcMain.handle("history-last", () => lastHistoryReport);
+  ipcMain.handle("monitor-start", () => startMonitor());
+  ipcMain.handle("monitor-stop", () => stopMonitor());
+  ipcMain.handle("monitor-connections", () => monitor.connections());
+  ipcMain.handle("monitor-services", () => monitor.services());
+  ipcMain.handle("monitor-events", (_event, minutes: unknown) => monitor.recentEvents(Math.min(24 * 60, Math.max(5, Number(minutes) || 60))));
+  ipcMain.handle("monitor-service-control", async (_event, name: unknown, action: unknown) => {
+    if (action !== "start" && action !== "stop" && action !== "restart") throw new Error("Unknown action.");
+    await monitor.controlService(String(name), action);
+    return monitor.services();
+  });
   ipcMain.handle("vpn-status", () => vpnStatus());
   ipcMain.handle("vpn-setup", () => vpnSetup());
   ipcMain.handle("vpn-connect", async () => {

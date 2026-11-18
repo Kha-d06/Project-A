@@ -24,6 +24,12 @@ const api = {
   processCheck: () => ipcRenderer.invoke("process-check"),
   historyCheck: (days: number) => ipcRenderer.invoke("history-check", days),
   historyLast: () => ipcRenderer.invoke("history-last"),
+  monitorStart: () => ipcRenderer.invoke("monitor-start"),
+  monitorStop: () => ipcRenderer.invoke("monitor-stop"),
+  monitorConnections: () => ipcRenderer.invoke("monitor-connections"),
+  monitorServices: () => ipcRenderer.invoke("monitor-services"),
+  monitorEvents: (minutes: number) => ipcRenderer.invoke("monitor-events", minutes),
+  monitorServiceControl: (name: string, action: "start" | "stop" | "restart") => ipcRenderer.invoke("monitor-service-control", name, action),
   vpnStatus: () => ipcRenderer.invoke("vpn-status"),
   vpnSetup: () => ipcRenderer.invoke("vpn-setup"),
   vpnConnect: () => ipcRenderer.invoke("vpn-connect"),
@@ -40,7 +46,7 @@ const api = {
   accountLink: (code: string) => ipcRenderer.invoke("account-link", code),
   accountUnlink: () => ipcRenderer.invoke("account-unlink"),
   pathOf: (file: File) => webUtils.getPathForFile(file),
-  on: (channel: "scan-result" | "scan-progress" | "ransomware-alert" | "remote-activity" | "device-use" | "backup-progress" | "schedule-ran" | "update-state", listener: (payload: unknown) => void) => {
+  on: (channel: "scan-result" | "scan-progress" | "ransomware-alert" | "remote-activity" | "device-use" | "backup-progress" | "schedule-ran" | "update-state" | "monitor-sample" | "monitor-event", listener: (payload: unknown) => void) => {
     const wrapped = (_event: unknown, payload: unknown) => listener(payload);
     ipcRenderer.on(channel, wrapped);
     return () => ipcRenderer.removeListener(channel, wrapped);

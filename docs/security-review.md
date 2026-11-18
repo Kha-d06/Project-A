@@ -139,6 +139,7 @@ Scope: the API (`services/api`), web app (`apps/web`), browser extension
   - Blocking is opt-in; the default only warns.
   - The notification listener needs the person to grant notification access, and ignores everything but message notifications.
   - No SMS permissions are requested.
+- **Desktop system monitor.** Read-only collectors (execFile without a shell, /proc, /sys) with timeouts, sampling only while the Monitor screen is open. Service control validates the name against `^[A-Za-z0-9@._:-]{1,128}$` before use, asks for confirmation in the app, and relies on the operating system's own elevation prompt (pkexec/polkit, UAC). It is not offered on macOS. The renderer's CSP stays `style-src 'self'`: bar sizes are set through the CSSOM.
 - **Password autofill in the extension.**
   - The extension reads the encrypted vault (`GET /extension/vault`, linked installations only) and decrypts it in memory with the master password; the master password and decrypted vault are never stored, and the vault locks after 10 minutes idle or on demand.
   - Filling is click-only from the popup (never on page load), top frame only, `https://` (or localhost) only, logins for the same site or its subdomains only, refused on pages Qalaa rates dangerous/suspicious or that you or your family blocked, and only into visible fields (a hidden-field trap stays empty in the end-to-end test).

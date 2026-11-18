@@ -300,6 +300,24 @@ step("running programs checked; one started from a temporary folder is flagged; 
 await page.waitForFunction(() => !document.querySelector("#startup")?.textContent?.includes("New since your last review"));
 step("security centre: risky open port, startup entry running a downloaded script, new startup item since last review");
 
+// System monitor: live readings, connections with their programs, services, log.
+await page.click('[data-tab="monitor"]');
+await page.waitForFunction(() => /\d+%/.test(document.querySelector("#monitor-cpu .big")?.textContent ?? ""));
+await page.waitForFunction(() => /\d/.test(document.querySelector("#monitor-memory .big")?.textContent ?? ""), null, { timeout: 15000 });
+await page.waitForSelector("#monitor-pane #monitor-filter");
+await page.uncheck("#monitor-external");
+await page.fill("#monitor-filter", "5900");
+await page.waitForFunction(() => /LISTEN/.test(document.querySelector("#monitor-pane table")?.textContent ?? ""));
+assert.match(await page.locator("#monitor-pane table").innerText(), /node/i, "the listening port is attributed to its program");
+assert.equal(await page.evaluate(() => document.activeElement?.id), "monitor-filter", "typing in the filter keeps focus");
+await shot(page, "desktop-monitor");
+await page.click('[data-pane="services"]');
+await page.waitForFunction(() => /Background services/.test(document.querySelector("#monitor-pane")?.textContent ?? ""));
+await page.click('[data-pane="events"]');
+await page.waitForFunction(() => /system log/i.test(document.querySelector("#monitor-pane")?.textContent ?? ""));
+step("system monitor: live CPU and memory, connections with their programs, services and system log");
+await page.click('[data-tab="security"]');
+
 // Scheduled scan settings save.
 await page.selectOption("#scan-frequency", "daily");
 await page.selectOption("#scan-hour", "3");

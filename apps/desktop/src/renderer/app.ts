@@ -72,7 +72,22 @@ interface VpnView {
 }
 
 type Entry = ScanResult & { quarantined?: string };
-type Tab = "scan" | "protection" | "security" | "quarantine" | "history" | "settings";
+type Tab = "scan" | "protection" | "security" | "monitor" | "quarantine" | "history" | "settings";
+
+interface MonitorSnapshot {
+  at: string;
+  cpu: { total: number; cores: number[]; speedMhz: number[]; model: string; temperature: number | null };
+  memory: { total: number; used: number };
+  swap: { total: number; used: number } | null;
+  disk: { readPerSec: number; writePerSec: number; iops: number; used: number | null; size: number | null } | null;
+  network: { rxPerSec: number; txPerSec: number } | null;
+  gpus: { name: string; utilization: number | null; memoryUsed: number | null; memoryTotal: number | null; temperature: number | null }[];
+  load: number[] | null;
+  uptimeSeconds: number;
+}
+interface MonitorConnection { protocol: string; local: string; remote: string | null; state: string; process: string | null; pid: number | null }
+interface MonitorService { name: string; description: string; state: "running" | "stopped" | "failed" | "other"; startup: string | null }
+interface MonitorEvent { at: string; level: "error" | "warning" | "info"; source: string; message: string; security: boolean }
 
 const api = window.sentinel;
 let lang: Lang = "en";
@@ -89,6 +104,15 @@ let processBusy = false;
 let browsingReport: BrowsingReport | null = null;
 let browsingBusy = false;
 let vpnView: VpnView | null = null;
+let monitorSamples: MonitorSnapshot[] = [];
+let monitorPane: "connections" | "services" | "events" = "connections";
+let monitorConnections: MonitorConnection[] | null | undefined;
+let monitorServices: MonitorService[] | null | undefined;
+let monitorEvents: MonitorEvent[] | null | undefined;
+let monitorFilter = "";
+let monitorExternalOnly = true;
+let monitorSecurityOnly = false;
+let monitorRunning = false;
 let vpnBusy = false;
 
 type Child = Node | string | null | undefined | false;
@@ -96,6 +120,10 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string, 
   const element = document.createElement(tag);
   for (const [key, value] of Object.entries(props)) {
     if (typeof value === "function") element.addEventListener(key.slice(2), value as EventListener);
+    // Set through the CSSOM: the page's CSP (style-src 'self') blocks style attributes.
+    else if (key === "style") element.style.cssText = String(value);
+    // Live value of form fields (an attribute only sets the initial value).
+    else if (key === "value" && "value" in element) (element as HTMLInputElement).value = String(value);
     else if (value === true) element.setAttribute(key, "");
     else if (value !== false && value !== undefined && value !== null) element.setAttribute(key, String(value));
   }
@@ -957,6 +985,219 @@ function backupPanel() {
   );
 }
 
+// --- System monitor ------------------------------------------------------------------
+
+const SVG = "http://www.w3.org/2000/svg";
+
+/** A small line chart of the last readings (0..max). */
+function sparkline(series: number[][], max: number): SVGSVGElement {
+  const svg = document.createElementNS(SVG, "svg");
+  svg.setAttribute("class", "spark");
+  svg.setAttribute("viewBox", "0 0 100 40");
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.setAttribute("aria-hidden", "true");
+  series.forEach((values, index) => {
+    if (values.length < 2) return;
+    const top = Math.max(max, 1);
+    const points = values.map((v, i) => `${(i / (values.length - 1)) * 100},${40 - (Math.min(v, top) / top) * 38}`);
+    if (index === 0) {
+      const area = document.createElementNS(SVG, "polygon");
+      area.setAttribute("points", `0,40 ${points.join(" ")} 100,40`);
+      svg.append(area);
+    }
+    const line = document.createElementNS(SVG, "polyline");
+    line.setAttribute("points", points.join(" "));
+    if (index > 0) line.setAttribute("class", "second");
+    svg.append(line);
+  });
+  return svg;
+}
+
+function meter(fraction: number) {
+  const pct = Math.max(0, Math.min(100, Math.round(fraction * 100)));
+  return h("div", { class: `meter${pct >= 95 ? " full" : pct >= 80 ? " high" : ""}`, role: "img", "aria-label": `${pct}%` }, h("span", { style: `width:${pct}%` }));
+}
+
+function duration(seconds: number): string {
+  const d = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  return d ? `${d}d ${hours}h` : hours ? `${hours}h ${m}m` : `${m}m`;
+}
+
+function liveCards(): Node[] {
+  const m = t.monitor;
+  const last = monitorSamples[monitorSamples.length - 1];
+  if (!last) return [h("p", { class: "muted" }, "…")];
+  const pick = (f: (s: MonitorSnapshot) => number) => monitorSamples.map(f);
+  const card = (id: string, title: string, ...children: Child[]) => h("section", { class: "panel", id }, h("h2", {}, title), ...children);
+  const cards: Node[] = [];
+  const mhz = last.cpu.speedMhz.filter(Boolean);
+  cards.push(
+    card(
+      "monitor-cpu",
+      m.cpu,
+      h("div", { class: "big" }, `${Math.round(last.cpu.total)}%`),
+      sparkline([pick((s) => s.cpu.total)], 100),
+      h("div", { class: "cores", title: m.cores }, ...last.cpu.cores.map((v) => h("span", { style: `height:${Math.max(2, v)}%`, title: `${v}%` }))),
+      h("span", { class: "muted small" }, [last.cpu.model, mhz.length ? `${Math.round(Math.max(...mhz))} MHz` : null, last.cpu.temperature !== null ? m.temperature(last.cpu.temperature) : null].filter(Boolean).join(" · ")),
+      last.load ? h("span", { class: "muted small" }, `${m.load(last.load.join(" / "))} · ${m.uptime(duration(last.uptimeSeconds))}`) : h("span", { class: "muted small" }, m.uptime(duration(last.uptimeSeconds))),
+    ),
+  );
+  cards.push(
+    card(
+      "monitor-memory",
+      m.memory,
+      h("div", { class: "big" }, `${Math.round((last.memory.used / last.memory.total) * 100)}%`),
+      sparkline([pick((s) => (s.memory.used / s.memory.total) * 100)], 100),
+      h("span", { class: "muted small" }, m.of(bytes(last.memory.used), bytes(last.memory.total))),
+      last.swap ? h("span", { class: "muted small" }, m.swap(bytes(last.swap.used), bytes(last.swap.total))) : null,
+    ),
+  );
+  cards.push(
+    card(
+      "monitor-gpu",
+      m.gpu,
+      ...(last.gpus.length
+        ? last.gpus.flatMap((gpu) => [
+            h("div", { class: "big" }, gpu.utilization !== null ? `${Math.round(gpu.utilization)}%` : "—"),
+            gpu.utilization !== null ? meter(gpu.utilization / 100) : null,
+            h("span", { class: "muted small" }, [gpu.name, gpu.memoryUsed !== null ? (gpu.memoryTotal ? m.of(bytes(gpu.memoryUsed), bytes(gpu.memoryTotal)) : m.vram(bytes(gpu.memoryUsed))) : null, gpu.temperature !== null ? m.temperature(gpu.temperature) : null].filter(Boolean).join(" · ")),
+          ])
+        : [h("p", { class: "muted" }, m.unavailable)]),
+    ),
+  );
+  const disk = last.disk;
+  cards.push(
+    card(
+      "monitor-disk",
+      m.disk,
+      disk ? h("div", { class: "big" }, `${bytes(disk.readPerSec + disk.writePerSec)}/s`) : h("p", { class: "muted" }, m.unavailable),
+      disk ? sparkline([pick((s) => s.disk?.readPerSec ?? 0), pick((s) => s.disk?.writePerSec ?? 0)], Math.max(1, ...pick((s) => Math.max(s.disk?.readPerSec ?? 0, s.disk?.writePerSec ?? 0)))) : null,
+      disk ? h("span", { class: "muted small" }, `${m.read(bytes(disk.readPerSec))} · ${m.write(bytes(disk.writePerSec))} · ${m.iops(disk.iops)}`) : null,
+      disk?.size ? meter((disk.used ?? 0) / disk.size) : null,
+      disk?.size ? h("span", { class: "muted small" }, m.space(bytes(disk.used ?? 0), bytes(disk.size))) : null,
+    ),
+  );
+  const net = last.network;
+  cards.push(
+    card(
+      "monitor-network",
+      m.network,
+      net ? h("div", { class: "big" }, `${bytes(net.rxPerSec + net.txPerSec)}/s`) : h("p", { class: "muted" }, m.unavailable),
+      net ? sparkline([pick((s) => s.network?.rxPerSec ?? 0), pick((s) => s.network?.txPerSec ?? 0)], Math.max(1, ...pick((s) => Math.max(s.network?.rxPerSec ?? 0, s.network?.txPerSec ?? 0)))) : null,
+      net ? h("span", { class: "muted small" }, `${m.down(bytes(net.rxPerSec))} · ${m.up(bytes(net.txPerSec))}`) : null,
+    ),
+  );
+  return cards;
+}
+
+function isExternal(remote: string | null): boolean {
+  if (!remote) return false;
+  const host = remote.replace(/^\[|\](?=:)/g, "").replace(/:\d+$/, "");
+  return !/^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|::1$|fe80:|fc|fd|0\.0\.0\.0|::$|\*)/i.test(host);
+}
+
+function table(headers: string[], rows: Node[]) {
+  return h("div", { class: "table-wrap" }, h("table", { class: "data" }, h("thead", {}, h("tr", {}, ...headers.map((name) => h("th", { scope: "col" }, name)))), h("tbody", {}, ...rows)));
+}
+
+function paneControls(onRefresh: () => void, extra: Child) {
+  const m = t.monitor;
+  return h(
+    "div",
+    { class: "row" },
+    h("input", { type: "search", id: "monitor-filter", placeholder: m.filter, "aria-label": m.filter, value: monitorFilter, oninput: (event: Event) => { monitorFilter = (event.target as HTMLInputElement).value; void renderPane(); } }),
+    extra,
+    h("button", { type: "button", class: "secondary", onclick: onRefresh }, m.refresh),
+  );
+}
+
+function matches(...fields: (string | null | number)[]): boolean {
+  const q = monitorFilter.trim().toLowerCase();
+  return !q || fields.some((f) => String(f ?? "").toLowerCase().includes(q));
+}
+
+async function renderPane() {
+  const box = document.getElementById("monitor-pane");
+  if (!box) return;
+  const m = t.monitor;
+  const nodes: Node[] = [];
+  if (monitorPane === "connections") {
+    if (monitorConnections === undefined) monitorConnections = (await guard(() => api.monitorConnections() as Promise<MonitorConnection[] | null>)) ?? null;
+    const all = monitorConnections ?? [];
+    const shown = all.filter((c) => (!monitorExternalOnly || isExternal(c.remote)) && matches(c.process, c.local, c.remote, c.state, c.pid));
+    nodes.push(
+      h("p", { class: "muted small" }, m.connectionsHint),
+      paneControls(() => { monitorConnections = undefined; void renderPane(); }, toggle(m.externalOnly, monitorExternalOnly, (v) => { monitorExternalOnly = v; void renderPane(); }, undefined, "monitor-external")),
+      monitorConnections === null ? h("p", { class: "muted" }, m.unavailable) : shown.length === 0 ? h("p", { class: "muted" }, m.noRows) : table([m.process, m.local, m.remote, m.state], shown.slice(0, 500).map((c) =>
+        h("tr", {}, h("td", { dir: "auto" }, c.process ? `${c.process}${c.pid ? ` (${c.pid})` : ""}` : m.unknownProcess), h("td", { dir: "ltr" }, `${c.protocol.toUpperCase()} ${c.local}`), h("td", { dir: "ltr" }, c.remote ?? "—"), h("td", {}, c.state)))),
+      h("p", { class: "muted small" }, m.rows(Math.min(shown.length, 500), all.length)),
+    );
+  } else if (monitorPane === "services") {
+    if (monitorServices === undefined) monitorServices = (await guard(() => api.monitorServices() as Promise<MonitorService[] | null>)) ?? null;
+    const all = monitorServices ?? [];
+    const shown = all.filter((s) => matches(s.name, s.description, s.state)).sort((a, b) => Number(b.state === "failed") - Number(a.state === "failed") || a.name.localeCompare(b.name));
+    const canControl = status.platform !== "darwin";
+    const act = (service: MonitorService, action: "start" | "stop" | "restart", label: string) =>
+      h("button", { type: "button", class: "secondary small-button", onclick: async () => {
+        if (!window.confirm(m.confirmService(label, service.name))) return;
+        const next = await guard(() => api.monitorServiceControl(service.name, action) as Promise<MonitorService[] | null>);
+        if (next) { monitorServices = next; void renderPane(); }
+      } }, label);
+    nodes.push(
+      h("p", { class: "muted small" }, m.servicesHint),
+      paneControls(() => { monitorServices = undefined; void renderPane(); }, null),
+      monitorServices === null ? h("p", { class: "muted" }, m.unavailable) : shown.length === 0 ? h("p", { class: "muted" }, m.noRows) : table([m.services, m.state, ""], shown.slice(0, 800).map((s) =>
+        h("tr", { class: s.state === "failed" ? "flag" : "" },
+          h("td", {}, h("code", { dir: "ltr" }, s.name), s.description ? h("span", { class: "muted block" }, s.description) : null),
+          h("td", {}, (m.serviceStates[s.state] ?? s.state) + (s.startup ? ` · ${s.startup}` : "")),
+          h("td", {}, canControl ? h("div", { class: "actions" }, s.state === "running" ? act(s, "restart", m.restart) : null, s.state === "running" ? act(s, "stop", m.stop) : act(s, "start", m.start)) : null)))),
+      h("p", { class: "muted small" }, m.rows(Math.min(shown.length, 800), all.length)),
+    );
+  } else {
+    if (monitorEvents === undefined) monitorEvents = (await guard(() => api.monitorEvents(60) as Promise<MonitorEvent[] | null>)) ?? null;
+    const all = monitorEvents ?? [];
+    const shown = all.filter((e) => (!monitorSecurityOnly || e.security) && matches(e.source, e.message, e.level));
+    nodes.push(
+      h("p", { class: "muted small" }, m.eventsHint),
+      paneControls(() => { monitorEvents = undefined; void renderPane(); }, toggle(m.securityOnly, monitorSecurityOnly, (v) => { monitorSecurityOnly = v; void renderPane(); }, undefined, "monitor-security-only")),
+      monitorEvents === null ? h("p", { class: "muted" }, m.unavailable) : shown.length === 0 ? h("p", { class: "muted" }, m.noRows) : table(["", m.events, ""], shown.slice(0, 300).map((e) =>
+        h("tr", { class: e.security ? "flag" : "" },
+          h("td", { class: `level-${e.level}` }, m.eventLevels[e.level] ?? e.level),
+          h("td", { dir: "auto" }, h("strong", {}, e.source), " ", e.message),
+          h("td", { class: "muted" }, date(e.at))))),
+      h("p", { class: "muted small" }, m.rows(Math.min(shown.length, 300), all.length)),
+    );
+  }
+  if (tab !== "monitor") return;
+  const focused = document.activeElement as HTMLInputElement | null;
+  const keep = focused?.id === "monitor-filter" ? focused.selectionStart : null;
+  box.replaceChildren(...nodes);
+  if (keep !== null) {
+    const input = document.getElementById("monitor-filter") as HTMLInputElement | null;
+    input?.focus();
+    input?.setSelectionRange(keep, keep);
+  }
+}
+
+async function monitorView() {
+  const m = t.monitor;
+  if (!monitorRunning) {
+    monitorRunning = true;
+    monitorSamples = ((await api.monitorStart()) as MonitorSnapshot[]) ?? [];
+  }
+  const pane = (key: typeof monitorPane, label: string) =>
+    h("button", { type: "button", class: "secondary", "aria-pressed": monitorPane === key ? "true" : "false", "data-pane": key, onclick: () => { monitorPane = key; monitorFilter = ""; void render(); } }, label);
+  return [
+    h("h1", {}, m.heading),
+    h("p", { class: "muted" }, m.intro),
+    h("div", { class: "monitor-grid", id: "monitor-live" }, ...liveCards()),
+    h("div", { class: "tabs-inline", role: "group" }, pane("connections", m.connections), pane("services", m.services), pane("events", m.events)),
+    h("section", { class: "panel", id: "monitor-pane" }, h("p", { class: "muted" }, "…")),
+  ];
+}
+
 async function securityView() {
   const c = t.security;
   const sec = await loadSecurity();
@@ -1001,7 +1242,20 @@ async function render() {
     ...(Object.keys(t.tabs) as Tab[]).map((key) =>
       h(
         "button",
-        { type: "button", class: key === tab ? "current" : "", "aria-current": key === tab ? "page" : false, "data-tab": key, onclick: () => { tab = key; void render(); } },
+        {
+          type: "button",
+          class: key === tab ? "current" : "",
+          "aria-current": key === tab ? "page" : false,
+          "data-tab": key,
+          onclick: () => {
+            if (tab === "monitor" && key !== "monitor" && monitorRunning) {
+              monitorRunning = false;
+              void api.monitorStop();
+            }
+            tab = key;
+            void render();
+          },
+        },
         t.tabs[key],
         key === "quarantine" && status.quarantineCount ? h("span", { class: "count" }, String(status.quarantineCount)) : null,
       ),
@@ -1013,6 +1267,7 @@ async function render() {
     scan: scanView,
     protection: protectionView,
     security: securityView,
+    monitor: monitorView,
     quarantine: quarantineView,
     history: historyView,
     settings: settingsView,
@@ -1021,6 +1276,7 @@ async function render() {
   // A slower render that started earlier must not replace a newer one.
   if (token !== renderToken) return;
   main.replaceChildren(...nodes.filter((node): node is Node => node !== null));
+  if (tab === "monitor") void renderPane();
 }
 
 async function refresh() {
@@ -1069,6 +1325,17 @@ api.on("update-state", (payload) => {
   status = { ...status, update: payload as UpdateView };
   if (tab === "settings") void render();
 });
+api.on("monitor-sample", (payload) => {
+  monitorSamples = [...monitorSamples, payload as MonitorSnapshot].slice(-90);
+  const live = document.getElementById("monitor-live");
+  if (live && tab === "monitor") live.replaceChildren(...liveCards());
+});
+api.on("monitor-event", (payload) => {
+  if (!monitorEvents) return;
+  monitorEvents = [payload as MonitorEvent, ...monitorEvents].slice(0, 500);
+  if (tab === "monitor" && monitorPane === "events") void renderPane();
+});
+
 api.on("scan-progress", (payload) => {
   const { scanned, malicious, suspicious } = payload as { scanned: number; malicious: number; suspicious: number };
   const progress = document.getElementById("progress");

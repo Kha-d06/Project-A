@@ -72,3 +72,25 @@ details summary { cursor: pointer; font-weight: 600; }
 .panel > h2:first-child { margin-top: 0; }
 .field { flex: 0 0 auto; }
 .field select { flex: none; }
+
+.monitor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin: 16px 0; }
+.monitor-grid .panel { margin: 0; gap: 4px; }
+.big { font-size: 26px; font-weight: 700; line-height: 1.1; }
+.spark { width: 100%; height: 44px; display: block; }
+.spark polyline { fill: none; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.spark polyline.second { stroke: var(--warning); }
+.spark polygon { fill: var(--accent); opacity: .12; }
+.cores { display: grid; grid-template-columns: repeat(auto-fill, minmax(14px, 1fr)); gap: 3px; align-items: end; height: 40px; }
+.cores span { background: var(--accent); border-radius: 2px; min-height: 2px; }
+.meter { height: 6px; border-radius: 999px; background: var(--sunken); overflow: hidden; }
+.meter span { display: block; height: 100%; background: var(--accent); }
+.meter.high span { background: var(--warning); } .meter.full span { background: var(--danger); }
+.tabs-inline { display: flex; gap: 6px; flex-wrap: wrap; }
+.tabs-inline button[aria-pressed=true] { background: var(--accent); color: var(--accent-ink); }
+table.data { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.data th { text-align: start; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--line); padding: 6px 8px; position: sticky; top: 0; background: var(--surface); }
+table.data td { border-bottom: 1px solid var(--line); padding: 5px 8px; vertical-align: top; overflow-wrap: anywhere; }
+table.data tr.flag td { background: var(--warning-soft); }
+.table-wrap { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+.level-error { color: var(--danger); font-weight: 600; } .level-warning { color: var(--warning); font-weight: 600; }
+input[type=search] { font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-width: 200px; flex: 1; }

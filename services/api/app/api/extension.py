@@ -189,14 +189,19 @@ def extension_settings(installation: CurrentInstallation, db: Db) -> ExtensionSe
     user = db.get(User, installation.user_id) if installation.user_id else None
     domains: set[str] = set()
     groups: list[str] = []
+    safe_search = lock_protection = False
     if user:
         for group in db.scalars(
             select(Group)
             .join(GroupMember, GroupMember.group_id == Group.id)
             .where(GroupMember.user_id == user.id, GroupMember.apply_blocklist.is_(True))
         ):
-            if group.blocklist:
-                domains.update(group.blocklist)
+            policies = group.policies or {}
+            if group.kind == "family":
+                safe_search = safe_search or bool(policies.get("safe_search"))
+                lock_protection = lock_protection or bool(policies.get("lock_protection"))
+            if group.blocklist or (group.kind == "family" and policies):
+                domains.update(group.blocklist or [])
                 groups.append(group.name)
     return ExtensionSettings(
         installation_id=installation.id,
@@ -205,6 +210,8 @@ def extension_settings(installation: CurrentInstallation, db: Db) -> ExtensionSe
         sync_events=bool(user and user.settings.sync_extension_events),
         family_blocklist=sorted(domains)[:2000],
         family_groups=groups,
+        safe_search=safe_search,
+        lock_protection=lock_protection,
     )
 
 

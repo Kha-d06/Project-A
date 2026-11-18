@@ -2,6 +2,7 @@ import type { AccountLink } from "../lib/api";
 import { byId, el } from "../lib/dom";
 import { initLanguage, localizeDocument, t, type LanguageSetting } from "../lib/i18n";
 import { ask, type Status } from "../lib/messages";
+import { SAFE_SEARCH_ORIGINS, hasSafeSearchAccess } from "../lib/safesearch";
 import { SEARCH_ORIGINS, normalizeHostEntry, type Settings } from "../lib/settings";
 
 const SWITCHES = ["paused", "warnOnSuspicious", "preloadBlocking", "blockTrackers", "searchBadges", "downloadChecks", "keepLocalAlerts", "hoverChecks", "assistant"] as const;
@@ -76,6 +77,7 @@ function renderAccount(status: Status) {
       el("div", {}, el("button", { type: "button", class: "secondary", onclick: () => run(() => ask({ type: "unlink" })) }, t().options.unlink)),
       error,
     );
+    void renderFamilyRules(box, status.settings);
     return;
   }
   const input = el("input", { type: "text", id: "link-code", placeholder: "ABCD-1234", autocomplete: "off", spellcheck: "false", "aria-label": t().options.linkCode });
@@ -103,6 +105,37 @@ function renderAccount(status: Status) {
   );
 }
 
+/** Family rules the person chose to follow. SafeSearch needs access to the search
+ * sites, which only the person can grant, from this click. */
+async function renderFamilyRules(box: HTMLElement, settings: Settings) {
+  if (!settings.safeSearch && !settings.lockProtection) return;
+  const f = t().options.family;
+  const panel = el("div", { class: "stack", id: "family-rules" }, el("h3", {}, f.title), el("p", { class: "muted" }, f.intro(settings.familyGroups.join(", "))));
+  if (settings.lockProtection) panel.append(el("p", {}, f.locked));
+  if (settings.safeSearch) {
+    if (await hasSafeSearchAccess()) {
+      panel.append(el("p", { class: "good" }, f.safeSearchOn));
+    } else {
+      panel.append(
+        el("p", {}, f.safeSearchNeedsAccess),
+        el("div", {}, el("button", {
+          type: "button",
+          id: "allow-safe-search",
+          onclick: async () => {
+            if (await chrome.permissions.request({ origins: SAFE_SEARCH_ORIGINS })) {
+              await ask({ type: "apply-rules" });
+              location.reload();
+            } else {
+              flash(t().options.permissionDenied);
+            }
+          },
+        }, f.allowSafeSearch)),
+      );
+    }
+  }
+  box.append(panel);
+}
+
 async function main() {
   await initLanguage();
   localizeDocument();
@@ -115,6 +148,10 @@ async function main() {
   for (const key of SWITCHES) {
     const input = byId<HTMLInputElement>(key);
     input.checked = settings[key];
+    if (key === "paused" && settings.lockProtection) {
+      input.disabled = true;
+      input.title = t().options.family.locked;
+    }
     input.addEventListener("change", async () => {
       const needed = FEATURE_PERMISSIONS[key];
       if (needed && input.checked) {
@@ -133,7 +170,9 @@ async function main() {
         );
         const keep = new Set(stillUsed.flatMap((other) => FEATURE_PERMISSIONS[other]?.permissions ?? []));
         const permissions = (needed.permissions ?? []).filter((name) => !keep.has(name));
-        await chrome.permissions.remove({ permissions, origins: stillUsed.length ? [] : needed.origins });
+        // Never take away the search-site access a family SafeSearch rule relies on.
+        const origins = stillUsed.length ? [] : (needed.origins ?? []).filter((o) => !(settings.safeSearch && SAFE_SEARCH_ORIGINS.includes(o)));
+        await chrome.permissions.remove({ permissions, origins });
       }
       await save({ [key]: input.checked });
     });

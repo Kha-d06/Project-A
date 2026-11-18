@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import { PageTitle } from "@/components/dashboard/dashboard-shell";
+import { GroupRules } from "@/components/dashboard/group-rules";
 import { RiskBadge } from "@/components/scan/risk-badge";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -198,6 +199,7 @@ function GroupCard({ group, myId, onChange }: { group: Group; myId: string; onCh
               </span>
             </label>
           </div>
+          <GroupRules group={group} manager={manager} onChange={(saved) => onChange(saved)} />
           {manager && (
             <form onSubmit={invite} className="space-y-2">
               <Field label={g.invite}>

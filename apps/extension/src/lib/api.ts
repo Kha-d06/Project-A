@@ -57,6 +57,8 @@ export interface AccountLink {
   account_email: string | null;
   sync_events: boolean;
   family_blocklist?: string[];
+  safe_search?: boolean;
+  lock_protection?: boolean;
   family_groups?: string[];
 }
 

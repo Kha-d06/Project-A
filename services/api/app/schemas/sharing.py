@@ -114,8 +114,44 @@ class GroupOut(BaseModel):
     my_share_activity: bool
     my_apply_blocklist: bool = False
     blocklist: list[str] = []
+    policies: dict[str, Any] = {}
     members: list[GroupMemberOut]
     pending_invites: list[dict[str, Any]]
+
+
+class GroupPolicies(BaseModel):
+    """Family: safe_search, lock_protection. Organisation: require_2fa,
+    require_extension, max_days_since_scan (0-90). Keys for the other kind are ignored."""
+
+    safe_search: bool | None = None
+    lock_protection: bool | None = None
+    require_2fa: bool | None = None
+    require_extension: bool | None = None
+    max_days_since_scan: int | None = Field(default=None, ge=0, le=90)
+
+
+class MemberCompliance(BaseModel):
+    user_id: uuid.UUID
+    email: str
+    display_name: str | None
+    role: str
+    follows_rules: bool
+    # The rest is present only for members who chose to share activity.
+    shared: bool
+    two_factor: bool | None = None
+    extension_linked: bool | None = None
+    devices: int | None = None
+    last_device_scan: datetime | None = None
+    device_threats: int | None = None
+    problems: list[str] = []
+
+
+class GroupCompliance(BaseModel):
+    group_id: uuid.UUID
+    policies: dict[str, Any]
+    members: list[MemberCompliance]
+    sharing: int
+    compliant: int
 
 
 class InviteRequest(BaseModel):

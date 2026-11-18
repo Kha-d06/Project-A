@@ -158,6 +158,18 @@ python -m app.cli add-brand-reference emiratesnbd emiratesnbd.com https://<the b
 
 **Website security assessment.** An admin-enabled feature (Dashboard → Site assessment) that runs read-only security checks — TLS, security headers, cookie flags, exposed files, SPF/DMARC — against websites the account has **verified it owns**. Ownership is re-checked at scan time, and unverified domains are refused. Scans can repeat weekly or monthly with an email when a site gets worse, reports print or save as PDF, and optional light active tests (XSS reflection, open redirect, database errors) run only when the owner confirms for that scan. See [docs/assessment.md](docs/assessment.md).
 
+**Security score.** The dashboard overview shows a 0–100 score for how much of SENTINEL's protection the account uses: two-step sign-in, password manager, browser extension, a recently scanned device, breach monitoring and the VPN, each linked to where to turn it on. Steps this server cannot offer are left out. It measures settings, not safety, and says so.
+
+**Identity monitoring.** Breach check can also watch up to five more of your email addresses. Each one is confirmed with a code sent to it before anything is checked, so nobody can monitor someone else's address. Confirmed addresses are checked weekly with Have I Been Pwned, and new breaches are emailed to you.
+
+**Family and organisation rules.** Group owners and admins can set rules:
+- Family groups: SafeSearch on Google, Bing, DuckDuckGo and YouTube, and browser protection that cannot be paused.
+- Organisations: two-step sign-in, the browser extension, and a maximum number of days between device scans, with a compliance view.
+
+Rules apply only to members who choose to follow the group's rules, and the compliance view shows only members who share activity with the group. SENTINEL cannot override the account holder's own settings, so these are agreed rules with visibility, not remote control.
+
+**Sharing threat data (STIX 2.1).** `GET /api/v1/intelligence/stix` exports community-verified indicators (domains, URLs, IPs and file hashes) as a STIX 2.1 bundle marked TLP:CLEAR, with stable IDs for repeated imports. Third-party feed data is never re-shared. `SENTINEL_SHARE_FEED` sets who can fetch it: `account` (signed-in users and API keys; the default), `public` or `off`.
+
 **VPN.** An optional self-hosted WireGuard server (`docker compose --profile vpn`). Devices are added from Dashboard → VPN with keys made in the browser. See [docs/vpn.md](docs/vpn.md).
 
 **Android.** `apps/android` is a Trusted Web Activity for Google Play. See [apps/android/README.md](apps/android/README.md).

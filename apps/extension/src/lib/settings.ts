@@ -24,6 +24,9 @@ export interface Settings {
    * applied only because the account holder chose to. */
   familyBlocklist: string[];
   familyGroups: string[];
+  /** Family rules the account holder chose to follow (from the linked account). */
+  safeSearch: boolean;
+  lockProtection: boolean;
   keepLocalAlerts: boolean;
   allowlist: string[];
   blocklist: string[];
@@ -45,6 +48,8 @@ export const DEFAULT_SETTINGS: Settings = {
   searchBadges: false,
   familyBlocklist: [],
   familyGroups: [],
+  safeSearch: false,
+  lockProtection: false,
   keepLocalAlerts: true,
   allowlist: [],
   blocklist: [],

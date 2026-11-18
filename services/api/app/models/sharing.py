@@ -55,6 +55,9 @@ class Group(Base):
     # Domains the owners and admins suggest blocking. Applied only in the browsers
     # of members who turned it on themselves.
     blocklist: Mapped[list[Any]] = mapped_column(default=list)
+    # Rules set by owners and admins (see app/groups_policy.py). Like the block list,
+    # they apply only to members who chose to follow the group's rules.
+    policies: Mapped[dict[str, Any]] = mapped_column(default=dict, server_default="{}")
 
 
 class GroupMember(Base):

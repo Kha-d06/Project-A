@@ -99,6 +99,9 @@ class ExtensionSettings(BaseModel):
     # Domains from family or organisation groups whose block list this account
     # chose to apply, and the names of those groups (shown on the warning page).
     family_blocklist: list[str] = []
+    # Family rules from groups the person chose to follow.
+    safe_search: bool = False
+    lock_protection: bool = False
     family_groups: list[str] = []
 
 

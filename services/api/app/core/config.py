@@ -101,6 +101,9 @@ class Settings(BaseSettings):
     # Have I Been Pwned (breached-account search). Pwned Passwords needs no key and
     # is queried from the browser with k-anonymity, never through this server.
     hibp_api_key: str | None = None
+    # STIX export of community-verified indicators (/intelligence/stix):
+    # "off", "account" (signed-in users and API keys; the default) or "public".
+    share_feed: Literal["off", "account", "public"] = "account"
 
     # Messaging bots. Each is off until its credentials are set.
     telegram_bot_token: str | None = None

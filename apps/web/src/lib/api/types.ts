@@ -334,8 +334,62 @@ export interface Group {
   my_share_activity: boolean;
   my_apply_blocklist?: boolean;
   blocklist?: string[];
+  policies?: GroupPolicies;
   members: GroupMember[];
   pending_invites: { email: string; role: GroupRole; expires_at: string }[];
+}
+
+export interface GroupPolicies {
+  safe_search?: boolean;
+  lock_protection?: boolean;
+  require_2fa?: boolean;
+  require_extension?: boolean;
+  max_days_since_scan?: number;
+}
+
+export interface MemberCompliance {
+  user_id: string;
+  email: string;
+  display_name: string | null;
+  role: GroupRole;
+  follows_rules: boolean;
+  shared: boolean;
+  two_factor: boolean | null;
+  extension_linked: boolean | null;
+  devices: number | null;
+  last_device_scan: string | null;
+  device_threats: number | null;
+  problems: string[];
+}
+
+export interface GroupCompliance {
+  group_id: string;
+  policies: GroupPolicies;
+  members: MemberCompliance[];
+  sharing: number;
+  compliant: number;
+}
+
+export interface SecurityScore {
+  score: number;
+  grade: "strong" | "good" | "fair" | "weak";
+  steps: { key: string; done: boolean; points: number }[];
+}
+
+export interface MonitoredIdentity {
+  id: string;
+  email: string;
+  verified: boolean;
+  created_at: string;
+  last_checked_at: string | null;
+  breaches: { name: string; title: string; breach_date: string | null; data_classes: string[] }[];
+}
+
+export interface IdentityStatus {
+  available: boolean;
+  email_available: boolean;
+  max_identities: number;
+  identities: MonitoredIdentity[];
 }
 
 export interface GroupSharedScan {

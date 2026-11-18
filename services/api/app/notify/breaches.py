@@ -1,6 +1,7 @@
 """Breach monitoring: a weekly re-check of opted-in users' own email addresses
 against Have I Been Pwned. Only breaches not reported before are announced."""
 
+import contextlib
 import logging
 
 from sqlalchemy import select
@@ -63,3 +64,58 @@ def check_breaches(db: Session) -> int:
         )
         told += 1
     return told
+
+
+def check_identities(db: Session) -> int:
+    """Weekly check of confirmed extra addresses (identity monitoring). New
+    breaches are emailed to the account holder. Returns how many addresses had
+    new breaches."""
+    from app.api.breach import hibp_breaches
+    from app.api.identity import breach_summary
+    from app.models import MonitoredIdentity
+    from app.models.base import utcnow
+
+    if not get_settings().hibp_api_key:
+        return 0
+    found = 0
+    rows = db.execute(
+        select(MonitoredIdentity, User)
+        .join(User, User.id == MonitoredIdentity.user_id)
+        .where(MonitoredIdentity.verified_at.is_not(None), User.disabled_at.is_(None))
+        .order_by(MonitoredIdentity.last_checked_at.asc().nulls_first())
+    ).all()
+    for item, user in rows:
+        try:
+            breaches = breach_summary(hibp_breaches(item.value))
+        except ApiError as exc:
+            logger.info("Identity check paused: %s", exc.message)
+            break  # unavailable or rate limited: the oldest-checked go first next time
+        known = {str(b.get("name")) for b in item.known_breaches or [] if isinstance(b, dict)}
+        new = [b for b in breaches if b["name"] not in known]
+        item.known_breaches = breaches
+        item.last_checked_at = utcnow()
+        db.commit()
+        if not new:
+            continue
+        found += 1
+        names = ", ".join(str(b["title"]) for b in new[:10])
+        base = get_settings().public_url.rstrip("/")
+        body = (
+            f"{item.value}, one of the addresses you asked SENTINEL to watch, appeared in "
+            f"{len(new)} newly listed data breach(es): {names}.\n\n"
+            "Change the password on those sites and anywhere you reused it, and turn on two-step "
+            f"verification.\n\nDetails: {base}/dashboard/breach\n"
+        )
+        if email_enabled():
+            with contextlib.suppress(EmailUnavailableError):
+                send_email(
+                    db, user.email, "SENTINEL: a monitored address appeared in a breach", body
+                )
+        send_push(
+            db,
+            user.id,
+            "New data breach found",
+            f"{item.value}: {names[:100]}",
+            "/dashboard/breach",
+        )
+    return found

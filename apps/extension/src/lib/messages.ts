@@ -17,6 +17,7 @@ export type Request =
   | { type: "link"; code: string }
   | { type: "unlink" }
   | { type: "refresh-account" }
+  | { type: "apply-rules" }
   | { type: "settings"; changes: Partial<Settings> }
   | { type: "clear-alerts" }
   | { type: "clear-cache" }

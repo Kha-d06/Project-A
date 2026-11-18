@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Request, Response
@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from app.api.auth import clear_session_cookie, record_event
 from app.api.deps import CurrentSession, Db, RequiredUser, SessionUser
 from app.core import rate_limit
+from app.core.config import get_settings
 from app.core.errors import ApiError
 from app.core.rate_limit import RateLimit
 from app.core.security import hash_password, verify_password
@@ -134,6 +135,60 @@ def overview(user: RequiredUser, db: Db) -> OverviewOut:
         recent_threats=latest(ScanJob.risk.in_(_FLAGGED)),
         daily_activity=list(days.values()),
     )
+
+
+@router.get("/security-score")
+def security_score(user: SessionUser, db: Db) -> dict[str, Any]:
+    """A 0-100 summary of the account's protective settings, with what to do next."""
+    from app import score
+    from app.models import Device, ExtensionInstallation, Vault, VpnPeer
+
+    settings = get_settings()
+    week_ago = utcnow() - timedelta(days=7)
+    two_weeks_ago = utcnow() - timedelta(days=14)
+    devices = db.scalars(
+        select(Device).where(
+            Device.user_id == user.id, Device.revoked_at.is_(None), Device.last_seen_at >= week_ago
+        )
+    ).all()
+
+    def protected(device: Device) -> bool:
+        last = device.status.get("last_scan")
+        if not isinstance(last, str):
+            return False
+        try:
+            finished = datetime.fromisoformat(last)
+        except ValueError:
+            return False
+        if finished.tzinfo is None:
+            finished = finished.replace(tzinfo=UTC)
+        return finished >= two_weeks_ago and not device.status.get("last_scan_threats")
+
+    available = {
+        "email_verified",
+        "two_factor",
+        "password_manager",
+        "extension",
+        "device_protected",
+    }
+    if settings.hibp_api_key:
+        available.add("breach_monitoring")
+    if settings.vpn_endpoint:
+        available.add("vpn")
+    done = {
+        "email_verified": user.email_verified_at is not None,
+        "two_factor": user.totp_enabled_at is not None,
+        "password_manager": db.scalar(select(Vault.user_id).where(Vault.user_id == user.id))
+        is not None,
+        "extension": db.scalar(
+            select(ExtensionInstallation.id).where(ExtensionInstallation.user_id == user.id)
+        )
+        is not None,
+        "device_protected": any(protected(device) for device in devices),
+        "breach_monitoring": bool(user.settings and user.settings.breach_monitoring),
+        "vpn": db.scalar(select(VpnPeer.id).where(VpnPeer.user_id == user.id)) is not None,
+    }
+    return score.compute(done, available)
 
 
 @router.get("/export")

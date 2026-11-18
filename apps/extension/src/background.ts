@@ -116,9 +116,17 @@ async function notify(id: string, title: string, message: string, buttons?: { ti
 async function applyFamilyList(account: api.AccountLink | null) {
   const familyBlocklist = account?.linked ? (account.family_blocklist ?? []) : [];
   const familyGroups = account?.linked ? (account.family_groups ?? []) : [];
+  const safeSearch = Boolean(account?.linked && account.safe_search);
+  const lockProtection = Boolean(account?.linked && account.lock_protection);
   const current = await loadSettings();
-  if (JSON.stringify(current.familyBlocklist) === JSON.stringify(familyBlocklist)) return;
-  const next = await saveSettings({ familyBlocklist, familyGroups });
+  const unchanged =
+    JSON.stringify([current.familyBlocklist, current.familyGroups, current.safeSearch, current.lockProtection]) ===
+    JSON.stringify([familyBlocklist, familyGroups, safeSearch, lockProtection]);
+  if (unchanged) return;
+  // A locked group turns protection back on if it was paused.
+  const next = await saveSettings({ familyBlocklist, familyGroups, safeSearch, lockProtection, ...(lockProtection ? { paused: false } : {}) });
+  await refreshGlobalBadge(next);
+  await syncContentScripts(next);
   await clearCache();
   await applyRules(next);
 }
@@ -490,7 +498,14 @@ async function handle(request: Request, sender: chrome.runtime.MessageSender): P
     }
     case "refresh-account":
       return refreshAccount(settings);
+    case "apply-rules":
+      await applyRules(settings);
+      return null;
     case "settings": {
+      // Family rules come from the account, never from a page or the popup.
+      const { safeSearch: _s, lockProtection: _l, familyBlocklist: _b, familyGroups: _g, ...changes } = request.changes;
+      if (settings.lockProtection && changes.paused) delete changes.paused;
+      request.changes = changes;
       const next = await saveSettings(request.changes);
       if (request.changes.serverUrl && request.changes.serverUrl !== settings.serverUrl) {
         // Credentials belong to one server; a new server needs a new enrollment.
@@ -571,7 +586,13 @@ chrome.runtime.onMessage.addListener((request: Request, sender, sendResponse) =>
   return true;
 });
 
+// Granting or removing site access changes which rules can run (SafeSearch).
+chrome.permissions.onAdded.addListener(() => {
+  void loadSettings().then(applyRules);
+});
+
 chrome.permissions.onRemoved.addListener(() => {
+  void loadSettings().then(applyRules);
   void loadSettings().then(async (settings) => {
     const changes: Partial<Settings> = {};
     if (settings.hoverChecks && !chrome.scripting) changes.hoverChecks = false;

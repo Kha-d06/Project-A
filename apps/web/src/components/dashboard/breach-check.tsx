@@ -10,6 +10,7 @@ import { Field, Input } from "@/components/ui/field";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { ApiError, api } from "@/lib/api/client";
 import type { BreachResult } from "@/lib/api/types";
+import { IdentityMonitoring } from "@/components/dashboard/identity-monitoring";
 import { useI18n } from "@/lib/i18n/client";
 import { pwnedCount } from "@/lib/pwned";
 import { useSession } from "@/lib/session";
@@ -110,6 +111,7 @@ export function BreachCheck() {
           {passwordResult && <Alert tone={passwordResult.tone}>{passwordResult.text}</Alert>}
         </form>
       </Panel>
+      <IdentityMonitoring />
     </div>
   );
 }

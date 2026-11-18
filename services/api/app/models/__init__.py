@@ -6,6 +6,7 @@ from app.models.base import Base
 from app.models.community import CommunityReport
 from app.models.device import Device, DeviceCommand
 from app.models.extension import ExtensionEvent, ExtensionInstallation, ExtensionLinkCode
+from app.models.identity import MonitoredIdentity
 from app.models.intel import ThreatIndicator, ThreatSource
 from app.models.push import PushSubscription
 from app.models.scan import Finding, ScanJob
@@ -32,6 +33,7 @@ __all__ = [
     "Finding",
     "PushSubscription",
     "Group",
+    "MonitoredIdentity",
     "GroupInvite",
     "GroupMember",
     "ScanShare",

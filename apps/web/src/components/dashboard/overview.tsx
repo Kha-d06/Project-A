@@ -18,6 +18,7 @@ import { RISK, TONE_CLASSES } from "@/lib/risk";
 import { useSession } from "@/lib/session";
 
 import { ActivityChart } from "./activity-chart";
+import { SecurityScoreCard } from "./security-score";
 
 // A chart of one or two scans says nothing; below this, the list is enough.
 const MIN_SCANS_FOR_CHART = 5;
@@ -158,6 +159,7 @@ export function Overview() {
       )}
       {data && (
         <div className="space-y-6">
+          <SecurityScoreCard />
           {data.overview.total_scans === 0 ? (
             <EmptyOverview />
           ) : (

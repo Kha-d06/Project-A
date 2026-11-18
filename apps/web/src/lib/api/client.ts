@@ -49,6 +49,11 @@ import type {
   SharedScan,
   Webhook,
   WebhookEvent,
+  GroupCompliance,
+  GroupPolicies,
+  IdentityStatus,
+  MonitoredIdentity,
+  SecurityScore,
 } from "./types";
 import type { StoredVault } from "@/lib/vault";
 
@@ -204,6 +209,9 @@ export const api = {
     removeMember: (groupId: string, userId: string) =>
       request<void>(`/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`, { method: "DELETE" }),
     remove: (groupId: string) => request<void>(`/groups/${encodeURIComponent(groupId)}`, { method: "DELETE" }),
+    setPolicies: (groupId: string, policies: GroupPolicies) =>
+      request<Group>(`/groups/${encodeURIComponent(groupId)}/policies`, { method: "PUT", json: policies }),
+    compliance: (groupId: string) => request<GroupCompliance>(`/groups/${encodeURIComponent(groupId)}/compliance`),
     shares: (groupId: string) => request<GroupSharedScan[]>(`/groups/${encodeURIComponent(groupId)}/shares`),
   },
   webhooks: {
@@ -223,6 +231,14 @@ export const api = {
   trends: (days = 30) => request<Trends>("/trends", { query: { days } }),
   breach: {
     email: () => request<BreachResult>("/breach/email"),
+  },
+  identity: {
+    status: () => request<IdentityStatus>("/identity"),
+    add: (email: string) => request<MonitoredIdentity>("/identity", { method: "POST", json: { email } }),
+    verify: (id: string, code: string) =>
+      request<MonitoredIdentity>(`/identity/${encodeURIComponent(id)}/verify`, { method: "POST", json: { code } }),
+    resend: (id: string) => request<void>(`/identity/${encodeURIComponent(id)}/resend`, { method: "POST" }),
+    remove: (id: string) => request<void>(`/identity/${encodeURIComponent(id)}`, { method: "DELETE" }),
   },
   vpn: {
     status: () => request<VpnStatus>("/vpn"),
@@ -309,6 +325,7 @@ export const api = {
     changePassword: (body: { current_password: string; new_password: string }) =>
       request<void>("/user/password", { method: "POST", json: body }),
     overview: () => request<Overview>("/user/overview"),
+    securityScore: () => request<SecurityScore>("/user/security-score"),
     activity: () => request<Activity[]>("/user/activity"),
     exportData: () => request<Record<string, unknown>>("/user/export"),
     security: () => request<SecurityStatus>("/user/security"),

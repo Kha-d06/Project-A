@@ -219,7 +219,8 @@ async function renderVault() {
 function render(status: Status) {
   const toggle = byId<HTMLInputElement>("protection");
   toggle.checked = !status.settings.paused;
-  toggle.disabled = status.state === "not_enrolled";
+  toggle.disabled = status.state === "not_enrolled" || (status.settings.lockProtection && !status.settings.paused);
+  if (status.settings.lockProtection) toggle.title = t().options.family.locked;
   byId("state-label").textContent = stateText(status.state);
   const blocked = byId("preloaded");
   blocked.hidden = !status.preloadedCount;

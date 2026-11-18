@@ -7,7 +7,7 @@ needs a website session, like other account changes; API keys cannot.
 """
 
 import uuid
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Request
 from sqlalchemy import func, select
@@ -21,8 +21,11 @@ from app.core.config import get_settings
 from app.core.errors import ApiError
 from app.core.rate_limit import RateLimit
 from app.core.security import new_token, token_digest
+from app.groups_policy import MemberFacts, clean_policies, compliance
 from app.models import (
+    Device,
     ExtensionEvent,
+    ExtensionInstallation,
     Group,
     GroupInvite,
     GroupMember,
@@ -35,12 +38,15 @@ from app.notify.email import EmailUnavailableError, email_enabled, send_email
 from app.schemas.sharing import (
     AcceptInvite,
     GroupBlocklist,
+    GroupCompliance,
     GroupCreate,
     GroupMemberOut,
     GroupOut,
+    GroupPolicies,
     GroupSharedScan,
     InviteCreated,
     InviteRequest,
+    MemberCompliance,
     MemberUpdate,
 )
 
@@ -135,6 +141,7 @@ def _group_out(db: Session, group: Group, me: GroupMember) -> GroupOut:
         my_share_activity=me.share_activity,
         my_apply_blocklist=me.apply_blocklist,
         blocklist=list(group.blocklist or []),
+        policies=dict(group.policies or {}),
         members=members,
         pending_invites=invites,
     )
@@ -284,6 +291,95 @@ def set_blocklist(
     record_event(db, request, user, "group_blocklist", f"{group.name}: {len(body.domains)} domains")
     db.commit()
     return _group_out(db, group, me)
+
+
+@router.put("/{group_id}/policies", response_model=GroupOut)
+def set_policies(
+    group_id: uuid.UUID, body: GroupPolicies, request: Request, db: Db, user: SessionUser
+) -> GroupOut:
+    """Owners and admins set the group's rules. They apply only to members who
+    chose to follow the group's rules (the same switch as the block list)."""
+    group, me = _membership(db, group_id, user)
+    _require_manager(me)
+    try:
+        group.policies = clean_policies(group.kind, body.model_dump(exclude_none=True))
+    except ValueError as exc:
+        raise ApiError(422, "invalid_policy", str(exc)) from exc
+    record_event(db, request, user, "group_policies", f"{group.name}: {sorted(group.policies)}")
+    db.commit()
+    return _group_out(db, group, me)
+
+
+@router.get("/{group_id}/compliance", response_model=GroupCompliance)
+def compliance_view(group_id: uuid.UUID, db: Db, user: SessionUser) -> GroupCompliance:
+    """For owners and admins: how members measure up against the group's rules.
+    Details appear only for members who chose to share activity with the group."""
+    group, me = _membership(db, group_id, user)
+    _require_manager(me)
+    policies = dict(group.policies or {})
+    now = utcnow()
+    rows = db.execute(
+        select(GroupMember, User)
+        .join(User, User.id == GroupMember.user_id)
+        .where(GroupMember.group_id == group.id)
+        .order_by(GroupMember.joined_at)
+    ).all()
+    members: list[MemberCompliance] = []
+    for member, person in rows:
+        entry = MemberCompliance(
+            user_id=person.id,
+            email=person.email,
+            display_name=person.display_name,
+            role=member.role,
+            follows_rules=member.apply_blocklist,
+            shared=member.share_activity,
+        )
+        if member.share_activity:
+            facts = _member_facts(db, person)
+            entry.two_factor = facts.two_factor
+            entry.extension_linked = facts.extension_linked
+            entry.devices = facts.devices
+            entry.last_device_scan = facts.last_device_scan
+            entry.device_threats = facts.device_threats
+            entry.problems = compliance(policies, facts, now)
+        members.append(entry)
+    shared = [m for m in members if m.shared]
+    return GroupCompliance(
+        group_id=group.id,
+        policies=policies,
+        members=members,
+        sharing=len(shared),
+        compliant=sum(1 for m in shared if not m.problems),
+    )
+
+
+def _member_facts(db: Session, person: User) -> MemberFacts:
+    devices = db.scalars(
+        select(Device).where(Device.user_id == person.id, Device.revoked_at.is_(None))
+    ).all()
+    last_scan: datetime | None = None
+    threats = 0
+    for device in devices:
+        value = device.status.get("last_scan")
+        if isinstance(value, str):
+            try:
+                finished = datetime.fromisoformat(value)
+            except ValueError:
+                continue
+            if finished.tzinfo is None:
+                finished = finished.replace(tzinfo=UTC)
+            last_scan = max(last_scan, finished) if last_scan else finished
+        threats += int(device.status.get("last_scan_threats") or 0)
+    return MemberFacts(
+        two_factor=person.totp_enabled_at is not None,
+        extension_linked=db.scalar(
+            select(ExtensionInstallation.id).where(ExtensionInstallation.user_id == person.id)
+        )
+        is not None,
+        devices=len(devices),
+        last_device_scan=last_scan,
+        device_threats=threats,
+    )
 
 
 @router.delete("/{group_id}/members/{member_id}", status_code=204)

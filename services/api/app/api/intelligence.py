@@ -3,12 +3,13 @@
 import ipaddress
 import re
 from datetime import timedelta
+from typing import Any
 
 from fastapi import APIRouter, Request
 from sqlalchemy import func, select
 
 from app.analyzers.urls import InvalidUrlError, parse_url
-from app.api.deps import Db
+from app.api.deps import Db, OptionalUser
 from app.core import rate_limit
 from app.core.config import get_settings
 from app.core.errors import ApiError
@@ -23,6 +24,7 @@ router = APIRouter(prefix="/intelligence", tags=["Threat intelligence"])
 
 LOOKUP_LIMIT = RateLimit("intel-lookup", max_requests=120, window_seconds=3600)
 HASH_LIST_LIMIT = RateLimit("intel-hash-list", max_requests=12, window_seconds=3600)
+STIX_LIMIT = RateLimit("intel-stix", max_requests=30, window_seconds=3600)
 HASH_LIST_MAX = 200_000
 _SHA256 = re.compile(r"^[a-f0-9]{64}$")
 _OTHER_HASHES = {32: "MD5", 40: "SHA-1"}
@@ -223,6 +225,39 @@ def hash_list(request: Request, db: Db) -> HashList:
         sources=[source.name for source in sources],
         sha256=hashes,
     )
+
+
+@router.get("/stix")
+def stix_bundle(request: Request, db: Db, user: OptionalUser) -> dict[str, Any]:
+    """Community-verified indicators as a STIX 2.1 bundle (TLP:CLEAR), for other
+    tools and teams to import. Needs an account or API key unless the operator
+    made it public (SENTINEL_SHARE_FEED=public)."""
+    from app.intel.stix import bundle
+
+    mode = get_settings().share_feed
+    if mode == "off":
+        raise ApiError(404, "feed_not_shared", "This server does not share its threat data.")
+    if mode != "public" and user is None:
+        raise ApiError(401, "authentication_required", "Sign in or use an API key.")
+    rate_limit.enforce(STIX_LIMIT, f"user:{user.id}" if user else f"ip:{client_address(request)}")
+    source = db.scalar(select(ThreatSource).where(ThreatSource.key == COMMUNITY))
+    rows: list[Any] = []
+    if source is not None:
+        rows = list(
+            db.execute(
+                select(
+                    ThreatIndicator.kind,
+                    ThreatIndicator.value,
+                    ThreatIndicator.threat,
+                    ThreatIndicator.first_seen_at,
+                    ThreatIndicator.last_seen_at,
+                )
+                .where(ThreatIndicator.source_id == source.id)
+                .order_by(ThreatIndicator.last_seen_at.desc())
+                .limit(10_000)
+            ).all()
+        )
+    return bundle([tuple(row) for row in rows], producer="SENTINEL community reports")
 
 
 @router.get("/sources", response_model=list[SourceFreshness])

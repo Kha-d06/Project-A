@@ -13,6 +13,7 @@ from app.api import (
     devices,
     extension,
     groups,
+    identity,
     intelligence,
     metrics,
     push,
@@ -98,6 +99,7 @@ def create_app() -> FastAPI:
         vault.router,
         vpn.router,
         assess.router,
+        identity.router,
     ):
         app.include_router(router, prefix=API_PREFIX)
     return app

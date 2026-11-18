@@ -13,9 +13,11 @@
  *   3      the user's allow list (higher priority, so it wins)
  *   4      optional tracker blocking (third-party requests only)
  *   5      a family or organisation group's list, when the user applies it
+ *   6-9    SafeSearch (family rule; see safesearch.ts)
  *   1000+  session allowances from "Continue anyway"
  */
 import { fetchBlocklist } from "./api";
+import { SAFE_SEARCH_RULE_IDS, hasSafeSearchAccess, safeSearchRules } from "./safesearch";
 import { TRACKER_DOMAINS } from "./trackers";
 import type { Settings } from "./settings";
 
@@ -56,8 +58,10 @@ function rule(id: number, priority: number, type: "block" | "allow", domains: st
 }
 
 /** The dynamic rules for the current settings and blocklist. Exported for tests. */
-export function buildRules(settings: Settings, serverHosts: string[]): chrome.declarativeNetRequest.Rule[] {
+export function buildRules(settings: Settings, serverHosts: string[], safeSearchAccess = false): chrome.declarativeNetRequest.Rule[] {
   const rules: chrome.declarativeNetRequest.Rule[] = [];
+  // SafeSearch is a family rule: it stays on even while checks are paused.
+  if (settings.safeSearch && safeSearchAccess) rules.push(...safeSearchRules());
   if (settings.paused) return rules;
   if (settings.preloadBlocking && serverHosts.length) rules.push(rule(RULE_SERVER, 1, "block", serverHosts));
   if (settings.blocklist.length) rules.push(rule(RULE_USER_BLOCK, 1, "block", settings.blocklist));
@@ -82,8 +86,8 @@ export async function applyRules(settings: Settings): Promise<void> {
   if (!hasDnr()) return;
   const list = await storedBlocklist();
   await chrome.declarativeNetRequest.updateDynamicRules({
-    removeRuleIds: [RULE_SERVER, RULE_USER_BLOCK, RULE_USER_ALLOW, RULE_TRACKERS, RULE_FAMILY],
-    addRules: buildRules(settings, list?.hosts ?? []),
+    removeRuleIds: [RULE_SERVER, RULE_USER_BLOCK, RULE_USER_ALLOW, RULE_TRACKERS, RULE_FAMILY, ...SAFE_SEARCH_RULE_IDS],
+    addRules: buildRules(settings, list?.hosts ?? [], settings.safeSearch && (await hasSafeSearchAccess())),
   });
 }
 

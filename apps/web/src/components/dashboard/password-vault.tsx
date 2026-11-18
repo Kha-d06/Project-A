@@ -7,7 +7,7 @@ import { PageTitle } from "@/components/dashboard/dashboard-shell";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
-import { Field, Input, Textarea } from "@/components/ui/field";
+import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { useToast } from "@/components/ui/toast";
 import { ApiError, api } from "@/lib/api/client";
@@ -15,6 +15,7 @@ import { useI18n } from "@/lib/i18n/client";
 import { generatePassword } from "@/lib/password";
 import { pwnedCount } from "@/lib/pwned";
 import { parseOtpauth, secondsRemaining, totpCode } from "@/lib/totp";
+import { generateSharingKeys, openSealed, sealTo } from "@/lib/vault-sharing";
 import { useSession } from "@/lib/session";
 import {
   MIN_MASTER_LENGTH,
@@ -273,6 +274,195 @@ function ItemEditor({ item, isNew, onSave, onClose }: { item: VaultItem; isNew: 
 
 // --- Unlocked vault --------------------------------------------------------------
 
+/** Password sharing and emergency access — all encryption happens here in the browser. */
+function SharingPanel({ doc, persist }: { doc: VaultDoc; persist: (doc: VaultDoc) => Promise<boolean> }) {
+  const v = useVaultText();
+  const notify = useToast();
+  const [recipients, setRecipients] = useState<{ user_id: string; email: string; public_key: string }[]>([]);
+  const [shares, setShares] = useState<Awaited<ReturnType<typeof api.vault.shares>>>([]);
+  const [grants, setGrants] = useState<Awaited<ReturnType<typeof api.vault.emergency>>>([]);
+  const [shareItem, setShareItem] = useState("");
+  const [shareTo, setShareTo] = useState("");
+  const [emTo, setEmTo] = useState("");
+  const [emHours, setEmHours] = useState(48);
+
+  const ensureKeys = useCallback(async (): Promise<{ publicKey: string; privateKey: string }> => {
+    if (doc.sharing) return doc.sharing;
+    const keys = await generateSharingKeys();
+    await persist({ ...doc, sharing: keys });
+    await api.vault.setSharingKey(keys.publicKey);
+    return keys;
+  }, [doc, persist]);
+
+  const refresh = useCallback(async () => {
+    try {
+      const keys = await ensureKeys();
+      await api.vault.setSharingKey(keys.publicKey); // keep the published key current
+      setRecipients(await api.vault.recipients());
+      setShares(await api.vault.shares());
+      setGrants(await api.vault.emergency());
+    } catch (error) {
+      notify("error", errorText(error));
+    }
+  }, [ensureKeys, notify]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const logins = doc.items.filter((i) => i.kind === "login");
+
+  const doShare = async () => {
+    const item = doc.items.find((i) => i.id === shareItem);
+    const recipient = recipients.find((r) => r.user_id === shareTo);
+    if (!item || !recipient) return;
+    try {
+      const sealed = await sealTo(recipient.public_key, JSON.stringify({ ...item, id: undefined }));
+      await api.vault.createShare({ recipient_id: recipient.user_id, ciphertext: sealed.ciphertext, sender_ephemeral: sealed.ephemeral });
+      notify("success", v.shareSent(recipient.email));
+    } catch (error) {
+      notify("error", errorText(error));
+    }
+  };
+
+  const acceptShare = async (share: (typeof shares)[number]) => {
+    try {
+      const keys = await ensureKeys();
+      const payload = JSON.parse(await openSealed(keys.privateKey, { ciphertext: share.ciphertext, ephemeral: share.sender_ephemeral })) as Partial<VaultItem>;
+      await persist({ ...doc, items: [...doc.items, newItem("login", { ...payload, title: `${payload.title ?? "Shared"} (${share.sender_email})` })] });
+      await api.vault.removeShare(share.id);
+      notify("success", v.shareAccepted);
+      void refresh();
+    } catch (error) {
+      notify("error", errorText(error));
+    }
+  };
+
+  const declineShare = async (id: string) => {
+    await api.vault.removeShare(id).catch(() => undefined);
+    void refresh();
+  };
+
+  const grantEmergency = async () => {
+    const recipient = recipients.find((r) => r.user_id === emTo);
+    if (!recipient) return;
+    try {
+      // Seal a snapshot of the current vault to the trusted contact.
+      const sealed = await sealTo(recipient.public_key, JSON.stringify({ format: 1, items: doc.items }));
+      await api.vault.grantEmergency({ grantee_id: recipient.user_id, wait_hours: emHours, wrapped_vault_key: sealed.ciphertext, sender_ephemeral: sealed.ephemeral });
+      notify("success", v.emGranted(recipient.email));
+      void refresh();
+    } catch (error) {
+      notify("error", errorText(error));
+    }
+  };
+
+  const unlockEmergency = async (id: string) => {
+    try {
+      const { wrapped_vault_key, sender_ephemeral } = await api.vault.emergencyKey(id);
+      const keys = await ensureKeys();
+      const snapshot = JSON.parse(await openSealed(keys.privateKey, { ciphertext: wrapped_vault_key, ephemeral: sender_ephemeral })) as VaultDoc;
+      // Hand the recovered logins to the trusted contact as a CSV download.
+      const url = URL.createObjectURL(new Blob([exportCsv(snapshot.items)], { type: "text/csv" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "recovered-vault.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+      notify("success", v.emUnlocked);
+    } catch (error) {
+      notify("error", errorText(error));
+    }
+  };
+
+  return (
+    <details className="rounded-panel border border-line bg-surface">
+      <summary className="cursor-pointer px-5 py-4 font-semibold text-ink">{v.sharingTitle}</summary>
+      <div className="space-y-6 border-t border-line p-5">
+        <p className="text-sm text-ink-muted">{v.sharingIntro}</p>
+
+        {/* Received shares */}
+        {shares.length > 0 && (
+          <div className="space-y-2">
+            <h3 className="font-semibold text-ink">{v.received}</h3>
+            <ul className="space-y-2">
+              {shares.map((s) => (
+                <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 rounded-control border border-line px-3 py-2 text-sm">
+                  <span>{v.sharedBy(s.sender_email)}</span>
+                  <span className="flex gap-2">
+                    <Button size="sm" onClick={() => acceptShare(s)}>{v.accept}</Button>
+                    <Button size="sm" variant="secondary" onClick={() => declineShare(s.id)}>{v.decline}</Button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Share a login */}
+        <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+          <Field label={v.shareWhich}>
+            {(props) => (
+              <Select {...props} value={shareItem} onChange={(e) => setShareItem(e.target.value)}>
+                <option value="">—</option>
+                {logins.map((i) => (
+                  <option key={i.id} value={i.id}>{i.title}</option>
+                ))}
+              </Select>
+            )}
+          </Field>
+          <Field label={v.shareWithWhom} hint={recipients.length ? undefined : v.noRecipients}>
+            {(props) => (
+              <Select {...props} value={shareTo} onChange={(e) => setShareTo(e.target.value)}>
+                <option value="">—</option>
+                {recipients.map((r) => (
+                  <option key={r.user_id} value={r.user_id}>{r.email}</option>
+                ))}
+              </Select>
+            )}
+          </Field>
+          <Button size="sm" onClick={doShare} disabled={!shareItem || !shareTo}>{v.shareButton}</Button>
+        </div>
+
+        {/* Emergency access */}
+        <div className="space-y-2">
+          <h3 className="font-semibold text-ink">{v.emergency}</h3>
+          <p className="text-sm text-ink-muted">{v.emergencyIntro}</p>
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+            <Field label={v.emContact}>
+              {(props) => (
+                <Select {...props} value={emTo} onChange={(e) => setEmTo(e.target.value)}>
+                  <option value="">—</option>
+                  {recipients.map((r) => (
+                    <option key={r.user_id} value={r.user_id}>{r.email}</option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+            <Field label={v.emWait}>{(props) => <Input {...props} type="number" min={0} max={720} value={emHours} onChange={(e) => setEmHours(Number(e.target.value))} className="w-24" />}</Field>
+            <Button size="sm" onClick={grantEmergency} disabled={!emTo}>{v.emGrant}</Button>
+          </div>
+          {grants.length > 0 && (
+            <ul className="space-y-2">
+              {grants.map((g) => (
+                <li key={g.id} className="flex flex-wrap items-center justify-between gap-2 rounded-control border border-line px-3 py-2 text-sm">
+                  <span>{g.role === "granted_by_me" ? v.emYouTrust(g.grantee_email, g.wait_hours) : v.emTrustsYou(g.grantor_email)} · {v.emState[g.state] ?? g.state}</span>
+                  <span className="flex gap-2">
+                    {g.role === "granted_to_me" && g.state === "active" && <Button size="sm" variant="secondary" onClick={async () => { await api.vault.requestEmergency(g.id); void refresh(); }}>{v.emRequest}</Button>}
+                    {g.role === "granted_to_me" && g.state === "requested" && <Button size="sm" onClick={() => unlockEmergency(g.id)}>{v.emUnlock}</Button>}
+                    {g.role === "granted_by_me" && g.state === "requested" && <Button size="sm" variant="danger" onClick={async () => { await api.vault.denyEmergency(g.id); void refresh(); }}>{v.emDeny}</Button>}
+                    <Button size="sm" variant="secondary" onClick={async () => { await api.vault.revokeEmergency(g.id); void refresh(); }}>{v.emRevoke}</Button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </details>
+  );
+}
+
 function OpenVault({
   doc,
   persist,
@@ -517,6 +707,8 @@ function OpenVault({
           </ul>
         )}
       </Panel>
+
+      <SharingPanel doc={doc} persist={persist} />
 
       <details className="rounded-panel border border-line bg-surface">
         <summary className="cursor-pointer px-5 py-4 font-semibold text-ink">{v.manage}</summary>

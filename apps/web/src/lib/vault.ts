@@ -47,6 +47,8 @@ export interface VaultItem {
 export interface VaultDoc {
   format: 1;
   items: VaultItem[];
+  /** This user's ECDH sharing key pair, generated on first use of sharing. */
+  sharing?: { publicKey: string; privateKey: string };
 }
 
 export interface StoredVault {

@@ -13,6 +13,7 @@ from app.models.scan import Finding, ScanJob
 from app.models.sharing import Group, GroupInvite, GroupMember, ScanShare, Webhook
 from app.models.user import User, UserSession, UserSettings
 from app.models.vault import Vault
+from app.models.vault_sharing import EmergencyContact, SharingKey, VaultShare
 from app.models.vpn import VpnPeer, VpnServer
 
 __all__ = [
@@ -45,6 +46,9 @@ __all__ = [
     "UserSession",
     "UserSettings",
     "Vault",
+    "SharingKey",
+    "VaultShare",
+    "EmergencyContact",
     "VpnPeer",
     "VpnServer",
 ]

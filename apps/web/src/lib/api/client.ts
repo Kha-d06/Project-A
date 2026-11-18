@@ -253,6 +253,22 @@ export const api = {
     save: (body: Omit<StoredVault, "version"> & { expected_version: number | null }) =>
       request<{ version: number; updated_at: string }>("/vault", { method: "PUT", json: body }),
     remove: (password: string) => request<void>("/vault/delete", { method: "POST", json: { password } }),
+    setSharingKey: (publicKey: string) => request<{ ok: boolean }>("/vault/sharing-key", { method: "PUT", json: { public_key: publicKey } }),
+    recipients: () => request<{ user_id: string; email: string; public_key: string }[]>("/vault/recipients"),
+    createShare: (body: { recipient_id: string; ciphertext: string; sender_ephemeral: string }) =>
+      request<{ id: string }>("/vault/shares", { method: "POST", json: body }),
+    shares: () => request<{ id: string; sender_email: string; ciphertext: string; sender_ephemeral: string; created_at: string }[]>("/vault/shares"),
+    removeShare: (id: string) => request<{ ok: boolean }>(`/vault/shares/${id}`, { method: "DELETE" }),
+    grantEmergency: (body: { grantee_id: string; wait_hours: number; wrapped_vault_key: string; sender_ephemeral: string }) =>
+      request<{ id: string }>("/vault/emergency", { method: "POST", json: body }),
+    emergency: () =>
+      request<{ id: string; grantor_email: string; grantee_email: string; wait_hours: number; state: string; role: string; requested_at: string | null; unlocks_at: string | null }[]>(
+        "/vault/emergency",
+      ),
+    requestEmergency: (id: string) => request<{ state: string }>(`/vault/emergency/${id}/request`, { method: "POST" }),
+    denyEmergency: (id: string) => request<{ state: string }>(`/vault/emergency/${id}/deny`, { method: "POST" }),
+    emergencyKey: (id: string) => request<{ wrapped_vault_key: string; sender_ephemeral: string }>(`/vault/emergency/${id}/key`),
+    revokeEmergency: (id: string) => request<{ ok: boolean }>(`/vault/emergency/${id}`, { method: "DELETE" }),
   },
   devices: {
     list: () => request<Device[]>("/user/devices"),

@@ -25,6 +25,7 @@ from app.api import (
     trends,
     user,
     vault,
+    vault_share,
     vpn,
     webhooks,
 )
@@ -98,6 +99,7 @@ def create_app() -> FastAPI:
         trends.router,
         devices.router,
         vault.router,
+        vault_share.router,
         vpn.router,
         assess.router,
         identity.router,

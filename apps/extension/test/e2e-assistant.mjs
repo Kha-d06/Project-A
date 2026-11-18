@@ -81,10 +81,17 @@ await options.close();
 const shop = await context.newPage();
 await shop.goto("https://paypa1-login.example.com/");
 const bubble = shop.locator("#sentinel-assistant-root .bubble");
-// On a slow machine the page can load before the new setting reaches it: reload once.
-await bubble.waitFor({ timeout: 20000 }).catch(async (error) => {
-  console.error("No assistant bubble. Hosts the mock server was asked about:", seen.checks);
-  throw error;
+// On a slow machine the page can load before the new "assistant on" setting
+// reaches the content script. Reload once (and retry) so the setting is in place.
+await bubble.waitFor({ timeout: 12000 }).catch(async () => {
+  await shop.reload();
+  await bubble.waitFor({ timeout: 12000 }).catch(async () => {
+    await shop.reload();
+    await bubble.waitFor({ timeout: 12000 }).catch((error) => {
+      console.error("No assistant bubble. Hosts the mock server was asked about:", seen.checks);
+      throw error;
+    });
+  });
 });
 assert.match(await bubble.innerText(), /Suspicious/);
 await shot(shop, "ext-assistant-warning");

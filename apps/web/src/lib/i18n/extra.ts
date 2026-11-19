@@ -105,6 +105,8 @@ export const extraEn = {
     follow: "Follow this group's rules in my browsers",
     compliance: "Compliance",
     complianceSummary: (ok: number, shared: number) => `${ok} of ${shared} sharing members meet every rule`,
+    exportCsv: "Download as CSV",
+    exportReport: "Open printable report",
     notShared: "Not sharing",
     problems: {
       no_2fa: "No two-step sign-in",
@@ -835,6 +837,8 @@ export const extraAr: ExtraDictionary = {
     follow: "اتبع قواعد هذه المجموعة في متصفحاتي",
     compliance: "الالتزام",
     complianceSummary: (ok, shared) => `${ok} من ${shared} من الأعضاء المشاركين يستوفون كل القواعد`,
+    exportCsv: "تنزيل بصيغة CSV",
+    exportReport: "فتح تقرير قابل للطباعة",
     notShared: "لا يشارك",
     problems: {
       no_2fa: "لا تحقق بخطوتين",

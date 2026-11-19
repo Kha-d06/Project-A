@@ -27,6 +27,14 @@ function Compliance({ groupId }: { groupId: string }) {
     <div className="space-y-2" id="group-compliance">
       <p className="text-sm font-semibold text-ink">{r.compliance}</p>
       <p className="text-xs text-ink-muted">{r.complianceSummary(data.compliant, data.sharing)}</p>
+      <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+        <a className="text-accent underline-offset-2 hover:underline" href={`/api/v1/groups/${encodeURIComponent(groupId)}/compliance/export`} download>
+          {r.exportCsv}
+        </a>
+        <a className="text-accent underline-offset-2 hover:underline" href={`/api/v1/groups/${encodeURIComponent(groupId)}/compliance/export?format=html`} target="_blank" rel="noopener">
+          {r.exportReport}
+        </a>
+      </p>
       <ul className="divide-y divide-line text-sm">
         {data.members.map((member) => (
           <li key={member.user_id} className="flex flex-wrap items-start justify-between gap-2 py-2">

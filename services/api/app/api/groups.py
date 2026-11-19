@@ -6,16 +6,19 @@ recently (counts only: never which sites, messages or files). Managing a group
 needs a website session, like other account changes; API keys cannot.
 """
 
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.auth import record_event
 from app.api.deps import Db, RequiredUser, SessionUser
 from app.api.sharing import shared_view
+from app.compliance_export import to_csv, to_html
 from app.core import rate_limit
 from app.core.config import get_settings
 from app.core.errors import ApiError
@@ -316,6 +319,37 @@ def compliance_view(group_id: uuid.UUID, db: Db, user: SessionUser) -> GroupComp
     Details appear only for members who chose to share activity with the group."""
     group, me = _membership(db, group_id, user)
     _require_manager(me)
+    return _compliance(db, group)
+
+
+@router.get("/{group_id}/compliance/export")
+def compliance_export(
+    group_id: uuid.UUID,
+    request: Request,
+    db: Db,
+    user: SessionUser,
+    format: Literal["csv", "html"] = "csv",
+) -> Response:
+    """The compliance view as a CSV download, or a printable HTML report (the
+    browser saves it as PDF). Same access and same privacy as the view."""
+    group, me = _membership(db, group_id, user)
+    _require_manager(me)
+    view = _compliance(db, group)
+    members = [m.model_dump() for m in view.members]
+    record_event(db, request, user, "group_compliance_export", f"{group.name}: {format}")
+    db.commit()
+    stem = re.sub(r"[^A-Za-z0-9_-]+", "-", group.name).strip("-") or "group"
+    if format == "html":
+        body = to_html(group.name, view.policies, members, utcnow())
+        return Response(body, media_type="text/html; charset=utf-8")
+    return Response(
+        to_csv(group.name, view.policies, members),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{stem}-compliance.csv"'},
+    )
+
+
+def _compliance(db: Session, group: Group) -> GroupCompliance:
     policies = dict(group.policies or {})
     now = utcnow()
     rows = db.execute(

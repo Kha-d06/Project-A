@@ -15,6 +15,7 @@ from app.api import (
     groups,
     identity,
     intelligence,
+    mail,
     metrics,
     network,
     push,
@@ -104,6 +105,7 @@ def create_app() -> FastAPI:
         assess.router,
         identity.router,
         network.router,
+        mail.router,
     ):
         app.include_router(router, prefix=API_PREFIX)
     return app

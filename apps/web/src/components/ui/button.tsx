@@ -6,19 +6,17 @@ import { cn } from "@/lib/cn";
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "sm" | "md" | "lg";
 
+// Hover changes colour only; pressing scales the whole button (label and icon
+// together) so it reads as physical. Durations and curve follow the motion tokens.
 const base =
   "relative inline-flex items-center justify-center gap-2 rounded-control font-medium whitespace-nowrap " +
-  "transition-[background-color,border-color,color,box-shadow,transform] duration-200 ease-[var(--ease-out-quick)] " +
-  "active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 select-none " +
+  "transition-[background-color,border-color,color,transform] duration-[160ms] ease-[var(--ease-out)] " +
+  "active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 select-none " +
   "focus-visible:outline-2 focus-visible:outline-offset-2";
 
 const variants: Record<Variant, string> = {
-  primary:
-    "bg-accent text-accent-ink shadow-[inset_0_1px_0_rgb(255_255_255/0.22),0_1px_2px_rgb(0_0_0/0.18),0_6px_16px_-6px_var(--glow)] " +
-    "hover:bg-accent-strong hover:-translate-y-px hover:shadow-[inset_0_1px_0_rgb(255_255_255/0.25),0_2px_4px_rgb(0_0_0/0.18),0_12px_28px_-8px_var(--glow)]",
-  secondary:
-    "border border-line-strong bg-surface text-ink shadow-[0_1px_2px_rgb(0_0_0/0.05)] " +
-    "hover:-translate-y-px hover:border-ink-faint/60 hover:bg-surface-raised",
+  primary: "bg-accent text-accent-ink shadow-[inset_0_1px_0_rgb(255_255_255/0.16)] hover:bg-accent-strong",
+  secondary: "border border-line-strong bg-surface text-ink hover:border-ink-faint/50 hover:bg-surface-sunken",
   ghost: "text-ink-muted hover:bg-surface-sunken hover:text-ink",
   danger: "border border-danger/40 text-danger hover:bg-danger-soft",
 };
@@ -26,7 +24,7 @@ const variants: Record<Variant, string> = {
 const sizes: Record<Size, string> = {
   sm: "h-8 px-3 text-sm",
   md: "h-10 px-4 text-sm",
-  lg: "h-12 px-6 text-[0.95rem]",
+  lg: "h-12 px-5 text-[0.95rem]",
 };
 
 export function buttonClasses(variant: Variant = "primary", size: Size = "md", className?: string) {

@@ -1,8 +1,10 @@
-import "@fontsource-variable/instrument-sans";
-import "@fontsource-variable/bricolage-grotesque";
-import "@fontsource-variable/noto-kufi-arabic";
-import "@fontsource-variable/jetbrains-mono";
-import "@fontsource-variable/noto-sans-arabic";
+// One bilingual family (Latin and Arabic drawn together), plus mono for real data only.
+import "@fontsource-variable/ibm-plex-sans";
+import "@fontsource/ibm-plex-sans-arabic/400.css";
+import "@fontsource/ibm-plex-sans-arabic/500.css";
+import "@fontsource/ibm-plex-sans-arabic/600.css";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/500.css";
 import "./globals.css";
 
 import type { Metadata, Viewport } from "next";
@@ -26,8 +28,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f7f4ee" },
-    { media: "(prefers-color-scheme: dark)", color: "#070b16" },
+    { media: "(prefers-color-scheme: light)", color: "#f4f5f7" },
+    { media: "(prefers-color-scheme: dark)", color: "#0b0e15" },
   ],
 };
 

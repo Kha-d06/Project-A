@@ -1,38 +1,41 @@
 @import "tailwindcss";
 
 /*
- * Qalaa design tokens: "the citadel at night".
+ * Qalaa design tokens: a hill fort in the Gulf.
  *
- * Colour roles, not colour names: components ask for "surface" or "danger",
- * never for "gold-400". Each theme defines every role explicitly; the light
- * theme ("parchment") is tuned on its own rather than derived from the dark one.
+ * By day the walls are sun-bleached limestone: a cool stone neutral, never cream.
+ * By night the sky is indigo and the only warm thing is the brass lamp over the
+ * gate. Colour roles, not colour names: components ask for "surface" or "danger",
+ * never for "brass-400". Each theme defines every role explicitly.
  *
- * - accent (brass/saffron) is the brand and every interactive accent.
- * - oasis (teal) is a quiet secondary for decoration and "all clear" moments.
+ * - accent (brass) is the brand. It is used rarely: the primary action, the
+ *   current selection, and the keystone diamond that marks a completed check.
  * - risk colours are reserved for scan verdicts and genuine warnings.
+ * - depth comes from surface steps and hairlines; shadows are small and only in
+ *   the light theme.
  */
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 :root {
   color-scheme: light;
-  --canvas: #f7f4ee;
-  --surface: #fffdf9;
+  --canvas: #f4f5f7;
+  --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-sunken: #efe9dd;
-  --line: #e4ddcf;
-  --line-strong: #cec4b0;
-  --ink: #121726;
-  --ink-muted: #4b5164;
-  --ink-faint: #5f6577;
-  --accent: #8a560b;
-  --accent-strong: #6f4407;
-  --accent-soft: #f5e8d0;
+  --surface-sunken: #ebedf1;
+  --line: #dfe2e8;
+  --line-strong: #c6cbd4;
+  --ink: #141821;
+  --ink-muted: #49505f;
+  --ink-faint: #5c6372;
+  --accent: #87540b;
+  --accent-strong: #6b4207;
+  --accent-soft: #f4e8d4;
   --accent-ink: #ffffff;
   --oasis: #0b7a71;
   --oasis-soft: #ddf1ee;
-  --focus: #8a560b;
-  --glow: rgb(214 152 50 / 0.18);
+  --focus: #87540b;
+  --glow: transparent;
 
   --risk-danger: #b42318;
   --risk-danger-soft: #fcebe8;
@@ -43,29 +46,29 @@
   --risk-unknown: #4f5878;
   --risk-unknown-soft: #ebebf2;
 
-  --shadow-raised: 0 1px 0 rgb(255 255 255 / 0.7) inset, 0 1px 2px rgb(40 30 10 / 0.05), 0 8px 24px -12px rgb(40 30 10 / 0.12);
-  --shadow-float: 0 1px 2px rgb(40 30 10 / 0.06), 0 24px 48px -20px rgb(40 30 10 / 0.25);
+  --shadow-raised: 0 1px 2px rgb(20 24 33 / 0.06);
+  --shadow-float: 0 1px 2px rgb(20 24 33 / 0.06), 0 16px 40px -16px rgb(20 24 33 / 0.2);
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
-  --canvas: #070b16;
-  --surface: #0c1322;
-  --surface-raised: #111a2d;
-  --surface-sunken: #050810;
-  --line: #19233a;
-  --line-strong: #27334f;
-  --ink: #eee9df;
-  --ink-muted: #a5acbd;
-  --ink-faint: #8a92a6;
-  --accent: #e9b453;
-  --accent-strong: #f5c977;
-  --accent-soft: #2a2012;
-  --accent-ink: #1a1206;
+  --canvas: #0b0e15;
+  --surface: #10141d;
+  --surface-raised: #161b26;
+  --surface-sunken: #07090e;
+  --line: #1f2531;
+  --line-strong: #2d3443;
+  --ink: #eceef2;
+  --ink-muted: #a8aebb;
+  --ink-faint: #8c93a3;
+  --accent: #e2ae55;
+  --accent-strong: #f0c478;
+  --accent-soft: #2a2113;
+  --accent-ink: #191206;
   --oasis: #3cc8b4;
   --oasis-soft: #0d2a29;
-  --focus: #f5c977;
-  --glow: rgb(233 180 83 / 0.14);
+  --focus: #f0c478;
+  --glow: transparent;
 
   --risk-danger: #fa7468;
   --risk-danger-soft: #2b1214;
@@ -76,8 +79,9 @@
   --risk-unknown: #a6aed0;
   --risk-unknown-soft: #191f33;
 
-  --shadow-raised: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 1px 2px rgb(0 0 0 / 0.5), 0 12px 32px -16px rgb(0 0 0 / 0.6);
-  --shadow-float: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 30px 60px -24px rgb(0 0 0 / 0.75);
+  /* Night: depth from surface steps and hairlines, not shadows. */
+  --shadow-raised: 0 0 #0000;
+  --shadow-float: 0 24px 48px -24px rgb(0 0 0 / 0.6);
 }
 
 @theme inline {
@@ -105,37 +109,43 @@
   --color-unknown: var(--risk-unknown);
   --color-unknown-soft: var(--risk-unknown-soft);
 
-  --font-sans: "Instrument Sans Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Bricolage Grotesque Variable", "Instrument Sans Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+  /* One bilingual family: IBM Plex Sans and IBM Plex Sans Arabic are drawn
+     together, so Arabic is never a fallback. Mono is only for real data
+     (addresses, hashes, codes), never as a "technical" costume. */
+  --font-sans: "IBM Plex Sans Variable", "IBM Plex Sans Arabic", ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-sans);
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
-  /* Type scale: display sizes are fluid and tightly tracked; body stays at 16px. */
-  --text-display: clamp(2.6rem, 1.6rem + 4vw, 4.4rem);
-  --text-display--line-height: 1.02;
-  --text-display--letter-spacing: -0.035em;
-  --text-title: clamp(1.75rem, 1.35rem + 1.4vw, 2.4rem);
+  /* Type: display is fluid and tightly tracked; body stays at 16px. Hierarchy
+     comes from size and colour, with weights kept to 400–600. */
+  --text-display: clamp(2.5rem, 1.55rem + 3.6vw, 4rem);
+  --text-display--line-height: 1.04;
+  --text-display--letter-spacing: -0.03em;
+  --text-title: clamp(1.75rem, 1.45rem + 1vw, 2.25rem);
   --text-title--line-height: 1.12;
-  --text-title--letter-spacing: -0.025em;
+  --text-title--letter-spacing: -0.02em;
 
-  --radius-control: 0.625rem;
-  --radius-panel: 0.875rem;
+  --radius-control: 0.5rem;
+  --radius-panel: 0.75rem;
 
   --shadow-raised: var(--shadow-raised);
   --shadow-float: var(--shadow-float);
 
-  /* Motion: short and decelerating for interface feedback; the slow loops are
-     reserved for the decorative scenes and an active scan. */
-  --ease-out-quick: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --animate-fade-up: fade-up 420ms var(--ease-out-quick) both;
-  --animate-scan-sweep: scan-sweep 1.8s ease-in-out infinite;
-  --animate-attention: attention 1.6s ease-out 2;
-  --animate-draw: draw 600ms var(--ease-out-quick) both;
+  /* Motion (after Emil Kowalski): strong ease-out for things arriving,
+     ease-in-out for things moving on screen. Interface feedback stays under
+     200ms; the hero's evidence list is the page's one authored entrance. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-out-quick: var(--ease-out);
+  --animate-fade-up: rise 300ms var(--ease-out) both;
+  --animate-scan-sweep: scan-sweep 1.8s var(--ease-in-out) infinite;
+  --animate-attention: attention 1.6s var(--ease-out) 2;
   --animate-shimmer: shimmer 1.6s linear infinite;
-  --animate-spin-slow: spin 14s linear infinite;
-  --animate-float: float 7s ease-in-out infinite;
 
-  @keyframes fade-up {
-    from { opacity: 0; transform: translateY(10px); }
+  /* --rise is 8px normally and 0 under reduced motion, so entrances become a
+     plain fade instead of disappearing. */
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(var(--rise, 8px)); }
     to { opacity: 1; transform: translateY(0); }
   }
   @keyframes scan-sweep {
@@ -146,50 +156,40 @@
     0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--risk-danger) 45%, transparent); }
     100% { box-shadow: 0 0 0 10px transparent; }
   }
-  @keyframes draw {
-    from { stroke-dashoffset: var(--path-length, 60); }
-    to { stroke-dashoffset: 0; }
-  }
   @keyframes shimmer {
     from { background-position: 150% 0; }
     to { background-position: -50% 0; }
   }
-  @keyframes float {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-8px); }
-  }
 }
 
-/* Texture: a fine survey grid that fades out from the top, and a warm glow. */
+/* Retired decorations, kept as no-ops so older markup stays harmless. */
 @utility bg-survey {
-  background-image:
-    linear-gradient(to right, color-mix(in srgb, var(--line) 70%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--line) 70%, transparent) 1px, transparent 1px);
-  background-size: 44px 44px;
-  mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, black 30%, transparent 75%);
+  display: none;
 }
 @utility glow-top {
-  background: radial-gradient(ellipse 60% 50% at 50% -10%, var(--glow), transparent 70%);
+  display: none;
 }
-/* Small uppercase labels above titles. Arabic has no capitals and must never be
-   letter-spaced, so it gets the Kufi face at a readable size instead. */
+/* A quiet group label: sentence case, no tracking, no uppercase. */
 @utility eyebrow {
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.8125rem;
   font-weight: 500;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  &:lang(ar) {
-    font-family: "Noto Kufi Arabic Variable", var(--font-sans);
-    font-size: 0.8rem;
-    letter-spacing: 0;
-  }
+  line-height: 1.25rem;
 }
 @utility skeleton {
   border-radius: var(--radius-control);
   background: linear-gradient(90deg, var(--surface-sunken) 30%, color-mix(in srgb, var(--line) 80%, var(--surface)) 50%, var(--surface-sunken) 70%);
   background-size: 200% 100%;
   animation: var(--animate-shimmer);
+}
+/* The keystone: the brass diamond from the logo, marking a check that ran. */
+@utility keystone {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  flex-shrink: 0;
+  transform: rotate(45deg);
+  border-radius: 1px;
+  background: var(--accent);
 }
 
 @layer base {
@@ -201,22 +201,32 @@
     background: var(--canvas);
     color: var(--ink);
     font-family: var(--font-sans);
+    font-feature-settings: "kern";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
-  /* Arabic: a typeface drawn for Arabic script, slightly larger line height for its
-     taller letterforms, and no Latin-only letter-spacing on headings. */
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  /* Arabic: the Arabic member of the same family, more leading for its taller
+     letterforms, and never any Latin letter-spacing. */
   :lang(ar) body {
-    font-family: "Noto Sans Arabic Variable", var(--font-sans);
-  }
-  :lang(ar) .font-display,
-  :lang(ar) h1,
-  :lang(ar) h2 {
-    font-family: "Noto Kufi Arabic Variable", "Noto Sans Arabic Variable", var(--font-sans);
-  }
-  :lang(ar) body {
+    font-family: "IBM Plex Sans Arabic", var(--font-sans);
     line-height: 1.7;
   }
   :lang(ar) h1,
   :lang(ar) h2,
+  :lang(ar) h3,
+  :lang(ar) .font-display {
+    font-family: "IBM Plex Sans Arabic", var(--font-sans);
+    letter-spacing: 0;
+    line-height: 1.35;
+  }
   :lang(ar) .tracking-\[0\.16em\] {
     letter-spacing: 0;
   }
@@ -229,30 +239,32 @@
     unicode-bidi: isolate;
     text-align: right;
   }
-  body {
-    -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
-  }
-  .font-display {
-    font-optical-sizing: auto;
+  .tabular {
+    font-variant-numeric: tabular-nums;
   }
   :focus-visible {
     outline: 2px solid var(--focus);
     outline-offset: 2px;
   }
   ::selection {
-    background: color-mix(in srgb, var(--accent) 30%, transparent);
+    background: color-mix(in srgb, var(--accent) 28%, transparent);
   }
 }
 
+/*
+ * Reduced motion means gentler, not none: entrances keep their fade but lose the
+ * movement, and decorative loops stop. Colour and opacity changes that explain a
+ * state stay.
+ */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
+  :root {
+    --rise: 0px;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+  .skeleton {
+    animation: none;
   }
   /* The scan sweep conveys "work in progress"; the text label says the same thing. */
   .motion-indicator {

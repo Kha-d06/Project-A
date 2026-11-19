@@ -33,7 +33,6 @@ export const extraEn = {
     otherPlatforms: "Other systems",
     allDownloads: "All downloads",
     headerCta: "Download",
-    homeEyebrow: "Every device",
     homeTitle: "Install Qalaa where you work",
     homeIntro: "The website checks links and files from any browser. The apps add protection that runs on the device itself: scanning, ransomware watch, security checks and, on Linux and macOS, checking terminal commands before they run.",
     tiles: {
@@ -764,7 +763,6 @@ export const extraAr: ExtraDictionary = {
     otherPlatforms: "أنظمة أخرى",
     allDownloads: "كل التنزيلات",
     headerCta: "تنزيل",
-    homeEyebrow: "كل الأجهزة",
     homeTitle: "ثبّت قلعة حيث تعمل",
     homeIntro: "يفحص الموقع الروابط والملفات من أي متصفح. وتضيف التطبيقات حماية تعمل على الجهاز نفسه: الفحص ومراقبة برمجيات الفدية وفحوص الأمان، وفي لينكس وماك فحص أوامر الطرفية قبل تشغيلها.",
     tiles: {

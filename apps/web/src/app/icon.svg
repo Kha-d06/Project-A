@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <style>.b{fill:#121726}.g{fill:#f7f4ee}@media (prefers-color-scheme: dark){.b{fill:#eee9df}.g{fill:#070b16}}</style>
+  <style>.b{fill:#141821}.g{fill:#f4f5f7}@media (prefers-color-scheme: dark){.b{fill:#eceef2}.g{fill:#0b0e15}}</style>
   <path class="b" d="M3 29V5h3v2h2V5h3v6h2v2h2v-2h2v2h2v-2h2V5h3v2h2V5h3v24H3Z"/>
   <path class="g" d="M13 29v-6.5a3 3 0 0 1 6 0V29h-6Z"/>
   <path d="m16 14.6 2.6 2.6-2.6 2.6-2.6-2.6 2.6-2.6Z" fill="#d69832"/>

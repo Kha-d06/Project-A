@@ -22,11 +22,11 @@ export function LogoMark({ className }: { className?: string }) {
 
 export function Logo({ className }: { className?: string }) {
   return (
-    <span className={cn("inline-flex items-center gap-2.5", className)}>
-      <LogoMark />
+    <span className={cn("inline-flex items-center gap-2", className)}>
+      <LogoMark className="size-6" />
       {/* Latin wordmark in English, Arabic wordmark (قلعة) in the Arabic interface. */}
-      <span className="wordmark-en font-display text-[0.95rem] font-bold tracking-[0.18em] text-ink uppercase">Qalaa</span>
-      <span className="wordmark-ar font-display text-[1.15rem] font-bold text-ink">قلعة</span>
+      <span className="wordmark-en text-[1.0625rem] font-semibold tracking-[-0.01em] text-ink">Qalaa</span>
+      <span className="wordmark-ar text-[1.125rem] font-semibold text-ink">قلعة</span>
     </span>
   );
 }

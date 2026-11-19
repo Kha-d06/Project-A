@@ -50,7 +50,7 @@ export function drawWarningCard(canvas: HTMLCanvasElement, scan: Scan, text: Car
   ctx.textAlign = text.rtl ? "right" : "left";
   const x = text.rtl ? size - 90 : 90;
   const width = size - 180;
-  const font = (weight: number, px: number) => `${weight} ${px}px system-ui, "Segoe UI", "Noto Sans Arabic", sans-serif`;
+  const font = (weight: number, px: number) => `${weight} ${px}px system-ui, "Segoe UI", "IBM Plex Sans Arabic", sans-serif`;
 
   ctx.fillStyle = "#ffd7cf";
   ctx.font = font(800, 42);

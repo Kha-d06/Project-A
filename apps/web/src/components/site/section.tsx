@@ -1,44 +1,37 @@
 import type { ReactNode } from "react";
 
-import { Reveal } from "@/components/motion/reveal";
 import { cn } from "@/lib/cn";
 
-/** A landing-page section: an eyebrow, a title and an optional intro, then content. */
+/**
+ * A landing-page section: a heading and an optional intro, then content.
+ *
+ * No label above the heading and no scroll-triggered entrance: the content is
+ * visible in the server-rendered HTML, whatever the visitor's motion setting or
+ * whether scripts have run.
+ */
 export function Section({
   id,
-  eyebrow,
   title,
   intro,
   children,
   className,
-  align = "start",
 }: {
   id?: string;
-  eyebrow?: string;
   title: string;
   intro?: ReactNode;
   children: ReactNode;
   className?: string;
-  align?: "start" | "center";
 }) {
   return (
-    <section id={id} className={cn("relative scroll-mt-20", className)}>
-      <div
-        aria-hidden
-        className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,var(--line-strong)_20%,var(--line-strong)_80%,transparent)]"
-      />
-      <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
-        <Reveal className={cn("max-w-2xl space-y-4", align === "center" && "mx-auto text-center")}>
-          {eyebrow && (
-            <p className={cn("flex items-center gap-3 eyebrow text-accent", align === "center" && "justify-center")}>
-              <span aria-hidden className="h-px w-6 bg-accent/60" />
-              {eyebrow}
-            </p>
-          )}
-          <h2 className="font-display text-title font-semibold text-balance text-ink">{title}</h2>
-          {intro && <div className="text-pretty text-ink-muted sm:text-lg sm:leading-relaxed">{intro}</div>}
-        </Reveal>
-        <div className="mt-12 sm:mt-14">{children}</div>
+    <section id={id} aria-labelledby={id ? `${id}-title` : undefined} className={cn("scroll-mt-20 border-t border-line", className)}>
+      <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-24">
+        <div className="grid gap-4 lg:grid-cols-12 lg:gap-8">
+          <h2 id={id ? `${id}-title` : undefined} className="text-title font-medium text-ink lg:col-span-5">
+            {title}
+          </h2>
+          {intro && <div className="max-w-xl text-ink-muted sm:text-lg sm:leading-relaxed lg:col-span-6 lg:col-start-7 lg:pt-1.5">{intro}</div>}
+        </div>
+        <div className="mt-10 sm:mt-12">{children}</div>
       </div>
     </section>
   );

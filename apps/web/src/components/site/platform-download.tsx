@@ -95,7 +95,7 @@ export function DownloadHeaderLink({ className }: { className?: string }) {
   const { t } = useI18n();
   const platform = usePlatform();
   return (
-    <ButtonLink href={platform === "unknown" ? "/download" : `/download#${PLATFORM_ANCHOR[platform]}`} variant="secondary" size="sm" className={className}>
+    <ButtonLink href={platform === "unknown" ? "/download" : `/download#${PLATFORM_ANCHOR[platform]}`} variant="ghost" size="sm" className={className}>
       <Download aria-hidden className="size-3.5" />
       {t.extra.download.headerCta}
     </ButtonLink>

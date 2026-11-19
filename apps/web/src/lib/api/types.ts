@@ -323,6 +323,9 @@ export interface GroupMember {
   share_activity: boolean;
   joined_at: string;
   warnings_last_30_days: number | null;
+  /** Family groups: browsing minutes on the member's most recent reported day. */
+  screen_time_minutes?: number | null;
+  screen_time_day?: string | null;
 }
 
 export interface Group {
@@ -345,6 +348,9 @@ export interface GroupPolicies {
   require_2fa?: boolean;
   require_extension?: boolean;
   max_days_since_scan?: number;
+  allowed_from?: string;
+  allowed_until?: string;
+  daily_minutes?: number;
 }
 
 export interface MemberCompliance {

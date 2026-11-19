@@ -18,6 +18,12 @@ import { formatShortDate } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 import { useSession } from "@/lib/session";
 
+/** Today in the viewer's local time, as the extension reports days. */
+function localDay(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
 function errorText(error: unknown): string {
   return error instanceof ApiError ? error.message : String(error);
 }
@@ -123,6 +129,9 @@ function GroupCard({ group, myId, onChange }: { group: Group; myId: string; onCh
                     {manager &&
                       member.user_id !== myId &&
                       ` · ${member.warnings_last_30_days === null ? g.private : g.warnings(member.warnings_last_30_days)}`}
+                    {manager &&
+                      member.screen_time_minutes != null &&
+                      ` · ${g.screenTime(member.screen_time_minutes, member.screen_time_day === localDay())}`}
                   </span>
                 </span>
                 {manager && member.role !== "owner" && member.user_id !== myId && (

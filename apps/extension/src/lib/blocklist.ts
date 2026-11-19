@@ -14,10 +14,12 @@
  *   4      optional tracker blocking (third-party requests only)
  *   5      a family or organisation group's list, when the user applies it
  *   6-9    SafeSearch (family rule; see safesearch.ts)
+ *   10     family screen time, while browsing is not allowed (see screentime.ts)
  *   1000+  session allowances from "Continue anyway"
  */
 import { fetchBlocklist } from "./api";
 import { SAFE_SEARCH_RULE_IDS, hasSafeSearchAccess, safeSearchRules } from "./safesearch";
+import { RULE_SCREEN_TIME, screenTimeBlockRule } from "./screentime";
 import { TRACKER_DOMAINS } from "./trackers";
 import type { Settings } from "./settings";
 
@@ -48,6 +50,14 @@ export async function storedBlocklist(): Promise<StoredBlocklist | null> {
   return (stored[STORE_KEY] as StoredBlocklist | undefined) ?? null;
 }
 
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
+}
+
 function rule(id: number, priority: number, type: "block" | "allow", domains: string[]): chrome.declarativeNetRequest.Rule {
   return {
     id,
@@ -62,6 +72,7 @@ export function buildRules(settings: Settings, serverHosts: string[], safeSearch
   const rules: chrome.declarativeNetRequest.Rule[] = [];
   // SafeSearch is a family rule: it stays on even while checks are paused.
   if (settings.safeSearch && safeSearchAccess) rules.push(...safeSearchRules());
+  if (settings.screenTime && settings.screenTimeBlocked) rules.push(screenTimeBlockRule(hostOf(settings.serverUrl)));
   if (settings.paused) return rules;
   if (settings.preloadBlocking && serverHosts.length) rules.push(rule(RULE_SERVER, 1, "block", serverHosts));
   if (settings.blocklist.length) rules.push(rule(RULE_USER_BLOCK, 1, "block", settings.blocklist));
@@ -86,7 +97,7 @@ export async function applyRules(settings: Settings): Promise<void> {
   if (!hasDnr()) return;
   const list = await storedBlocklist();
   await chrome.declarativeNetRequest.updateDynamicRules({
-    removeRuleIds: [RULE_SERVER, RULE_USER_BLOCK, RULE_USER_ALLOW, RULE_TRACKERS, RULE_FAMILY, ...SAFE_SEARCH_RULE_IDS],
+    removeRuleIds: [RULE_SERVER, RULE_USER_BLOCK, RULE_USER_ALLOW, RULE_TRACKERS, RULE_FAMILY, RULE_SCREEN_TIME, ...SAFE_SEARCH_RULE_IDS],
     addRules: buildRules(settings, list?.hosts ?? [], settings.safeSearch && (await hasSafeSearchAccess())),
   });
 }

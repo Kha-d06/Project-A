@@ -19,6 +19,16 @@ import { allowForSession, assessDownload, assessUrl, isAllowedForSession } from 
 import { SEARCH_ORIGINS, loadSettings, saveSettings, type Settings } from "./lib/settings";
 import type { CheckResult, ProtectionState, Verdict } from "./lib/types";
 import { detectTrackers, siteOf } from "./lib/trackers";
+import {
+  SCREEN_TIME_ALARM,
+  USAGE_KEY,
+  addMinute,
+  blockReason,
+  sameRule,
+  shouldReport,
+  usageFor,
+  type ScreenTimeUsage,
+} from "./lib/screentime";
 import { checkableUrl } from "./lib/urls";
 import { BADGE_COLORS, VERDICTS, shouldInterrupt } from "./lib/verdicts";
 
@@ -119,7 +129,12 @@ async function applyFamilyList(account: api.AccountLink | null) {
   const familyGroups = account?.linked ? (account.family_groups ?? []) : [];
   const safeSearch = Boolean(account?.linked && account.safe_search);
   const lockProtection = Boolean(account?.linked && account.lock_protection);
+  const screenTime = account?.linked ? (account.screen_time ?? null) : null;
   const current = await loadSettings();
+  if (!sameRule(current.screenTime, screenTime)) {
+    await saveSettings({ screenTime });
+    await updateScreenTime(false);
+  }
   const unchanged =
     JSON.stringify([current.familyBlocklist, current.familyGroups, current.safeSearch, current.lockProtection]) ===
     JSON.stringify([familyBlocklist, familyGroups, safeSearch, lockProtection]);
@@ -130,6 +145,50 @@ async function applyFamilyList(account: api.AccountLink | null) {
   await syncContentScripts(next);
   await clearCache();
   await applyRules(next);
+}
+
+// --- Family screen time ---------------------------------------------------------------
+
+function timeUpUrl(reason: string): string {
+  return chrome.runtime.getURL(`timeup.html?r=${encodeURIComponent(reason)}`);
+}
+
+/** A minute counts only while the person is at the computer and a web page has focus. */
+async function browsingNow(): Promise<boolean> {
+  const state = await chrome.idle?.queryState(60).catch(() => "active" as const);
+  if (state && state !== "active") return false;
+  const window = await chrome.windows.getLastFocused().catch(() => null);
+  if (!window?.focused) return false;
+  const [tab] = await chrome.tabs.query({ active: true, windowId: window.id });
+  return Boolean(tab?.url && /^https?:/.test(tab.url));
+}
+
+/** Runs every minute: counts use, reports the day's total, and blocks or unblocks. */
+async function updateScreenTime(count: boolean) {
+  const settings = await loadSettings();
+  const rule = settings.screenTime;
+  const now = new Date();
+  const stored = await chrome.storage.local.get(USAGE_KEY);
+  let usage = usageFor(stored[USAGE_KEY] as ScreenTimeUsage | undefined, now);
+  if (rule && count && !blockReason(rule, usage, now) && (await browsingNow())) {
+    usage = addMinute(usage, now);
+  }
+  if (rule && shouldReport(usage, rule) && (await api.reportScreenTime(settings.serverUrl, usage.day, usage.minutes))) {
+    usage = { ...usage, reported: usage.minutes };
+  }
+  await chrome.storage.local.set({ [USAGE_KEY]: usage });
+
+  const reason = blockReason(rule, usage, now);
+  if (reason === settings.screenTimeBlocked) return;
+  const next = await saveSettings({ screenTimeBlocked: reason });
+  await applyRules(next);
+  if (!reason) return;
+  // Pages already open stop at the time's-up page too.
+  for (const tab of await chrome.tabs.query({})) {
+    if (tab.id !== undefined && tab.url && /^https?:/.test(tab.url) && !tab.url.startsWith(settings.serverUrl)) {
+      await chrome.tabs.update(tab.id, { url: timeUpUrl(reason) }).catch(() => undefined);
+    }
+  }
 }
 
 // --- Page navigation ------------------------------------------------------------------
@@ -195,6 +254,10 @@ chrome.webNavigation.onErrorOccurred.addListener(({ tabId, frameId, url, error }
     const host = checkableUrl(url)?.hostname;
     if (!host) return;
     const blockedByRule = /BLOCKED_BY_CLIENT|NS_ERROR_ABORT/i.test(error);
+    if (blockedByRule && settings.screenTime && settings.screenTimeBlocked) {
+      await chrome.tabs.update(tabId, { url: timeUpUrl(settings.screenTimeBlocked) });
+      return;
+    }
     const listed = settings.blocklist.some((d) => host === d || host.endsWith(`.${d}`)) || (await onServerBlocklist(host));
     if (!blockedByRule || !listed) return;
     // The navigation check may already have shown the warning page.
@@ -504,7 +567,7 @@ async function handle(request: Request, sender: chrome.runtime.MessageSender): P
       return null;
     case "settings": {
       // Family rules come from the account, never from a page or the popup.
-      const { safeSearch: _s, lockProtection: _l, familyBlocklist: _b, familyGroups: _g, ...changes } = request.changes;
+      const { safeSearch: _s, lockProtection: _l, familyBlocklist: _b, familyGroups: _g, screenTime: _t, screenTimeBlocked: _tb, ...changes } = request.changes;
       if (settings.lockProtection && changes.paused) delete changes.paused;
       request.changes = changes;
       const next = await saveSettings(request.changes);
@@ -611,6 +674,7 @@ chrome.permissions.onRemoved.addListener(() => {
 });
 
 chrome.alarms?.onAlarm.addListener((alarm) => {
+  if (alarm.name === SCREEN_TIME_ALARM) void updateScreenTime(true);
   if (alarm.name === BLOCKLIST_ALARM) {
     void loadSettings().then(async (settings) => {
       await refreshBlocklist(settings, true);
@@ -633,6 +697,8 @@ async function start(reason?: string) {
   await applyRules(settings).catch(() => undefined);
   await refreshBlocklist(settings).catch(() => undefined);
   await chrome.alarms?.create(BLOCKLIST_ALARM, { periodInMinutes: REFRESH_MINUTES });
+  await chrome.alarms?.create(SCREEN_TIME_ALARM, { periodInMinutes: 1 });
+  await updateScreenTime(false).catch(() => undefined);
   if (reason === "install") await chrome.tabs.create({ url: chrome.runtime.getURL("welcome.html") });
 }
 

@@ -22,7 +22,7 @@ export function createManifest({ version, serverOrigin, browser = "chrome" }) {
     options_ui: { page: "options.html", open_in_tab: true },
     // declarativeNetRequest: block known dangerous domains inside the browser before
     // they load (block rules need no host access). alarms: refresh that list.
-    permissions: ["storage", "webNavigation", "downloads", "notifications", "contextMenus", "activeTab", "declarativeNetRequest", "alarms"],
+    permissions: ["storage", "webNavigation", "downloads", "notifications", "contextMenus", "activeTab", "declarativeNetRequest", "alarms", "idle"],
     // Requested only when the user turns on hover checks or the on-screen assistant
     // (scripting, cookie names) or picks another server.
     optional_permissions: ["scripting", "cookies"],

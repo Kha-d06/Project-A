@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title data-i18n="timeup.title">Browsing time is over</title>
+  <link rel="stylesheet" href="ui.css" />
+  <link rel="stylesheet" href="warning.css" />
+</head>
+<body>
+  <main class="warning fade-in">
+    <span class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 29V5h3v2h2V5h3v6h2v2h2v-2h2v2h2v-2h2V5h3v2h2V5h3v24H3Z" fill="currentColor"/><path d="M13 29v-6.5a3 3 0 0 1 6 0V29h-6Z" fill="var(--canvas)"/><path d="m16 15.4 2 2-2 2-2-2 2-2Z" fill="var(--accent)"/></svg> Qalaa Protect</span>
+    <div class="stack timeup">
+      <h1 id="headline" data-i18n="timeup.title">Browsing time is over</h1>
+      <p id="detail" class="muted"></p>
+      <p id="rule"></p>
+      <p class="muted" data-i18n="timeup.who">Your family set this rule, and you chose to follow it. A parent can change it in the Qalaa dashboard, under Family &amp; teams.</p>
+    </div>
+  </main>
+  <script src="timeup.js" type="module"></script>
+</body>
+</html>

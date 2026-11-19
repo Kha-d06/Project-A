@@ -12,6 +12,7 @@ import { formatRelative } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 
 const DAY_CHOICES = [0, 3, 7, 14, 30];
+const MINUTE_CHOICES = [0, 30, 60, 90, 120, 180, 240];
 
 function Compliance({ groupId }: { groupId: string }) {
   const r = useI18n().t.extra.rules;
@@ -68,7 +69,7 @@ function Compliance({ groupId }: { groupId: string }) {
   );
 }
 
-/** A group's rules: SafeSearch and locked protection for families, security
+/** A group's rules: SafeSearch, locked protection and browsing time for families, security
  * requirements and a compliance view for organisations. */
 export function GroupRules({ group, manager, onChange }: { group: Group; manager: boolean; onChange: (group: Group) => void }) {
   const r = useI18n().t.extra.rules;
@@ -91,7 +92,12 @@ export function GroupRules({ group, manager, onChange }: { group: Group; manager
     try {
       const saved = await api.groups.setPolicies(group.id, {
         ...Object.fromEntries(flags.map(([key]) => [key, Boolean(rules[key])])),
-        ...(family ? {} : { max_days_since_scan: rules.max_days_since_scan ?? 0 }),
+        ...(family
+          ? {
+              daily_minutes: rules.daily_minutes ?? 0,
+              ...(rules.allowed_from && rules.allowed_until ? { allowed_from: rules.allowed_from, allowed_until: rules.allowed_until } : {}),
+            }
+          : { max_days_since_scan: rules.max_days_since_scan ?? 0 }),
       });
       setRules(saved.policies ?? {});
       onChange(saved);
@@ -142,6 +148,56 @@ export function GroupRules({ group, manager, onChange }: { group: Group; manager
           </li>
         )}
       </ul>
+      {family && (
+        <fieldset className="space-y-2 border-t border-line pt-3 text-sm">
+          <legend className="sr-only">{r.screenTimeTitle}</legend>
+          <p className="font-semibold text-ink" aria-hidden>
+            {r.screenTimeTitle}
+          </p>
+          <p className="text-xs text-ink-muted">{r.screenTimeIntro}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-ink">{r.allowedHours}</span>
+            <label className="flex items-center gap-1 text-xs text-ink-muted">
+              {r.from}
+              <input
+                type="time"
+                className="h-8 rounded-control border border-line bg-surface px-2 text-xs text-ink"
+                value={rules.allowed_from ?? ""}
+                disabled={!manager}
+                onChange={(event) => setRules({ ...rules, allowed_from: event.target.value || undefined })}
+              />
+            </label>
+            <label className="flex items-center gap-1 text-xs text-ink-muted">
+              {r.until}
+              <input
+                type="time"
+                className="h-8 rounded-control border border-line bg-surface px-2 text-xs text-ink"
+                value={rules.allowed_until ?? ""}
+                disabled={!manager}
+                onChange={(event) => setRules({ ...rules, allowed_until: event.target.value || undefined })}
+              />
+            </label>
+            {!rules.allowed_from && !rules.allowed_until && <span className="text-xs text-ink-faint">{r.anyTime}</span>}
+          </div>
+          <label className="flex flex-wrap items-center gap-2">
+            <span className="text-ink">{r.dailyLimit}</span>
+            <Select
+              className="h-8 w-auto text-xs"
+              value={String(rules.daily_minutes ?? 0)}
+              disabled={!manager}
+              onChange={(event) => setRules({ ...rules, daily_minutes: Number(event.target.value) })}
+            >
+              {[...new Set([...MINUTE_CHOICES, rules.daily_minutes ?? 0])]
+                .sort((a, b) => a - b)
+                .map((minutes) => (
+                  <option key={minutes} value={minutes}>
+                    {r.minutes(minutes)}
+                  </option>
+                ))}
+            </Select>
+          </label>
+        </fieldset>
+      )}
       {manager && (
         <Button size="sm" variant="secondary" pending={pending} onClick={save}>
           {r.save}

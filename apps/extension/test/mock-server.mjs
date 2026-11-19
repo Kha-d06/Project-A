@@ -2,7 +2,7 @@
 import { createServer } from "node:http";
 
 export function startMockServer(port, { verdicts = {}, blocklist = [], assistant = null, family = null } = {}) {
-  const seen = { checks: [], assistantContexts: [] };
+  const seen = { checks: [], assistantContexts: [], screenTime: null, screenTimeReports: [] };
   const server = createServer(async (request, response) => {
     let body = "";
     for await (const chunk of request) body += chunk;
@@ -23,7 +23,13 @@ export function startMockServer(port, { verdicts = {}, blocklist = [], assistant
         sync_events: false,
         family_blocklist: family?.domains ?? [],
         family_groups: family?.groups ?? [],
+        screen_time: linked ? seen.screenTime : null,
       });
+    }
+    if (path === "/api/v1/extension/screen-time") {
+      seen.screenTimeReports.push(json);
+      response.writeHead(204);
+      return response.end();
     }
     if (path === "/api/v1/extension/blocklist") return reply(200, { version: `${blocklist.length}-x`, generated_at: new Date().toISOString(), hosts: blocklist, sources: ["Mock feed"] });
     if (path === "/api/v1/extension/check-url") {

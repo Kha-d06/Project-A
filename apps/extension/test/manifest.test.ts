@@ -15,6 +15,7 @@ describe("manifest", () => {
       "activeTab",
       "declarativeNetRequest",
       "alarms",
+      "idle",
     ]);
     // Page access and cookie names only when the user turns a feature on.
     expect(manifest.optional_permissions).toEqual(["scripting", "cookies"]);

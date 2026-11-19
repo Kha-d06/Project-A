@@ -12,3 +12,5 @@
 details { border-top: 1px solid var(--line); padding-top: 14px; }
 summary { cursor: pointer; color: var(--ink-muted); }
 details .stack { margin-top: 12px; }
+.timeup h1 { font-size: 26px; letter-spacing: -0.01em; }
+.timeup #rule { font-size: 15px; }

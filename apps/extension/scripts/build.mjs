@@ -40,6 +40,7 @@ await build({
     popup: join(root, "src/pages/popup.ts"),
     options: join(root, "src/pages/options.ts"),
     warning: join(root, "src/pages/warning.ts"),
+    timeup: join(root, "src/pages/timeup.ts"),
   },
   outdir: out,
 });

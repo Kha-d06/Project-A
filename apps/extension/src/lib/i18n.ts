@@ -97,6 +97,16 @@ const en = {
     preloadExplanation: "This domain is on the list of known dangerous sites that Qalaa Protect keeps in your browser, so it was blocked before it could load.",
     preloadSource: "Qalaa blocklist (in your browser)",
   },
+  timeup: {
+    title: "Browsing time is over",
+    limitTitle: "Today's browsing time is used up",
+    limitDetail: "Web pages open again tomorrow.",
+    outsideTitle: "Browsing is not allowed right now",
+    outsideDetail: "Web pages open again when the allowed hours start.",
+    window: (from: string, until: string) => `Allowed hours: ${from} to ${until}.`,
+    limit: (minutes: number) => `Daily limit: ${minutes} minutes.`,
+    who: "Your family set this rule, and you chose to follow it. A parent can change it in the Qalaa dashboard, under Family & teams.",
+  },
   notifications: {
     downloadPaused: (label: string) => `${label} download paused`,
     cancel: "Cancel download",
@@ -330,6 +340,16 @@ const ar: Dictionary = {
     preloadReason: "مدرج في قائمة قلعة للنطاقات الضارة المعروفة",
     preloadExplanation: "هذا النطاق موجود في قائمة المواقع الخطيرة المعروفة التي تحفظها إضافة قلعة في متصفحك، لذلك حُظر قبل أن يُحمَّل.",
     preloadSource: "قائمة حظر قلعة (في متصفحك)",
+  },
+  timeup: {
+    title: "انتهى وقت التصفح",
+    limitTitle: "انتهى وقت التصفح المسموح لهذا اليوم",
+    limitDetail: "تُفتح صفحات الويب مجددًا غدًا.",
+    outsideTitle: "التصفح غير مسموح الآن",
+    outsideDetail: "تُفتح صفحات الويب مجددًا عند بدء الساعات المسموحة.",
+    window: (from: string, until: string) => `الساعات المسموحة: من ${from} إلى ${until}.`,
+    limit: (minutes: number) => `الحد اليومي: ${minutes} دقيقة.`,
+    who: "وضعت عائلتك هذه القاعدة واخترت اتباعها. يستطيع أحد الوالدين تغييرها من لوحة قلعة، في قسم العائلة والفرق.",
   },
   notifications: {
     downloadPaused: (label) => `أُوقف تنزيل ${label} مؤقتًا`,

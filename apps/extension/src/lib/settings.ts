@@ -1,5 +1,6 @@
 import type { LanguageSetting } from "./i18n";
 import type { ThemeSetting } from "./theme";
+import type { BlockReason, ScreenTimeRule } from "./screentime";
 
 export type PrivacyMode = "full" | "host";
 
@@ -29,6 +30,9 @@ export interface Settings {
   /** Family rules the account holder chose to follow (from the linked account). */
   safeSearch: boolean;
   lockProtection: boolean;
+  /** Family screen time rule, and whether it is blocking browsing right now. */
+  screenTime: ScreenTimeRule | null;
+  screenTimeBlocked: BlockReason | null;
   keepLocalAlerts: boolean;
   allowlist: string[];
   blocklist: string[];
@@ -53,6 +57,8 @@ export const DEFAULT_SETTINGS: Settings = {
   familyGroups: [],
   safeSearch: false,
   lockProtection: false,
+  screenTime: null,
+  screenTimeBlocked: null,
   keepLocalAlerts: true,
   allowlist: [],
   blocklist: [],

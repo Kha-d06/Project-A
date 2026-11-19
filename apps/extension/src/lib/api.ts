@@ -1,3 +1,4 @@
+import type { ScreenTimeRule } from "./screentime";
 import type { CheckResult, ServerVerdict } from "./types";
 
 /**
@@ -60,6 +61,7 @@ export interface AccountLink {
   safe_search?: boolean;
   lock_protection?: boolean;
   family_groups?: string[];
+  screen_time?: ScreenTimeRule | null;
 }
 
 function browserName(): string {
@@ -199,6 +201,16 @@ export function checkUrl(serverUrl: string, url: string, mode: "full" | "host"):
 
 export function checkDownload(serverUrl: string, url: string, filename: string): Promise<CheckResult> {
   return postCheck(serverUrl, "/extension/check-download", { url, filename });
+}
+
+/** The day's browsing minutes, for a linked account's family. Best effort. */
+export async function reportScreenTime(serverUrl: string, day: string, minutes: number): Promise<boolean> {
+  try {
+    const response = await authorized(serverUrl, "/extension/screen-time", { method: "POST", body: JSON.stringify({ day, minutes }) });
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
 export async function reportEvent(

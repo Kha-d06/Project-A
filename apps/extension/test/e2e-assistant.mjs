@@ -201,6 +201,22 @@ await shop.locator("#sentinel-assistant-root .bubble", { hasText: "مشبوه" }
 await shot(shop, "ext-assistant-ar");
 step("options page and assistant switch to Arabic, right to left");
 
+// 8. Family screen time: outside the allowed hours, web pages stop at the time's-up page.
+seen.screenTime = { allowed_from: "00:00", allowed_until: "00:00", daily_minutes: 0 };
+const timePage = await context.newPage();
+await timePage.goto(`chrome-extension://${extensionId}/options.html`);
+await timePage.evaluate(() => chrome.runtime.sendMessage({ type: "refresh-account" }));
+await timePage.goto("https://news.example.org/").catch(() => undefined);
+for (let i = 0; i < 50 && !timePage.url().includes("timeup.html"); i++) await new Promise((r) => setTimeout(r, 200));
+await timePage.locator("h1", { hasText: "التصفح غير مسموح الآن" }).waitFor();
+await shot(timePage, "ext-timeup-ar");
+seen.screenTime = null;
+await timePage.goto(`chrome-extension://${extensionId}/options.html`);
+await timePage.evaluate(() => chrome.runtime.sendMessage({ type: "refresh-account" }));
+await timePage.goto("https://news.example.org/");
+assert.ok(timePage.url().startsWith("https://news.example.org"), "pages open again once the rule is gone");
+step("family screen time: blocked outside allowed hours, open again when the rule is removed");
+
 await context.close();
 server.close();
 console.log("All extension assistant checks passed.");

@@ -56,6 +56,7 @@ def test_anonymous_enrollment_gives_working_credentials(client: TestClient) -> N
         "family_groups": [],
         "safe_search": False,
         "lock_protection": False,
+        "screen_time": None,
     }
 
 

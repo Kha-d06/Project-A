@@ -34,6 +34,7 @@ from app.models import (
     GroupMember,
     ScanJob,
     ScanShare,
+    ScreenTimeDay,
     User,
 )
 from app.models.base import utcnow
@@ -99,6 +100,15 @@ def _warning_count(db: Session, user_id: uuid.UUID) -> int:
     return (scans or 0) + (browsing or 0)
 
 
+def _latest_screen_time(db: Session, user_id: uuid.UUID) -> ScreenTimeDay | None:
+    return db.scalars(
+        select(ScreenTimeDay)
+        .where(ScreenTimeDay.user_id == user_id)
+        .order_by(ScreenTimeDay.day.desc())
+        .limit(1)
+    ).first()
+
+
 def _group_out(db: Session, group: Group, me: GroupMember) -> GroupOut:
     rows = db.execute(
         select(GroupMember, User)
@@ -107,20 +117,23 @@ def _group_out(db: Session, group: Group, me: GroupMember) -> GroupOut:
         .order_by(GroupMember.joined_at)
     ).all()
     manager = me.role in _MANAGERS
-    members = [
-        GroupMemberOut(
-            user_id=user.id,
-            email=user.email,
-            display_name=user.display_name,
-            role=member.role,
-            share_activity=member.share_activity,
-            joined_at=member.joined_at,
-            warnings_last_30_days=_warning_count(db, user.id)
-            if manager and member.share_activity
-            else None,
+    members = []
+    for member, user in rows:
+        visible = manager and member.share_activity
+        latest = _latest_screen_time(db, user.id) if visible and group.kind == "family" else None
+        members.append(
+            GroupMemberOut(
+                user_id=user.id,
+                email=user.email,
+                display_name=user.display_name,
+                role=member.role,
+                share_activity=member.share_activity,
+                joined_at=member.joined_at,
+                warnings_last_30_days=_warning_count(db, user.id) if visible else None,
+                screen_time_minutes=latest.minutes if latest else None,
+                screen_time_day=latest.day if latest else None,
+            )
         )
-        for member, user in rows
-    ]
     invites = (
         [
             {"email": invite.email, "role": invite.role, "expires_at": invite.expires_at}

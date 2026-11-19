@@ -23,6 +23,7 @@ from app.core.cache import get_cache
 from app.core.errors import ApiError
 from app.core.rate_limit import RateLimit, client_address
 from app.core.security import new_token, token_digest
+from app.groups_policy import strictest_screen_time
 from app.intel.feeds import COMMUNITY, THREATFOX
 from app.intel.lookup import fresh_sources
 from app.models import (
@@ -31,6 +32,7 @@ from app.models import (
     ExtensionLinkCode,
     Group,
     GroupMember,
+    ScreenTimeDay,
     ThreatIndicator,
     User,
     Vault,
@@ -55,6 +57,8 @@ from app.schemas.extension import (
     QuickVerdict,
     Reason,
     RefreshRequest,
+    ScreenTimeReport,
+    ScreenTimeRule,
 )
 
 router = APIRouter(prefix="/extension", tags=["Browser extension"])
@@ -64,6 +68,8 @@ LINK_ATTEMPT_LIMIT = RateLimit("ext-link", max_requests=10, window_seconds=900)
 # Generous: one check per page load, with the extension's own cache in front.
 CHECK_LIMIT = RateLimit("ext-check", max_requests=1200, window_seconds=3600)
 EVENT_LIMIT = RateLimit("ext-event", max_requests=300, window_seconds=3600)
+# The extension reports every few minutes; this leaves room for several browsers.
+SCREEN_TIME_LIMIT = RateLimit("ext-screen-time", max_requests=120, window_seconds=3600)
 QUICK_CACHE_SECONDS = 120
 BLOCKLIST_LIMIT = RateLimit("ext-blocklist", max_requests=30, window_seconds=3600)
 ASSISTANT_LIMIT = RateLimit("ext-assistant", max_requests=60, window_seconds=3600)
@@ -189,6 +195,7 @@ def extension_settings(installation: CurrentInstallation, db: Db) -> ExtensionSe
     user = db.get(User, installation.user_id) if installation.user_id else None
     domains: set[str] = set()
     groups: list[str] = []
+    family_policies: list[dict[str, Any]] = []
     safe_search = lock_protection = False
     if user:
         for group in db.scalars(
@@ -198,6 +205,7 @@ def extension_settings(installation: CurrentInstallation, db: Db) -> ExtensionSe
         ):
             policies = group.policies or {}
             if group.kind == "family":
+                family_policies.append(policies)
                 safe_search = safe_search or bool(policies.get("safe_search"))
                 lock_protection = lock_protection or bool(policies.get("lock_protection"))
             if group.blocklist or (group.kind == "family" and policies):
@@ -212,7 +220,30 @@ def extension_settings(installation: CurrentInstallation, db: Db) -> ExtensionSe
         family_groups=groups,
         safe_search=safe_search,
         lock_protection=lock_protection,
+        screen_time=_screen_time_rule(family_policies),
     )
+
+
+def _screen_time_rule(policies: list[dict[str, Any]]) -> ScreenTimeRule | None:
+    rule = strictest_screen_time(policies)
+    return ScreenTimeRule(**rule) if rule else None
+
+
+@router.post("/screen-time", status_code=204)
+def report_screen_time(body: ScreenTimeReport, installation: CurrentInstallation, db: Db) -> None:
+    """A linked browser reports how many minutes it was actively used on one local
+    day. Only the number is kept, and it only ever goes up within a day, so a
+    second browser or a late retry cannot lower it."""
+    rate_limit.enforce(SCREEN_TIME_LIMIT, f"installation:{installation.id}")
+    if installation.user_id is None:
+        raise ApiError(403, "not_linked", "Link this browser to an account first.")
+    row = db.get(ScreenTimeDay, (installation.user_id, body.day))
+    if row is None:
+        db.add(ScreenTimeDay(user_id=installation.user_id, day=body.day, minutes=body.minutes))
+    elif body.minutes > row.minutes:
+        row.minutes = body.minutes
+        row.updated_at = utcnow()
+    db.commit()
 
 
 class ExtensionVault(BaseModel):

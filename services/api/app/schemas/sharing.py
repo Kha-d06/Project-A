@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -103,6 +103,9 @@ class GroupMemberOut(BaseModel):
     joined_at: datetime
     # Present only for members who chose to share activity, and only for owners/admins.
     warnings_last_30_days: int | None = None
+    # Family groups: minutes of browsing on the member's most recent reported day.
+    screen_time_minutes: int | None = None
+    screen_time_day: date | None = None
 
 
 class GroupOut(BaseModel):
@@ -120,11 +123,16 @@ class GroupOut(BaseModel):
 
 
 class GroupPolicies(BaseModel):
-    """Family: safe_search, lock_protection. Organisation: require_2fa,
-    require_extension, max_days_since_scan (0-90). Keys for the other kind are ignored."""
+    """Family: safe_search, lock_protection, and screen time (allowed_from and
+    allowed_until as same-day "HH:MM", daily_minutes 0-1440). Organisation:
+    require_2fa, require_extension, max_days_since_scan (0-90). Keys for the
+    other kind are ignored."""
 
     safe_search: bool | None = None
     lock_protection: bool | None = None
+    allowed_from: str | None = Field(default=None, max_length=5)
+    allowed_until: str | None = Field(default=None, max_length=5)
+    daily_minutes: int | None = Field(default=None, ge=0, le=1440)
     require_2fa: bool | None = None
     require_extension: bool | None = None
     max_days_since_scan: int | None = Field(default=None, ge=0, le=90)

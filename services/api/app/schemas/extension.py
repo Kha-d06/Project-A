@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -91,6 +91,15 @@ class EventStored(BaseModel):
     stored: bool
 
 
+class ScreenTimeRule(BaseModel):
+    # Local-time window ("HH:MM", same day); None when there is no window. Equal
+    # ends mean no browsing time is allowed today.
+    allowed_from: str | None = None
+    allowed_until: str | None = None
+    # 0 means no daily limit.
+    daily_minutes: int = 0
+
+
 class ExtensionSettings(BaseModel):
     installation_id: uuid.UUID
     linked: bool
@@ -103,6 +112,15 @@ class ExtensionSettings(BaseModel):
     safe_search: bool = False
     lock_protection: bool = False
     family_groups: list[str] = []
+    # Strictest screen-time rule across the family groups followed, or None.
+    screen_time: ScreenTimeRule | None = None
+
+
+class ScreenTimeReport(BaseModel):
+    """Minutes of active browsing on one local day. Only a number, never sites."""
+
+    day: date
+    minutes: int = Field(ge=0, le=1440)
 
 
 class LinkCodeOut(BaseModel):

@@ -10,6 +10,7 @@ from app.models.identity import MonitoredIdentity
 from app.models.intel import ThreatIndicator, ThreatSource
 from app.models.push import PushSubscription
 from app.models.scan import Finding, ScanJob
+from app.models.screen_time import ScreenTimeDay
 from app.models.sharing import Group, GroupInvite, GroupMember, ScanShare, Webhook
 from app.models.user import User, UserSession, UserSettings
 from app.models.vault import Vault
@@ -40,6 +41,7 @@ __all__ = [
     "ScanShare",
     "Webhook",
     "ScanJob",
+    "ScreenTimeDay",
     "ThreatIndicator",
     "ThreatSource",
     "User",

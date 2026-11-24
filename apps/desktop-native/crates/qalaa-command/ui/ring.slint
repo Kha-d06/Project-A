@@ -1,0 +1,69 @@
+import { Theme } from "tokens.slint";
+
+// The posture ring: an arc for the score, coloured by state, number in the middle.
+export component PostureRing inherits Rectangle {
+    in property <int> score;
+    in property <string> state;
+    in property <string> label;
+    width: 132px;
+    height: 132px;
+    accessible-role: progress-indicator;
+    accessible-label: label;
+    accessible-value: score + "%";
+    accessible-value-minimum: 0;
+    accessible-value-maximum: 100;
+
+    property <float> fraction: clamp(score, 0, 100) / 100;
+    property <angle> sweep: fraction * 360deg;
+    property <length> r: 56px;
+
+    Path {
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: 132;
+        viewbox-height: 132;
+        stroke: Theme.line;
+        stroke-width: 10px;
+        MoveTo { x: 66; y: 10; }
+        ArcTo { x: 66; y: 122; radius-x: 56; radius-y: 56; sweep: true; }
+        ArcTo { x: 66; y: 10; radius-x: 56; radius-y: 56; sweep: true; }
+    }
+    if fraction > 0 && fraction < 1: Path {
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: 132;
+        viewbox-height: 132;
+        stroke: Theme.status-color(state);
+        stroke-width: 10px;
+        MoveTo { x: 66; y: 10; }
+        ArcTo {
+            x: 66 + 56 * sin(sweep);
+            y: 66 - 56 * cos(sweep);
+            radius-x: 56;
+            radius-y: 56;
+            sweep: true;
+            large-arc: fraction > 0.5;
+        }
+    }
+    if fraction >= 1: Path {
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: 132;
+        viewbox-height: 132;
+        stroke: Theme.status-color(state);
+        stroke-width: 10px;
+        MoveTo { x: 66; y: 10; }
+        ArcTo { x: 66; y: 122; radius-x: 56; radius-y: 56; sweep: true; }
+        ArcTo { x: 66; y: 10; radius-x: 56; radius-y: 56; sweep: true; }
+    }
+    Text {
+        text: score;
+        font-size: 34px;
+        font-weight: 600;
+        color: Theme.ink;
+        font-family: Theme.font;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+}

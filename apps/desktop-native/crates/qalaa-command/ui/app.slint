@@ -1,0 +1,318 @@
+import { Button, Switch, LineEdit, ScrollView, AboutSlint } from "std-widgets.slint";
+import { Theme } from "tokens.slint";
+import { PostureRing } from "ring.slint";
+
+export { Theme }
+
+export struct CheckRow { id: string, label: string, status: string, status-text: string, freshness: string }
+export struct ActionCard { id: string, title: string, detail: string, priority: int }
+export struct ToggleRow { key: string, label: string, hint: string, on: bool, available: bool }
+export struct PaletteItem { id: string, title: string }
+export struct Labels {
+    title: string, home: string, about: string, score: string, checks: string, actions: string,
+    actions-none: string, dock: string, go: string, palette-placeholder: string, palette-hint: string,
+    offline-title: string, offline-body: string, retry: string, busy: string, about-body: string,
+}
+
+component Card inherits Rectangle {
+    background: Theme.elevated;
+    border-color: Theme.line;
+    border-width: 1px;
+    border-radius: Theme.radius;
+}
+
+component Heading inherits Text {
+    font-size: 15px;
+    font-weight: 600;
+    color: Theme.ink;
+    font-family: Theme.font;
+    horizontal-alignment: Theme.rtl ? right : left;
+    accessible-role: text;
+}
+
+component Muted inherits Text {
+    font-size: 13px;
+    color: Theme.muted;
+    font-family: Theme.font;
+    wrap: word-wrap;
+    horizontal-alignment: Theme.rtl ? right : left;
+}
+
+component Dot inherits Rectangle {
+    in property <string> status;
+    width: 10px;
+    height: 10px;
+    border-radius: 5px;
+    background: Theme.status-color(status);
+}
+
+component CheckLine inherits Rectangle {
+    in property <CheckRow> check;
+    height: 44px;
+    accessible-role: list-item;
+    accessible-label: check.label + ": " + check.status-text + ", " + check.freshness;
+    HorizontalLayout {
+        spacing: 12px;
+        padding-left: 4px;
+        padding-right: 4px;
+        alignment: stretch;
+        if !Theme.rtl: Dot { status: check.status; y: (parent.height - self.height) / 2; }
+        VerticalLayout {
+            alignment: center;
+            Text { text: check.label; color: Theme.ink; font-size: 14px; font-family: Theme.font; horizontal-alignment: Theme.rtl ? right : left; }
+            Muted { text: check.status-text + " · " + check.freshness; }
+        }
+        if Theme.rtl: Dot { status: check.status; y: (parent.height - self.height) / 2; }
+    }
+}
+
+export component App inherits Window {
+    title: labels.title;
+    preferred-width: 1080px;
+    preferred-height: 720px;
+    min-width: 720px;
+    min-height: 520px;
+    background: Theme.base;
+    default-font-family: Theme.font;
+    forward-focus: keys;
+
+    in property <Labels> labels;
+    in property <bool> rtl;
+    in property <bool> connected: false;
+    in property <bool> busy: false;
+    in property <int> score;
+    in property <string> state: "offline";
+    in property <string> state-text;
+    in property <string> notice;
+    in property <[CheckRow]> checks;
+    in property <[ActionCard]> actions;
+    in property <[ToggleRow]> toggles;
+    in-out property <[PaletteItem]> palette-items;
+    in-out property <bool> palette-open: false;
+    in-out property <string> page: "home";
+
+    callback run-action(string);
+    callback set-toggle(string, bool);
+    callback palette-filter(string);
+    callback palette-run(string);
+    callback retry();
+
+    changed rtl => { Theme.rtl = rtl; }
+    init => { Theme.rtl = rtl; }
+
+    public function close-palette() {
+        palette-open = false;
+        keys.focus();
+    }
+
+    public function open-palette() {
+        palette-open = true;
+        palette-filter("");
+        query.text = "";
+        query.focus();
+    }
+
+    keys := FocusScope {
+        key-pressed(event) => {
+            if (event.modifiers.control || event.modifiers.meta) && (event.text == "k" || event.text == "K") {
+                root.open-palette();
+                return accept;
+            }
+            if event.text == Key.Escape && root.palette-open {
+                root.close-palette();
+                return accept;
+            }
+            reject
+        }
+
+        HorizontalLayout {
+            // Navigation rail (on the right in Arabic).
+            if !rtl: nav := VerticalLayout {
+                width: 180px;
+                padding: 20px;
+                spacing: 6px;
+                Text { text: labels.title; font-size: 20px; font-weight: 600; color: Theme.ink; }
+                Rectangle { height: 12px; }
+                Button { text: labels.home; checkable: true; checked: page == "home"; clicked => { page = "home"; } }
+                Button { text: labels.about; checkable: true; checked: page == "about"; clicked => { page = "about"; } }
+                Rectangle {}
+                Muted { text: labels.palette-hint; }
+            }
+
+            ScrollView {
+                VerticalLayout {
+                    padding: 28px;
+                    spacing: Theme.gap;
+
+                    if !connected: Card {
+                        min-height: 160px;
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 12px;
+                            Heading { text: labels.offline-title; font-size: 20px; }
+                            Muted { text: labels.offline-body; }
+                            HorizontalLayout {
+                                alignment: Theme.rtl ? end : start;
+                                Button { text: labels.retry; primary: true; clicked => { root.retry(); } }
+                            }
+                        }
+                    }
+
+                    if connected && page == "home": VerticalLayout {
+                        spacing: Theme.gap;
+
+                        // Posture and checks.
+                        Card {
+                            HorizontalLayout {
+                                padding: 24px;
+                                spacing: 28px;
+                                if !Theme.rtl: PostureRing { score: score; state: state; label: labels.score; }
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    Text {
+                                        text: state-text;
+                                        font-size: 26px;
+                                        font-weight: 600;
+                                        color: Theme.status-color(state);
+                                        horizontal-alignment: Theme.rtl ? right : left;
+                                        accessible-role: text;
+                                        accessible-label: labels.score + ": " + state-text;
+                                    }
+                                    if notice != "": Muted { text: notice; }
+                                    Rectangle { height: 8px; }
+                                    Heading { text: labels.checks; }
+                                    for item in checks: CheckLine { check: item; }
+                                }
+                                if Theme.rtl: PostureRing { score: score; state: state; label: labels.score; }
+                            }
+                        }
+
+                        // Action queue.
+                        Card {
+                            VerticalLayout {
+                                padding: 20px;
+                                spacing: 10px;
+                                Heading { text: labels.actions; }
+                                if actions.length == 0: Muted { text: labels.actions-none; }
+                                for card in actions: Rectangle {
+                                    border-color: card.priority == 1 ? Theme.attention : Theme.line;
+                                    border-width: 1px;
+                                    border-radius: 8px;
+                                    accessible-role: groupbox;
+                                    accessible-label: card.title;
+                                    HorizontalLayout {
+                                        padding: 14px;
+                                        spacing: 12px;
+                                        VerticalLayout {
+                                            spacing: 2px;
+                                            horizontal-stretch: 1;
+                                            Text { text: card.title; font-size: 14px; font-weight: 600; color: Theme.ink; horizontal-alignment: Theme.rtl ? right : left; }
+                                            Muted { text: card.detail; }
+                                        }
+                                        Button {
+                                            horizontal-stretch: 0;
+                                            min-width: 96px;
+                                            text: labels.go;
+                                            enabled: !busy;
+                                            accessible-label: card.title;
+                                            clicked => { root.run-action(card.id); }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Quick-toggle dock.
+                        Card {
+                            VerticalLayout {
+                                padding: 20px;
+                                spacing: 8px;
+                                Heading { text: labels.dock; }
+                                for toggle in toggles: VerticalLayout {
+                                    spacing: 0px;
+                                    Switch {
+                                        text: toggle.label;
+                                        checked: toggle.on;
+                                        enabled: toggle.available && !busy;
+                                        accessible-label: toggle.label;
+                                        toggled => { root.set-toggle(toggle.key, self.checked); }
+                                    }
+                                    if toggle.hint != "": Muted { text: toggle.hint; font-size: 12px; }
+                                }
+                            }
+                        }
+                    }
+
+                    if connected && page == "about": Card {
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 14px;
+                            Heading { text: labels.about; font-size: 20px; }
+                            Muted { text: labels.about-body; }
+                            // Required by Slint's royalty-free licence.
+                            AboutSlint { }
+                        }
+                    }
+                }
+            }
+
+            if rtl: VerticalLayout {
+                width: 180px;
+                padding: 20px;
+                spacing: 6px;
+                Text { text: labels.title; font-size: 20px; font-weight: 600; color: Theme.ink; horizontal-alignment: right; }
+                Rectangle { height: 12px; }
+                Button { text: labels.home; checkable: true; checked: page == "home"; clicked => { page = "home"; } }
+                Button { text: labels.about; checkable: true; checked: page == "about"; clicked => { page = "about"; } }
+                Rectangle {}
+                Muted { text: labels.palette-hint; }
+            }
+        }
+    }
+
+    // Command palette (Ctrl/Cmd+K).
+    Rectangle {
+        visible: palette-open;
+        background: #00000066;
+        TouchArea { clicked => { root.close-palette(); } }
+        Card {
+            x: (parent.width - self.width) / 2;
+            y: 80px;
+            width: min(560px, parent.width - 40px);
+            height: list.preferred-height + 80px;
+            accessible-role: groupbox;
+            accessible-label: labels.palette-placeholder;
+            VerticalLayout {
+                padding: 14px;
+                spacing: 8px;
+                query := LineEdit {
+                    placeholder-text: labels.palette-placeholder;
+                    accessible-label: labels.palette-placeholder;
+                    edited(text) => { root.palette-filter(text); }
+                    accepted => {
+                        if palette-items.length > 0 { root.palette-run(palette-items[0].id); root.close-palette(); }
+                    }
+                }
+                list := VerticalLayout {
+                    for item in palette-items: Rectangle {
+                        height: 34px;
+                        border-radius: 6px;
+                        background: area.has-hover ? Theme.line : transparent;
+                        accessible-role: button;
+                        accessible-label: item.title;
+                        accessible-action-default => { root.palette-run(item.id); root.close-palette(); }
+                        area := TouchArea { clicked => { root.palette-run(item.id); root.close-palette(); } }
+                        Text {
+                            x: 10px;
+                            width: parent.width - 20px;
+                            text: item.title;
+                            color: Theme.ink;
+                            vertical-alignment: center;
+                            horizontal-alignment: Theme.rtl ? right : left;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

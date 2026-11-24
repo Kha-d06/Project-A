@@ -1,0 +1,26 @@
+// Qalaa native design tokens. Semantic colours only carry meaning.
+import { Palette } from "std-widgets.slint";
+
+export global Theme {
+    in property <bool> rtl: false;
+    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+    out property <color> base: dark ? #0B0F17 : #F8FAFC;
+    out property <color> elevated: dark ? #131A26 : #FFFFFF;
+    out property <color> line: dark ? #243044 : #E2E8F0;
+    out property <color> ink: dark ? #E6EAF2 : #0F172A;
+    out property <color> muted: dark ? #94A3B8 : #475569;
+    out property <color> protected: #10B981;
+    out property <color> attention: #F59E0B;
+    out property <color> blocked: #EF4444;
+    out property <color> active: #3B82F6;
+    out property <length> radius: 10px;
+    out property <length> gap: 16px;
+    out property <string> font: "IBM Plex Sans";
+
+    public pure function status-color(status: string) -> color {
+        if status == "ok" || status == "protected" { return protected; }
+        if status == "attention" { return attention; }
+        if status == "off" || status == "at_risk" { return blocked; }
+        return muted;
+    }
+}

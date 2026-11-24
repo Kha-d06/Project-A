@@ -1,0 +1,124 @@
+{
+  "score": 36,
+  "state": "at_risk",
+  "checks": [
+    {
+      "id": "signatures",
+      "status": "attention",
+      "checkedAt": "2026-11-21T08:00:00Z"
+    },
+    {
+      "id": "realtime",
+      "status": "off",
+      "checkedAt": null
+    },
+    {
+      "id": "ransomware",
+      "status": "ok",
+      "checkedAt": null
+    },
+    {
+      "id": "last_scan",
+      "status": "attention",
+      "checkedAt": "2026-11-23T12:00:00Z"
+    },
+    {
+      "id": "network",
+      "status": "unknown",
+      "checkedAt": null
+    },
+    {
+      "id": "backup",
+      "status": "off",
+      "checkedAt": null
+    }
+  ],
+  "actions": [
+    {
+      "id": "review_threats",
+      "priority": 1,
+      "command": {
+        "method": "view.open",
+        "params": {
+          "view": "timeline"
+        }
+      }
+    },
+    {
+      "id": "turn_on_realtime",
+      "priority": 1,
+      "command": {
+        "method": "settings.set",
+        "params": {
+          "watchEnabled": true
+        }
+      }
+    },
+    {
+      "id": "update_signatures",
+      "priority": 1,
+      "command": {
+        "method": "signatures.update"
+      }
+    },
+    {
+      "id": "set_up_backup",
+      "priority": 2,
+      "command": {
+        "method": "view.open",
+        "params": {
+          "view": "backup"
+        }
+      }
+    },
+    {
+      "id": "install_update",
+      "priority": 2,
+      "command": {
+        "method": "view.open",
+        "params": {
+          "view": "updates"
+        }
+      }
+    },
+    {
+      "id": "scan_network",
+      "priority": 3,
+      "command": {
+        "method": "view.open",
+        "params": {
+          "view": "network"
+        }
+      }
+    }
+  ],
+  "toggles": [
+    {
+      "key": "watchEnabled",
+      "on": false,
+      "available": true
+    },
+    {
+      "key": "onAccessScan",
+      "on": false,
+      "available": true
+    },
+    {
+      "key": "ransomwareWatch",
+      "on": true,
+      "available": true
+    },
+    {
+      "key": "networkWatch",
+      "on": false,
+      "available": true
+    },
+    {
+      "key": "cloudLookup",
+      "on": true,
+      "available": true
+    }
+  ],
+  "silentUntil": null,
+  "generatedAt": "2026-11-24T12:00:00.000Z"
+}

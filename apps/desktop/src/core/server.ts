@@ -1,0 +1,142 @@
+/**
+ * The qalaa-ipc server. Shared by the headless daemon and the Electron shell.
+ * Clients must say `hello` with the token first; requests are answered in
+ * order per connection; events go to every authenticated client.
+ */
+import { randomBytes, timingSafeEqual } from "node:crypto";
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { type Server, type Socket, createConnection, createServer } from "node:net";
+
+import type { Handler } from "./handlers";
+import type { IpcPaths } from "./paths";
+import { type EventMessage, IpcError, MAX_LINE_BYTES, PROTOCOL_VERSION, type Response, parseRequest } from "./protocol";
+
+export interface IpcServer {
+  broadcast(event: string, payload: unknown): void;
+  close(): Promise<void>;
+  clients(): number;
+}
+
+/** Reads the token, creating one (mode 0600) the first time. */
+export async function loadToken(file: string): Promise<string> {
+  try {
+    const existing = (await readFile(file, "utf8")).trim();
+    if (/^[a-f0-9]{64}$/.test(existing)) return existing;
+  } catch {
+    // create below
+  }
+  const token = randomBytes(32).toString("hex");
+  await writeFile(file, token, { mode: 0o600 });
+  await chmod(file, 0o600).catch(() => undefined);
+  return token;
+}
+
+/** The id of a request, even one that fails validation, so the client gets its answer. */
+function requestId(line: string): number {
+  try {
+    const id = (JSON.parse(line) as { id?: unknown }).id;
+    return typeof id === "number" && Number.isInteger(id) && id >= 0 ? id : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function sameToken(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
+/** True when another process already answers on this endpoint. */
+export function endpointInUse(endpoint: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const probe = createConnection(endpoint);
+    probe.once("connect", () => {
+      probe.destroy();
+      resolve(true);
+    });
+    probe.once("error", () => resolve(false));
+  });
+}
+
+export async function startIpcServer(paths: IpcPaths, handlers: Record<string, Handler>, info: { version: string }): Promise<IpcServer> {
+  const token = await loadToken(paths.tokenFile);
+  if (await endpointInUse(paths.endpoint)) throw new Error("Another Qalaa background service is already running.");
+  if (paths.socketDir) {
+    await mkdir(paths.socketDir, { recursive: true, mode: 0o700 });
+    await chmod(paths.socketDir, 0o700).catch(() => undefined);
+  }
+  // A stale socket file from a crash; endpointInUse() showed nobody answers on it.
+  if (process.platform !== "win32") await rm(paths.endpoint, { force: true });
+  const authed = new Set<Socket>();
+
+  const send = (socket: Socket, message: Response | EventMessage) => {
+    if (!socket.destroyed) socket.write(`${JSON.stringify(message)}\n`);
+  };
+
+  const server: Server = createServer((socket) => {
+    let buffer = "";
+    let queue = Promise.resolve();
+    socket.setEncoding("utf8");
+    socket.on("error", () => socket.destroy());
+    socket.on("close", () => authed.delete(socket));
+    socket.on("data", (chunk: string) => {
+      buffer += chunk;
+      if (Buffer.byteLength(buffer) > MAX_LINE_BYTES && !buffer.includes("\n")) {
+        socket.destroy();
+        return;
+      }
+      let newline: number;
+      while ((newline = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, newline).trim();
+        buffer = buffer.slice(newline + 1);
+        if (!line) continue;
+        queue = queue.then(() => handle(socket, line));
+      }
+    });
+  });
+
+  async function handle(socket: Socket, line: string) {
+    let id = requestId(line);
+    try {
+      const request = parseRequest(line);
+      id = request.id;
+      if (!authed.has(socket)) {
+        const given = (request.params as { token?: unknown } | undefined)?.token;
+        if (request.method !== "hello" || typeof given !== "string" || !sameToken(given, token)) {
+          send(socket, { id, error: { code: "unauthorized", message: "Say hello with the token first." } });
+          socket.end();
+          return;
+        }
+        authed.add(socket);
+        send(socket, { id, result: { protocol: PROTOCOL_VERSION, version: info.version } });
+        return;
+      }
+      const handler = Object.hasOwn(handlers, request.method) ? handlers[request.method] : undefined;
+      if (!handler) throw new IpcError("unknown_method", `No method "${request.method}".`);
+      send(socket, { id, result: await handler(request.params) });
+    } catch (error) {
+      const code = error instanceof IpcError ? error.code : "failed";
+      const message = error instanceof Error ? error.message : String(error);
+      send(socket, { id, error: { code, message } });
+    }
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(paths.endpoint, () => resolve());
+  });
+  if (process.platform !== "win32") await chmod(paths.endpoint, 0o600).catch(() => undefined);
+
+  return {
+    broadcast(event, payload) {
+      for (const socket of authed) send(socket, { event, payload });
+    },
+    clients: () => authed.size,
+    close: () =>
+      new Promise<void>((resolve) => {
+        for (const socket of authed) socket.destroy();
+        server.close(() => resolve());
+      }),
+  };
+}

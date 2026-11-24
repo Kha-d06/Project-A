@@ -11,6 +11,9 @@ await mkdir(join(out, "renderer"), { recursive: true });
 const common = { bundle: true, logLevel: "warning", sourcemap: process.env.NODE_ENV === "production" ? false : "linked" };
 // Main and preload run in Electron's Node.js; the page is a plain browser script.
 await build({ ...common, entryPoints: [join(root, "src/main.ts")], outfile: join(out, "main.js"), platform: "node", format: "cjs", target: "node22", external: ["electron"] });
+// The headless background service (no Electron): serves the native interface over qalaa-ipc.
+const { version } = JSON.parse(await (await import("node:fs/promises")).readFile(join(root, "package.json"), "utf8"));
+await build({ ...common, entryPoints: [join(root, "src/daemon.ts")], outfile: join(out, "daemon.js"), platform: "node", format: "cjs", target: "node22", sourcemap: false, define: { __QALAA_VERSION__: JSON.stringify(version) } });
 // The terminal command (qalaa): runs on the app's own runtime in Node mode, kept outside the asar archive.
 await build({ ...common, entryPoints: [join(root, "src/cli.ts")], outfile: join(out, "cli.js"), platform: "node", format: "cjs", target: "node22", sourcemap: false });
 await build({ ...common, entryPoints: [join(root, "src/preload.ts")], outfile: join(out, "preload.js"), platform: "node", format: "cjs", target: "node22", external: ["electron"] });

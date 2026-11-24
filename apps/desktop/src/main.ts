@@ -69,6 +69,9 @@ import { type DecoyRecord, DropWatcher, RemovableWatcher, executableDropFolders,
 import { parseDesktopEntry, parseLaunchPlist, startupWarnings } from "./engine/security";
 import * as tools from "./engine/tools";
 import * as mail from "./engine/mail";
+import { type CoreHost, createHandlers } from "./core/handlers";
+import { ipcPaths } from "./core/paths";
+import { type IpcServer, startIpcServer } from "./core/server";
 import { disableTerminal, enableTerminal, terminalStatus } from "./engine/shell-init";
 import { FolderWatcher } from "./engine/watcher";
 
@@ -1184,6 +1187,53 @@ async function status() {
   };
 }
 
+// --- qalaa-ipc (native interface) --------------------------------------------------
+// While the Electron shell runs it serves the same methods as the headless daemon,
+// so the native command centre works with either.
+
+let coreIpc: IpcServer | null = null;
+
+const electronHost: CoreHost = {
+  version: app.getVersion(),
+  async homeInput() {
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    return {
+      now: new Date(),
+      platform: process.platform,
+      watchEnabled: settings.watchEnabled,
+      onAccessScan: settings.onAccessScan,
+      ransomwareWatch: settings.ransomwareWatch,
+      networkWatch: settings.networkWatch,
+      cloudLookup: settings.cloudLookup,
+      signatures: { count: signatures.size, updatedAt: signatures.meta?.updatedAt ?? null, error: lastSignatureError },
+      lastScanAt: history[0]?.scannedAt ?? null,
+      lastNetworkScanAt: lastNetworkScan?.finishedAt ?? null,
+      lastBackupAt: settings.lastBackup?.at ?? null,
+      lastBackupError: settings.lastBackupError,
+      backupConfigured: settings.backupFolders.length > 0 && Boolean(settings.backupDestination),
+      quarantineCount: (await quarantine.list()).length,
+      recentThreats: history.filter((r) => (r.verdict === "malicious" || r.verdict === "suspicious") && Date.parse(r.scannedAt) > weekAgo).length,
+      ransomwareAlertAt: lastRansomwareAlert?.at ?? null,
+      updateAvailable: updateState.state === "available" || updateState.state === "ready" ? updateState.version : null,
+      silentUntil: settings.silentUntil,
+    };
+  },
+  async updateToggles(changes) {
+    const { onAccessScan, ...rest } = changes;
+    settings = { ...settings, ...rest };
+    await saveSettings(join(dataDir(), "settings.json"), settings);
+    applyWatching();
+    if (onAccessScan !== undefined) await setOnAccess(onAccessScan);
+  },
+  quickScan: () => exclusive(() => scanPaths(settings.watchFolders)),
+  updateSignatures,
+};
+
+async function startCoreIpc() {
+  const handlers = createHandlers(electronHost, (model) => coreIpc?.broadcast("home.changed", model));
+  coreIpc = await startIpcServer(ipcPaths(process.platform, process.env, dataDir()), handlers, { version: app.getVersion() });
+}
+
 function stringArray(value: unknown, max = 1000): string[] {
   if (!Array.isArray(value)) throw new Error("Expected a list of paths.");
   return value.filter((item): item is string => typeof item === "string" && item.length < 4096).slice(0, max);
@@ -1735,6 +1785,7 @@ async function start() {
   if (account) remote.start();
 
   applyPrivacyWatch();
+  void startCoreIpc().catch(() => undefined);
   void securityCheck().catch(() => undefined);
   setInterval(() => void checkSchedules(), 60_000).unref();
   setTimeout(() => void checkSchedules(), 15_000).unref();

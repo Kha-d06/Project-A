@@ -17,6 +17,9 @@ from datetime import timedelta
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.orm import Session
 
 from app.api.auth import record_event
 from app.api.deps import Db, SessionUser
@@ -79,15 +82,31 @@ class Recipient(BaseModel):
 @router.put("/sharing-key")
 def set_sharing_key(body: KeyIn, request: Request, db: Db, user: SessionUser) -> dict[str, bool]:
     rate_limit.enforce(KEY_LIMIT, f"user:{user.id}")
-    key = db.get(SharingKey, user.id)
-    if key is None:
-        db.add(SharingKey(user_id=user.id, public_key=body.public_key))
-    else:
-        key.public_key = body.public_key
-        key.updated_at = utcnow()
+    upsert_sharing_key(db, user.id, body.public_key)
     record_event(db, request, user, "vault_sharing_key_set")
     db.commit()
     return {"ok": True}
+
+
+def upsert_sharing_key(db: Session, owner: uuid.UUID, public_key: str) -> None:
+    """One atomic INSERT ... ON CONFLICT DO UPDATE, so simultaneous publishes from
+    several tabs never race into a duplicate-key error. Last writer wins;
+    created_at keeps the first publish."""
+    now = utcnow()
+    dialect = db.get_bind().dialect.name
+    insert = postgresql_insert if dialect == "postgresql" else sqlite_insert
+    statement = insert(SharingKey).values(
+        user_id=owner, public_key=public_key, created_at=now, updated_at=now
+    )
+    db.execute(
+        statement.on_conflict_do_update(
+            index_elements=[SharingKey.user_id],
+            set_={
+                "public_key": statement.excluded.public_key,
+                "updated_at": statement.excluded.updated_at,
+            },
+        )
+    )
 
 
 @router.get("/recipients", response_model=list[Recipient])

@@ -14,6 +14,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy.exc import IntegrityError
 
 from app.api.auth import record_event
 from app.api.deps import Db, SessionUser
@@ -145,7 +146,15 @@ def save_vault(body: VaultIn, request: Request, db: Db, user: SessionUser) -> Va
         vault.data = body.data
         vault.version += 1
         vault.updated_at = utcnow()
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        # Two devices created the first vault at the same moment: FOR UPDATE has
+        # no row to lock yet, so the loser lands here instead of a 500.
+        db.rollback()
+        raise ApiError(
+            409, "vault_conflict", "Your vault was just created on another device. Reload it."
+        ) from exc
     return VaultSaved(version=vault.version, updated_at=vault.updated_at)
 
 

@@ -5,7 +5,9 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from app.ai.assistant import AssistantUnavailableError
@@ -237,12 +239,25 @@ def report_screen_time(body: ScreenTimeReport, installation: CurrentInstallation
     rate_limit.enforce(SCREEN_TIME_LIMIT, f"installation:{installation.id}")
     if installation.user_id is None:
         raise ApiError(403, "not_linked", "Link this browser to an account first.")
-    row = db.get(ScreenTimeDay, (installation.user_id, body.day))
-    if row is None:
-        db.add(ScreenTimeDay(user_id=installation.user_id, day=body.day, minutes=body.minutes))
-    elif body.minutes > row.minutes:
-        row.minutes = body.minutes
-        row.updated_at = utcnow()
+    # One atomic upsert: two browsers reporting at once can't collide, and the
+    # day's total only ever goes up.
+    now = utcnow()
+    dialect = db.get_bind().dialect.name
+    insert = postgresql_insert if dialect == "postgresql" else sqlite_insert
+    statement = insert(ScreenTimeDay).values(
+        user_id=installation.user_id, day=body.day, minutes=body.minutes, updated_at=now
+    )
+    db.execute(
+        statement.on_conflict_do_update(
+            index_elements=[ScreenTimeDay.user_id, ScreenTimeDay.day],
+            set_={
+                "minutes": func.max(ScreenTimeDay.minutes, statement.excluded.minutes)
+                if dialect == "sqlite"
+                else func.greatest(ScreenTimeDay.minutes, statement.excluded.minutes),
+                "updated_at": statement.excluded.updated_at,
+            },
+        )
+    )
     db.commit()
 
 

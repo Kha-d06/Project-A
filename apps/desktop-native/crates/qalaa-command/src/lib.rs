@@ -16,7 +16,7 @@ use std::rc::Rc;
 use slint::{ModelRc, SharedString, VecModel};
 
 use crate::strings::{t, Lang};
-use crate::view::{HomeView, PaletteEntry, PortView};
+use crate::view::{CredentialView, HomeView, PaletteEntry, PortView};
 
 pub fn labels(lang: Lang) -> Labels {
     let s = |key: &str| SharedString::from(t(lang, key));
@@ -47,6 +47,15 @@ pub fn labels(lang: Lang) -> Labels {
         ports_block: s("ports.block"),
         ports_unblock: s("ports.unblock"),
         ports_prompt: s("ports.prompt"),
+        credentials: s("nav.credentials"),
+        cred_title: s("cred.title"),
+        cred_intro: s("cred.intro"),
+        cred_none: s("cred.none"),
+        cred_suspend: s("cred.suspend"),
+        cred_resume: s("cred.resume"),
+        cred_terminate: s("cred.terminate"),
+        cred_allow: s("cred.allow"),
+        cred_dismiss: s("cred.dismiss"),
     }
 }
 
@@ -139,4 +148,18 @@ pub fn set_ports(app: &App, rows: &[PortView], can_block: bool) {
         .collect();
     app.set_ports(ModelRc::from(Rc::new(VecModel::from(items))));
     app.set_can_block(can_block);
+}
+
+pub fn set_credentials(app: &App, rows: &[CredentialView], mode: &str) {
+    let items: Vec<CredRow> = rows
+        .iter()
+        .map(|r| CredRow {
+            id: r.id.clone().into(),
+            title: r.title.clone().into(),
+            detail: r.detail.clone().into(),
+            state: r.state.clone().into(),
+        })
+        .collect();
+    app.set_credential_rows(ModelRc::from(Rc::new(VecModel::from(items))));
+    app.set_cred_mode(mode.into());
 }

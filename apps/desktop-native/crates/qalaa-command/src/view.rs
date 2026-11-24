@@ -1,7 +1,7 @@
 //! Turns the service's Home model into rows for the interface. Plain Rust with
 //! no window, so it is tested directly.
 
-use qalaa_ipc::{CheckStatus, HomeModel, ListenerStatus, PostureState};
+use qalaa_ipc::{CheckStatus, CredentialStatus, HomeModel, ListenerStatus, PostureState};
 
 use crate::strings::{t, Lang};
 
@@ -179,6 +179,10 @@ pub fn palette_entries(view: Option<&HomeView>, lang: Lang) -> Vec<PaletteEntry>
             title: t(lang, "nav.ports").into(),
         },
         PaletteEntry {
+            id: "page.credentials".into(),
+            title: t(lang, "nav.credentials").into(),
+        },
+        PaletteEntry {
             id: "page.about".into(),
             title: t(lang, "palette.about").into(),
         },
@@ -255,6 +259,48 @@ pub fn ports_view(status: &ListenerStatus, lang: Lang) -> Vec<PortView> {
     rows
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct CredentialView {
+    pub id: String,
+    pub title: String,
+    pub detail: String,
+    /// "open", "suspended" or "terminated".
+    pub state: String,
+}
+
+/// Rows for the Credentials page, newest first (as the service sends them), and
+/// the sentence saying how complete the watching is.
+pub fn credentials_view(status: &CredentialStatus, now: i64, lang: Lang) -> (Vec<CredentialView>, String) {
+    let rows = status
+        .incidents
+        .iter()
+        .map(|i| {
+            let kind = match t(lang, &format!("cred.kind.{}", i.credential)) {
+                "?" => i.credential.as_str(),
+                known => known,
+            };
+            let state = match i.state.as_str() {
+                "suspended" | "terminated" => format!("  · {}", t(lang, &format!("cred.state.{}", i.state))),
+                _ => String::new(),
+            };
+            CredentialView {
+                id: i.id.clone(),
+                title: match lang {
+                    Lang::En => format!("{} opened {}{state}", i.program, i.file),
+                    Lang::Ar => format!("فتح {} الملف {}{state}", i.program, i.file),
+                },
+                detail: format!("{kind} · {} · {}", relative(Some(&i.at), now, lang), i.exe),
+                state: i.state.clone(),
+            }
+        })
+        .collect();
+    let mode = match status.mode.as_str() {
+        "every_open" | "polling" => status.mode.as_str(),
+        _ => "unavailable",
+    };
+    (rows, t(lang, &format!("cred.mode.{mode}")).to_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -328,6 +374,32 @@ mod tests {
         assert_eq!(view.actions[0].button, "I plugged it in");
         assert_eq!(view.actions[1].button, "Do it");
         assert_eq!(home_view(&model, 0, Lang::Ar).actions[0].button, "أنا وصلتها");
+    }
+
+    #[test]
+    fn credentials_view_names_the_program_and_file() {
+        let status: CredentialStatus = serde_json::from_value(serde_json::json!({
+            "supported": true, "enabled": true, "mode": "polling", "trusted": [],
+            "incidents": [
+                {"id": "c2", "pid": 901, "program": "node", "exe": "/usr/bin/node", "credential": "browser_secrets", "file": "~/.config/google-chrome/Default/Cookies", "at": "2026-11-24T10:00:00Z", "state": "suspended"},
+                {"id": "c1", "pid": 900, "program": "python3", "exe": "/usr/bin/python3", "credential": "ssh_key", "file": "~/.ssh/id_rsa", "at": "2026-11-24T09:59:00Z", "state": "open"}
+            ]
+        }))
+        .expect("status");
+        let now = parse_iso("2026-11-24T10:00:30Z").expect("time");
+        let (rows, mode) = credentials_view(&status, now, Lang::En);
+        assert_eq!(rows[0].title, "node opened ~/.config/google-chrome/Default/Cookies  · Paused");
+        assert!(rows[0].detail.starts_with("Browser passwords and cookies · "));
+        assert_eq!(rows[1].title, "python3 opened ~/.ssh/id_rsa");
+        assert!(mode.starts_with("Checking open files"));
+        let (ar, _) = credentials_view(&status, now, Lang::Ar);
+        assert_eq!(ar[1].title, "فتح python3 الملف ~/.ssh/id_rsa");
+        let unknown = CredentialStatus {
+            mode: "unavailable".into(),
+            supported: false,
+            ..status
+        };
+        assert!(credentials_view(&unknown, now, Lang::En).1.contains("Windows"));
     }
 
     #[test]

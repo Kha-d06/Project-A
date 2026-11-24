@@ -12,7 +12,8 @@ use qalaa_guardian_pet::hit::{HitAction, HitController};
 use qalaa_guardian_pet::mood::{Input, Mood, Pet, Timing};
 use qalaa_guardian_pet::platform::{plan, Os};
 use qalaa_guardian_pet::{
-    actions, actions_with, clipboard_text, input_for, layout, mood_text, skin_from, text, Lang, Layout, PetWindow, SPRITE,
+    actions, actions_with, clipboard_text, credential_actions, credential_alert, credential_text, input_for, layout, mood_text, skin_from,
+    text, Lang, Layout, PetWindow, SPRITE,
 };
 use qalaa_ipc::{Client, Message, Stream};
 use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
@@ -30,6 +31,8 @@ struct App {
     popover_open: bool,
     layout: Layout,
     connected: bool,
+    /// The credential alert the card is showing (its id and message), until answered.
+    credential: Option<(String, String)>,
     deadline: Timer,
     recheck: Timer,
     patrol: Timer,
@@ -124,16 +127,31 @@ fn start_patrol(shared: &Shared, app: &mut App) {
     });
 }
 
-fn call_service(method: &'static str) {
+fn call_service(method: &str, params: Option<serde_json::Value>) {
+    let method = method.to_owned();
     thread::spawn(move || {
         if let Ok(mut client) = Client::connect(&qalaa_ipc::endpoint(), &qalaa_ipc::token_file(), "qalaa-guardian-pet") {
-            let _ = client.call_raw(method, None);
+            let _ = client.call_raw(&method, params);
         }
     });
 }
 
+/// The card's default text and buttons; a waiting credential alert comes first.
+fn show_default(app: &App) {
+    if let Some((_, message)) = &app.credential {
+        app.window.set_status_text(message.as_str().into());
+        app.window
+            .set_actions(ModelRc::from(Rc::new(VecModel::from(credential_actions(app.lang, app.connected)))));
+        return;
+    }
+    app.window
+        .set_status_text(text(if app.connected { "connected" } else { "offline" }, app.lang).into());
+    app.window
+        .set_actions(ModelRc::from(Rc::new(VecModel::from(actions(app.lang, app.connected)))));
+}
+
 /// Listens for service events on its own connection; reconnects every 10 s.
-fn listen(window: slint::Weak<PetWindow>, sink: Arc<Mutex<Vec<Input>>>) {
+fn listen(window: slint::Weak<PetWindow>, sink: Arc<Mutex<Vec<Input>>>, lang: Lang) {
     thread::spawn(move || loop {
         let connected = Client::<Stream>::connect(&qalaa_ipc::endpoint(), &qalaa_ipc::token_file(), "qalaa-guardian-pet");
         let online = connected.is_ok();
@@ -149,6 +167,10 @@ fn listen(window: slint::Weak<PetWindow>, sink: Arc<Mutex<Vec<Input>>>) {
                         };
                         let _ = window.upgrade_in_event_loop(move |w| w.invoke_clipboard_changed(i32::try_from(ms).unwrap_or(0)));
                         continue;
+                    }
+                    if let Some(alert) = credential_alert(&event) {
+                        let message = credential_text(&alert, lang);
+                        let _ = window.upgrade_in_event_loop(move |w| w.invoke_credential_alert(alert.id.into(), message.into()));
                     }
                     if let Some(input) = input_for(&event) {
                         if let Ok(mut queue) = sink.lock() {
@@ -192,6 +214,7 @@ fn main() -> Result<(), slint::PlatformError> {
         popover_open: false,
         layout: layout((0.0, 0.0), false, &Rect::new(0.0, 0.0, 1280.0, 720.0)),
         connected: false,
+        credential: None,
         deadline: Timer::default(),
         recheck: Timer::default(),
         patrol: Timer::default(),
@@ -214,10 +237,16 @@ fn main() -> Result<(), slint::PlatformError> {
             let Some(shared) = weak.upgrade() else { return };
             let mut app = shared.borrow_mut();
             app.connected = online;
-            app.window
-                .set_status_text(text(if online { "connected" } else { "offline" }, app.lang).into());
-            app.window
-                .set_actions(ModelRc::from(Rc::new(VecModel::from(actions(app.lang, online)))));
+            show_default(&app);
+        });
+    }
+    {
+        let weak = Rc::downgrade(&shared);
+        window.on_credential_alert(move |id, message| {
+            let Some(shared) = weak.upgrade() else { return };
+            let mut app = shared.borrow_mut();
+            app.credential = Some((id.to_string(), message.to_string()));
+            show_default(&app);
         });
     }
     {
@@ -244,9 +273,14 @@ fn main() -> Result<(), slint::PlatformError> {
         window.on_action(move |id| {
             let Some(shared) = weak.upgrade() else { return };
             match id.as_str() {
-                "scan.quick" => call_service("scan.quick"),
-                "clipboard.clear_now" => call_service("clipboard.clear_now"),
-                "signatures.update" => call_service("signatures.update"),
+                "scan.quick" | "clipboard.clear_now" | "signatures.update" => call_service(id.as_str(), None),
+                "credentials.suspend" | "credentials.terminate" | "credentials.allow" => {
+                    let mut app = shared.borrow_mut();
+                    if let Some((incident, _)) = app.credential.take() {
+                        call_service(id.as_str(), Some(serde_json::json!({ "id": incident })));
+                    }
+                    show_default(&app);
+                }
                 "open" => {
                     let exe = std::env::current_exe().ok().and_then(|p| {
                         p.parent()
@@ -342,22 +376,12 @@ fn main() -> Result<(), slint::PlatformError> {
                 let app = shared.borrow();
                 (app.lang, app.connected)
             };
-            let restore = {
-                let shared = Rc::clone(&shared);
-                move || {
-                    let app = shared.borrow();
-                    app.window
-                        .set_status_text(text(if app.connected { "connected" } else { "offline" }, app.lang).into());
-                    app.window
-                        .set_actions(ModelRc::from(Rc::new(VecModel::from(actions(app.lang, app.connected)))));
-                }
-            };
             if remaining_ms <= 0 {
-                restore();
+                show_default(&shared.borrow());
                 return;
             }
             let deadline = Instant::now() + Duration::from_millis(u64::try_from(remaining_ms).unwrap_or(0));
-            {
+            if shared.borrow().credential.is_none() {
                 let app = shared.borrow();
                 app.window
                     .set_status_text(clipboard_text(u64::try_from(remaining_ms).unwrap_or(0), lang).into());
@@ -373,12 +397,8 @@ fn main() -> Result<(), slint::PlatformError> {
                     if let Some(timer) = stop.upgrade() {
                         timer.stop();
                     }
-                    let app = shared.borrow();
-                    app.window
-                        .set_status_text(text(if app.connected { "connected" } else { "offline" }, app.lang).into());
-                    app.window
-                        .set_actions(ModelRc::from(Rc::new(VecModel::from(actions(app.lang, app.connected)))));
-                } else {
+                    show_default(&shared.borrow());
+                } else if shared.borrow().credential.is_none() {
                     let app = shared.borrow();
                     app.window
                         .set_status_text(clipboard_text(u64::try_from(left.as_millis()).unwrap_or(0), app.lang).into());
@@ -387,7 +407,7 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
 
-    listen(window.as_weak(), Arc::clone(&queue));
+    listen(window.as_weak(), Arc::clone(&queue), lang);
     window.run()
 }
 

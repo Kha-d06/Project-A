@@ -95,3 +95,29 @@ pub struct ListenerStatus {
     #[serde(default)]
     pub change: Option<String>,
 }
+
+/// A program that isn't expected to opened a credential file.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CredentialIncident {
+    pub id: String,
+    pub pid: u32,
+    pub program: String,
+    pub exe: String,
+    /// "ssh_key", "env_file", "cloud_credentials" or "browser_secrets".
+    pub credential: String,
+    /// Shortened path, "~/.ssh/id_ed25519".
+    pub file: String,
+    pub at: String,
+    /// "open", "suspended" or "terminated".
+    pub state: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CredentialStatus {
+    pub supported: bool,
+    pub enabled: bool,
+    /// "every_open", "polling" or "unavailable".
+    pub mode: String,
+    pub incidents: Vec<CredentialIncident>,
+    pub trusted: Vec<String>,
+}

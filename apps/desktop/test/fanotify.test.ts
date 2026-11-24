@@ -128,6 +128,24 @@ describe("OnAccessServer round trip", () => {
     expect(blocked).toBe("/home/a/evil");
   });
 
+  it("tells the credential observer about every open without changing the verdict", async () => {
+    dir = await mkdtemp(join(tmpdir(), "qalaa-fan-"));
+    const socketPath = join(dir, "s.sock");
+    const seen: [number, string][] = [];
+    server = new OnAccessServer({
+      socketPath,
+      scan: async () => result("no_known_threat"),
+      onOpen: (pid, path) => {
+        seen.push([pid, path]);
+        if (path.includes("boom")) throw new Error("observer bug");
+      },
+    });
+    await server.start();
+    expect(await ask(socketPath, '{"id":1,"path":"/home/a/.ssh/id_ed25519","pid":42}')).toBe('{"id":1,"verdict":"allow","reason":"no_known_threat"}');
+    expect(await ask(socketPath, '{"id":2,"path":"/home/a/boom","pid":43}')).toBe('{"id":2,"verdict":"allow","reason":"no_known_threat"}');
+    expect(seen).toEqual([[42, "/home/a/.ssh/id_ed25519"], [43, "/home/a/boom"]]);
+  });
+
   it("denies and signals a halt when the behaviour hook trips", async () => {
     dir = await mkdtemp(join(tmpdir(), "qalaa-fan-"));
     const socketPath = join(dir, "s.sock");

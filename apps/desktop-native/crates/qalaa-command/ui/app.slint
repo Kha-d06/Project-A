@@ -8,6 +8,7 @@ export struct CheckRow { id: string, label: string, status: string, status-text:
 export struct ActionCard { id: string, title: string, detail: string, button: string, priority: int }
 export struct ToggleRow { key: string, label: string, hint: string, on: bool, available: bool }
 export struct PaletteItem { id: string, title: string }
+export struct CredRow { id: string, title: string, detail: string, state: string }
 export struct PortRow { key: string, port: int, title: string, detail: string, fresh: bool, blocked: bool, exposed: bool }
 export struct Labels {
     title: string, home: string, about: string, score: string, checks: string, actions: string,
@@ -15,6 +16,8 @@ export struct Labels {
     offline-title: string, offline-body: string, retry: string, busy: string, about-body: string,
     ports: string, ports-title: string, ports-intro: string, ports-none: string, ports-new: string,
     ports-blocked: string, ports-trust: string, ports-block: string, ports-unblock: string, ports-prompt: string,
+    credentials: string, cred-title: string, cred-intro: string, cred-none: string, cred-suspend: string,
+    cred-resume: string, cred-terminate: string, cred-allow: string, cred-dismiss: string,
 }
 
 component Card inherits Rectangle {
@@ -91,6 +94,8 @@ export component App inherits Window {
     in property <[ActionCard]> actions;
     in property <[ToggleRow]> toggles;
     in property <[PortRow]> ports;
+    in property <[CredRow]> credential-rows;
+    in property <string> cred-mode;
     in property <bool> can-block: true;
     in property <string> clip-text;
     in property <string> clip-clear-label;
@@ -109,6 +114,7 @@ export component App inherits Window {
     callback clip-event(string, int);
     callback port-block(int, bool);
     callback page-changed(string);
+    callback cred-action(string, string);
     changed page => { page-changed(page); }
 
     changed rtl => { Theme.rtl = rtl; }
@@ -149,6 +155,7 @@ export component App inherits Window {
                 Rectangle { height: 12px; }
                 Button { text: labels.home; checkable: true; checked: page == "home"; clicked => { page = "home"; } }
                 Button { text: labels.ports; checkable: true; checked: page == "ports"; clicked => { page = "ports"; } }
+                Button { text: labels.credentials; checkable: true; checked: page == "credentials"; clicked => { page = "credentials"; } }
                 Button { text: labels.about; checkable: true; checked: page == "about"; clicked => { page = "about"; } }
                 Rectangle {}
                 Muted { text: labels.palette-hint; }
@@ -336,6 +343,71 @@ export component App inherits Window {
                         }
                     }
 
+                    if connected && page == "credentials": Card {
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 12px;
+                            Heading { text: labels.cred-title; font-size: 20px; }
+                            Muted { text: labels.cred-intro; }
+                            Muted { text: cred-mode; font-size: 12px; }
+                            if credential-rows.length == 0: Muted { text: labels.cred-none; }
+                            for row in credential-rows: Rectangle {
+                                border-color: row.state == "terminated" ? Theme.line : Theme.attention;
+                                border-width: 1px;
+                                border-radius: 8px;
+                                accessible-role: groupbox;
+                                accessible-label: row.title;
+                                VerticalLayout {
+                                    padding: 12px;
+                                    spacing: 8px;
+                                    Text {
+                                        text: row.title;
+                                        font-size: 14px;
+                                        font-weight: 600;
+                                        color: row.state == "terminated" ? Theme.ink : Theme.attention;
+                                        wrap: word-wrap;
+                                        horizontal-alignment: Theme.rtl ? right : left;
+                                    }
+                                    Muted { text: row.detail; }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: Theme.rtl ? end : start;
+                                        if row.state == "open": Button {
+                                            text: labels.cred-suspend;
+                                            accessible-label: labels.cred-suspend + ": " + row.title;
+                                            enabled: !busy;
+                                            clicked => { root.cred-action(row.id, "suspend"); }
+                                        }
+                                        if row.state == "suspended": Button {
+                                            text: labels.cred-resume;
+                                            accessible-label: labels.cred-resume + ": " + row.title;
+                                            enabled: !busy;
+                                            clicked => { root.cred-action(row.id, "resume"); }
+                                        }
+                                        if row.state != "terminated": Button {
+                                            text: labels.cred-terminate;
+                                            accessible-label: labels.cred-terminate + ": " + row.title;
+                                            enabled: !busy;
+                                            clicked => { root.cred-action(row.id, "terminate"); }
+                                        }
+                                        Button {
+                                            text: labels.cred-allow;
+                                            accessible-label: labels.cred-allow + ": " + row.title;
+                                            enabled: !busy;
+                                            clicked => { root.cred-action(row.id, "allow"); }
+                                        }
+                                        Button {
+                                            text: labels.cred-dismiss;
+                                            accessible-label: labels.cred-dismiss + ": " + row.title;
+                                            enabled: !busy;
+                                            clicked => { root.cred-action(row.id, "dismiss"); }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if connected && page == "about": Card {
                         VerticalLayout {
                             padding: 24px;
@@ -357,6 +429,7 @@ export component App inherits Window {
                 Rectangle { height: 12px; }
                 Button { text: labels.home; checkable: true; checked: page == "home"; clicked => { page = "home"; } }
                 Button { text: labels.ports; checkable: true; checked: page == "ports"; clicked => { page = "ports"; } }
+                Button { text: labels.credentials; checkable: true; checked: page == "credentials"; clicked => { page = "credentials"; } }
                 Button { text: labels.about; checkable: true; checked: page == "about"; clicked => { page = "about"; } }
                 Rectangle {}
                 Muted { text: labels.palette-hint; }

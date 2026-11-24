@@ -89,6 +89,15 @@ Background checks by the apps must not reveal what the person has:
 The full-hash `GET /intelligence/hash/{sha256}` remains for the website's
 lookup tool, where a person deliberately pastes one fingerprint.
 
+## Desktop privacy guards
+
+- **Clipboard auto-clear.** A secret on the clipboard (copied from Qalaa, or recognised by shape: private keys, cloud keys, API tokens, JWTs, `.env` lines, long random strings) is wiped after 30 seconds by default, only if the clipboard still holds the same secret (compared by SHA-256). The text is never logged, stored or sent; clients only see its kind and the time left.
+- **Credential guardrails.** Qalaa alerts when a program that isn't expected to opens SSH private keys, `.env` files, cloud credentials (`~/.aws/credentials`, `~/.kube/config`, `~/.docker/config.json`, `~/.netrc`, …) or a browser's cookie and password stores. The person can pause (SIGSTOP), stop (SIGKILL) or allow the program. Before any signal Qalaa checks that the same program still runs under that process id. Only the file kind, the path with the home folder shortened to `~`, and the program are kept; file contents are never read.
+  - Linux: every open while the fanotify on-access helper runs, otherwise a look at `/proc/<pid>/fd` of the person's own processes every 5 seconds.
+  - macOS: `lsof` for the person's own processes every 15 seconds.
+  - Polling can miss a read that starts and finishes between two looks, and the interface says so.
+  - Windows: not available yet. Seeing which program holds a file open needs a system handle query from native code, which Qalaa doesn't have; the interface says so.
+
 ## API keys and metrics
 
 - **API keys.** Personal keys are 256-bit random values prefixed `snt_`, shown once and stored only as SHA-256 digests. They are revocable and limited to ten per account. Keys authenticate scanning, history and lookups only. Account changes, key management, extension linking and all staff functions require a website session with its CSRF token, so a leaked key cannot take over or escalate an account. Disabling an account stops its keys working immediately.

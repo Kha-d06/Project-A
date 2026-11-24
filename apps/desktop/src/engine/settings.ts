@@ -65,6 +65,8 @@ export interface DesktopSettings {
   /** Wipe secrets from the clipboard after `clipboardTtl` seconds. */
   clipboardGuard: boolean;
   clipboardTtl: number;
+  /** Alert when an unexpected program opens SSH keys, .env files or browser secrets. */
+  credentialGuard: boolean;
 }
 
 export function defaultSettings(downloads: string, protectedFolders: string[] = [], deviceName = "This computer"): DesktopSettings {
@@ -92,6 +94,7 @@ export function defaultSettings(downloads: string, protectedFolders: string[] = 
     vpnTrustedNetworks: [],
     clipboardGuard: true,
     clipboardTtl: 30,
+    credentialGuard: true,
     ransomwareWatch: true,
     protectedFolders,
     allowRemote: false,
@@ -154,7 +157,7 @@ export function sanitizeChanges(changes: unknown): Partial<DesktopSettings> {
     // At most a day ahead: silent mode must not be left on by accident for weeks.
     out.silentUntil = input.silentUntil === null ? null : new Date(Math.min(Date.parse(input.silentUntil), Date.now() + 24 * 3_600_000)).toISOString();
   }
-  for (const key of ["watchEnabled", "autoQuarantine", "useClamav", "cloudLookup", "ransomwareWatch", "allowRemote", "privacyWatch", "autoUpdate", "scanRemovable", "ransomwareDecoys", "watchSystemChanges", "networkWatch", "clipboardGuard"] as const) {
+  for (const key of ["watchEnabled", "autoQuarantine", "useClamav", "cloudLookup", "ransomwareWatch", "allowRemote", "privacyWatch", "autoUpdate", "scanRemovable", "ransomwareDecoys", "watchSystemChanges", "networkWatch", "clipboardGuard", "credentialGuard"] as const) {
     if (typeof input[key] === "boolean") out[key] = input[key];
   }
   if (Number.isInteger(input.clipboardTtl) && (input.clipboardTtl as number) >= 5 && (input.clipboardTtl as number) <= 600) out.clipboardTtl = input.clipboardTtl as number;

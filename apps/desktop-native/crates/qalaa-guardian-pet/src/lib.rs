@@ -117,6 +117,9 @@ pub fn text(key: &str, lang: Lang) -> &'static str {
         (Lang::En, "offline") => "The Qalaa background service isn't running.",
         (Lang::En, "connected") => "Connected to Qalaa on this computer.",
         (Lang::En, "clipboard.clear_now") => "Clear the clipboard now",
+        (Lang::En, "credentials.suspend") => "Pause this program",
+        (Lang::En, "credentials.terminate") => "Stop this program",
+        (Lang::En, "credentials.allow") => "Allow this program",
         (Lang::Ar, "sprite") => "حارس قلعة: افتح الإجراءات السريعة",
         (Lang::Ar, "scan.quick") => "شغّل فحصًا سريعًا",
         (Lang::Ar, "signatures.update") => "حدّث بصمات البرمجيات الخبيثة",
@@ -125,6 +128,9 @@ pub fn text(key: &str, lang: Lang) -> &'static str {
         (Lang::Ar, "offline") => "خدمة قلعة الخلفية لا تعمل.",
         (Lang::Ar, "connected") => "متصل بقلعة على هذا الحاسوب.",
         (Lang::Ar, "clipboard.clear_now") => "امسح الحافظة الآن",
+        (Lang::Ar, "credentials.suspend") => "أوقف هذا البرنامج مؤقتًا",
+        (Lang::Ar, "credentials.terminate") => "أنهِ هذا البرنامج",
+        (Lang::Ar, "credentials.allow") => "اسمح لهذا البرنامج",
         _ => "",
     }
 }
@@ -147,6 +153,53 @@ pub fn actions_with(lang: Lang, connected: bool, clipboard_armed: bool) -> Vec<A
             enabled: connected || matches!(*id, "open" | "snooze"),
         })
         .collect()
+}
+
+/// A program the person may not expect opened a credential file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CredentialAlert {
+    pub id: String,
+    pub program: String,
+    pub file: String,
+}
+
+/// The `alert` event of kind "credential", if this is one.
+pub fn credential_alert(event: &Event) -> Option<CredentialAlert> {
+    let field = |key: &str| event.payload.get(key).and_then(serde_json::Value::as_str).map(str::to_owned);
+    if event.name != "alert" || field("kind").as_deref() != Some("credential") {
+        return None;
+    }
+    Some(CredentialAlert {
+        id: field("id")?,
+        program: field("program").unwrap_or_else(|| "A program".into()),
+        file: field("file").unwrap_or_default(),
+    })
+}
+
+/// "python3 opened ~/.ssh/id_rsa. If you don't recognise it, pause it."
+pub fn credential_text(alert: &CredentialAlert, lang: Lang) -> String {
+    match lang {
+        Lang::En => format!("{} opened {}. If you don't recognise it, pause it.", alert.program, alert.file),
+        Lang::Ar => format!("فتح {} الملف {}. إن لم تتعرّف عليه فأوقفه مؤقتًا.", alert.program, alert.file),
+    }
+}
+
+/// The card while a credential alert waits: the three answers first.
+pub fn credential_actions(lang: Lang, connected: bool) -> Vec<Action> {
+    [
+        "credentials.suspend",
+        "credentials.terminate",
+        "credentials.allow",
+        "open",
+        "snooze",
+    ]
+    .iter()
+    .map(|id| Action {
+        id: (*id).into(),
+        label: text(id, lang).into(),
+        enabled: connected || matches!(*id, "open" | "snooze"),
+    })
+    .collect()
 }
 
 /// "A secret is on the clipboard: clearing in 12 s".
@@ -221,5 +274,33 @@ mod tests {
         assert_eq!(armed[0].id, "clipboard.clear_now");
         assert!(!actions(Lang::En, true).iter().any(|a| a.id == "clipboard.clear_now"));
         assert_eq!(clipboard_text(11_200, Lang::En), "A secret is on the clipboard: clearing in 12 s");
+    }
+
+    #[test]
+    fn credential_alerts_get_their_own_card() {
+        let ev = event(
+            "alert",
+            json!({"kind": "credential", "id": "c1", "pid": 900, "program": "python3", "credential": "ssh_key", "file": "~/.ssh/id_rsa"}),
+        );
+        let alert = credential_alert(&ev).expect("credential alert");
+        assert_eq!(alert.id, "c1");
+        assert_eq!(
+            credential_text(&alert, Lang::En),
+            "python3 opened ~/.ssh/id_rsa. If you don't recognise it, pause it."
+        );
+        assert!(credential_text(&alert, Lang::Ar).contains("~/.ssh/id_rsa"));
+        // Still an alert for the mood: it wakes the pet even when hidden.
+        assert_eq!(input_for(&ev), Some(Input::Alert));
+        assert_eq!(credential_alert(&event("alert", json!({"kind": "listener", "id": "x"}))), None);
+        assert_eq!(credential_alert(&event("alert", json!({"kind": "credential"}))), None);
+        let card = credential_actions(Lang::En, true);
+        let ids: Vec<_> = card.iter().map(|a| a.id.as_str()).collect();
+        assert_eq!(ids[..3], ["credentials.suspend", "credentials.terminate", "credentials.allow"]);
+        assert!(credential_actions(Lang::En, false)
+            .iter()
+            .all(|a| a.enabled == matches!(a.id.as_str(), "open" | "snooze")));
+        for a in credential_actions(Lang::Ar, true) {
+            assert!(!a.label.is_empty(), "{}", a.id);
+        }
     }
 }

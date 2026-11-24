@@ -32,6 +32,8 @@ export interface HomeInput {
   safeDns?: { on: boolean; available: boolean };
   /** Clipboard auto-clear, where the host runs it. */
   clipboardGuard?: { on: boolean; available: boolean };
+  /** Credential guardrails, where the host runs them; `pending` alerts await a decision. */
+  credentialGuard?: { on: boolean; available: boolean; pending: number };
 }
 
 export interface HomeCheck {
@@ -49,7 +51,7 @@ export interface HomeAction {
 }
 
 export interface HomeToggle {
-  key: "watchEnabled" | "onAccessScan" | "ransomwareWatch" | "networkWatch" | "cloudLookup" | "safeDns" | "clipboardGuard";
+  key: "watchEnabled" | "onAccessScan" | "ransomwareWatch" | "networkWatch" | "cloudLookup" | "safeDns" | "clipboardGuard" | "credentialGuard";
   on: boolean;
   available: boolean;
 }
@@ -94,12 +96,13 @@ export function buildHome(input: HomeInput): HomeModel {
   const earned = checks.reduce((sum, check) => sum + WEIGHTS[check.id] * CREDIT[check.status], 0);
   const score = Math.round((earned / total) * 100);
   const offCore = checks.some((c) => (c.id === "realtime" || c.id === "signatures") && c.status !== "ok");
-  const needsAttention = checks.some((c) => c.status === "attention") || score < 85;
+  const needsAttention = checks.some((c) => c.status === "attention") || score < 85 || (input.credentialGuard?.pending ?? 0) > 0;
   const state: HomeModel["state"] = input.recentThreats > 0 || offCore ? "at_risk" : needsAttention ? "attention" : "protected";
 
   const actions: HomeAction[] = [];
   if (input.recentThreats > 0) actions.push({ id: "review_threats", priority: 1, command: { method: "view.open", params: { view: "timeline" } } });
   if ((input.newKeyboards ?? 0) > 0) actions.push({ id: "review_keyboard", priority: 1, command: { method: "keyboards.trust_all" } });
+  if ((input.credentialGuard?.pending ?? 0) > 0) actions.push({ id: "review_credentials", priority: 1, command: { method: "view.open", params: { view: "credentials" } } });
   if ((input.newListeners ?? 0) > 0) actions.push({ id: "review_listeners", priority: 1, command: { method: "view.open", params: { view: "listeners" } } });
   if (checks[1]?.status === "off") actions.push({ id: "turn_on_realtime", priority: 1, command: { method: "settings.set", params: { watchEnabled: true } } });
   if (checks[0]?.status !== "ok") actions.push({ id: "update_signatures", priority: 1, command: { method: "signatures.update" } });
@@ -117,6 +120,7 @@ export function buildHome(input: HomeInput): HomeModel {
     { key: "cloudLookup", on: input.cloudLookup, available: true },
   ];
   if (input.clipboardGuard) toggles.push({ key: "clipboardGuard", on: input.clipboardGuard.on, available: input.clipboardGuard.available });
+  if (input.credentialGuard) toggles.push({ key: "credentialGuard", on: input.credentialGuard.on, available: input.credentialGuard.available });
   if (input.safeDns) toggles.push({ key: "safeDns", on: input.safeDns.on, available: input.safeDns.available });
 
   return { score, state, checks, actions, toggles, silentUntil: input.silentUntil, generatedAt: now.toISOString() };

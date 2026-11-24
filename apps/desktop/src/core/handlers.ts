@@ -5,6 +5,7 @@
  */
 import { type HomeInput, type HomeModel, type HomeToggle, buildHome } from "./home";
 import type { ClipboardService } from "./clipboard-service";
+import type { CredentialGuardService } from "./credential-guard-service";
 import type { KeyboardService } from "./keyboard-service";
 import type { ListenerService } from "./listener-service";
 import type { SafeDnsService } from "./safe-dns-service";
@@ -25,11 +26,13 @@ export interface CoreHost {
   safeDns?: SafeDnsService;
   /** Clipboard auto-clear, where the host runs it. */
   clipboard?: ClipboardService;
+  /** Credential guardrails, where the host runs them. */
+  credentials?: CredentialGuardService;
 }
 
 export type Handler = (params: unknown) => Promise<unknown>;
 
-const TOGGLE_KEYS: HomeToggle["key"][] = ["watchEnabled", "onAccessScan", "ransomwareWatch", "networkWatch", "cloudLookup", "safeDns", "clipboardGuard"];
+const TOGGLE_KEYS: HomeToggle["key"][] = ["watchEnabled", "onAccessScan", "ransomwareWatch", "networkWatch", "cloudLookup", "safeDns", "clipboardGuard", "credentialGuard"];
 
 /** Only the Home toggles can be changed over IPC, and only with booleans. */
 export function toggleChanges(params: unknown): Partial<Record<HomeToggle["key"], boolean>> {
@@ -88,6 +91,18 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
     "clipboard.get": async () => requireClipboard(host).status(),
     "clipboard.copy_secret": async (params) => requireClipboard(host).copySecret((params as { text?: unknown } | undefined)?.text),
     "clipboard.clear_now": async () => requireClipboard(host).clearNow(),
+    "credentials.get": async () => requireCredentials(host).status(),
+    ...Object.fromEntries(
+      (["suspend", "resume", "terminate", "allow", "dismiss"] as const).map((action) => [
+        `credentials.${action}`,
+        async (params: unknown) => {
+          const status = await requireCredentials(host)[action]((params as { id?: unknown } | undefined)?.id);
+          await changed();
+          return status;
+        },
+      ]),
+    ),
+    "credentials.untrust": async (params) => requireCredentials(host).untrust((params as { exe?: unknown } | undefined)?.exe),
     "safedns.get": async () => {
       if (!host.safeDns) throw new IpcError("unavailable", "Safe DNS isn't running here.");
       return host.safeDns.status();
@@ -131,4 +146,9 @@ function requireKeyboards(host: CoreHost): KeyboardService {
 function requireClipboard(host: CoreHost): ClipboardService {
   if (!host.clipboard) throw new IpcError("unavailable", "Clipboard auto-clear isn't running here.");
   return host.clipboard;
+}
+
+function requireCredentials(host: CoreHost): CredentialGuardService {
+  if (!host.credentials) throw new IpcError("unavailable", "Credential guardrails aren't running here.");
+  return host.credentials;
 }

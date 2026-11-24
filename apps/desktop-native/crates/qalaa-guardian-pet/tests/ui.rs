@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use i_slint_backend_testing::ElementHandle;
 use qalaa_guardian_pet::mood::Mood;
-use qalaa_guardian_pet::{actions, mood_text, text, Lang, PetWindow};
+use qalaa_guardian_pet::{actions, credential_actions, mood_text, text, Lang, PetWindow};
 use slint::{ComponentHandle, ModelRc, VecModel};
 
 #[test]
@@ -56,6 +56,19 @@ fn pet_window() {
     assert_eq!(scan[0].accessible_enabled(), Some(true));
     scan[0].invoke_accessible_default_action();
     assert_eq!(ran.borrow().last().map(String::as_str), Some("scan.quick"));
+
+    // A credential alert: the card's first three buttons answer it.
+    pet.set_actions(ModelRc::from(Rc::new(VecModel::from(credential_actions(Lang::En, true)))));
+    for (label, id) in [
+        ("Pause this program", "credentials.suspend"),
+        ("Stop this program", "credentials.terminate"),
+        ("Allow this program", "credentials.allow"),
+    ] {
+        let button: Vec<_> = ElementHandle::find_by_accessible_label(&pet, label).collect();
+        assert_eq!(button.len(), 1, "{label}");
+        button[0].invoke_accessible_default_action();
+        assert_eq!(ran.borrow().last().map(String::as_str), Some(id));
+    }
 
     // Every skin builds and draws.
     for skin in qalaa_guardian_pet::SKINS {

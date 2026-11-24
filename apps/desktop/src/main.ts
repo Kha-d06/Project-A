@@ -71,6 +71,7 @@ import * as tools from "./engine/tools";
 import * as mail from "./engine/mail";
 import { type CoreHost, type Emit, createHandlers } from "./core/handlers";
 import { ClipboardService, POLL_MS } from "./core/clipboard-service";
+import { CredentialGuardService, pollMs as credentialPollMs } from "./core/credential-guard-service";
 import { KeyboardService } from "./core/keyboard-service";
 import { ListenerService } from "./core/listener-service";
 import { SafeDnsService } from "./core/safe-dns-service";
@@ -364,6 +365,16 @@ function notify(title: string, body: string) {
 }
 
 /** Start answering the on-access helper's verdict requests (Linux only). */
+/** Every open is seen only while the fanotify helper is actually running and answering us. */
+function syncCredentialMode() {
+  if (!credentialService) return;
+  if (!onAccess) return credentialService.configure({ everyOpen: false });
+  void fanotify
+    .onAccessStatus()
+    .then((status) => credentialService?.configure({ everyOpen: onAccess !== null && status.state === "active" }))
+    .catch(() => credentialService?.configure({ everyOpen: false }));
+}
+
 async function startOnAccessServer(): Promise<void> {
   if (onAccess || !fanotify.onAccessSupported()) return;
   // Behavioural ransomware blocking watches opens inside the protected folders.
@@ -378,6 +389,7 @@ async function startOnAccessServer(): Promise<void> {
       notify("Dangerous file blocked", `Qalaa stopped a program from opening ${basename(path)}.`);
       void record(result, true);
     },
+    onOpen: (pid, path) => void credentialService?.observe(pid, path).catch(() => undefined),
     behaviour: {
       feed: (pid, path) => (underAny(path, roots()) ? ransomwareBurst!.feed({ pid, path, at: Date.now() }) : null),
     },
@@ -392,11 +404,13 @@ async function startOnAccessServer(): Promise<void> {
     logEvent("on-access", "warning", `Could not start the on-access responder: ${String(error)}`);
     onAccess = null;
   });
+  syncCredentialMode();
 }
 
 async function stopOnAccessServer(): Promise<void> {
   await onAccess?.stop().catch(() => {});
   onAccess = null;
+  credentialService?.configure({ everyOpen: false });
 }
 
 /** Gather {path,size} for every file under a folder the person picks. */
@@ -1204,6 +1218,7 @@ let listenerService: ListenerService | null = null;
 let keyboardService: KeyboardService | null = null;
 let safeDnsService: SafeDnsService | null = null;
 let clipboardService: ClipboardService | null = null;
+let credentialService: CredentialGuardService | null = null;
 
 const electronHost: CoreHost = {
   version: app.getVersion(),
@@ -1232,6 +1247,7 @@ const electronHost: CoreHost = {
       newKeyboards: keyboardService?.newCount() ?? 0,
       safeDns: safeDnsService ? { on: safeDnsService.isOn(), available: safeDnsService.isSupported() } : undefined,
       clipboardGuard: { on: settings.clipboardGuard, available: true },
+      credentialGuard: credentialService ? { on: settings.credentialGuard, available: credentialService.isSupported(), pending: credentialService.pendingCount() } : undefined,
     };
   },
   get listeners() {
@@ -1246,11 +1262,15 @@ const electronHost: CoreHost = {
   get clipboard() {
     return clipboardService ?? undefined;
   },
+  get credentials() {
+    return credentialService ?? undefined;
+  },
   async updateToggles(changes) {
     const { onAccessScan, ...rest } = changes;
     settings = { ...settings, ...rest };
     await saveSettings(join(dataDir(), "settings.json"), settings);
     clipboardService?.configure({ enabled: settings.clipboardGuard });
+    credentialService?.configure({ enabled: settings.credentialGuard });
     applyWatching();
     if (onAccessScan !== undefined) await setOnAccess(onAccessScan);
   },
@@ -1289,6 +1309,23 @@ async function startCoreIpc() {
   );
   clipboardService.configure({ enabled: settings.clipboardGuard, ttlSeconds: settings.clipboardTtl });
   setInterval(() => void clipboardService?.poll().catch(() => undefined), POLL_MS).unref();
+  credentialService = new CredentialGuardService({
+    file: join(dataDir(), "credential-guard.json"),
+    home: app.getPath("home"),
+    platform: process.platform,
+    emit: (event, payload) => {
+      coreEmit(event, payload);
+      const c = payload as { kind?: string; program?: string; file?: string };
+      if (event === "alert" && c.kind === "credential") {
+        notify("A program opened your credentials", `${c.program ?? "A program"} opened ${c.file ?? "a credential file"}. If you don't recognise it, pause it from Qalaa.`);
+        logEvent("security", "alert", `Credential read: ${c.program ?? "unknown"} opened ${c.file ?? "a credential file"}`);
+      }
+    },
+  });
+  await credentialService.load();
+  credentialService.configure({ enabled: settings.credentialGuard });
+  syncCredentialMode();
+  if (credentialService.isSupported()) setInterval(() => void credentialService?.poll().catch(() => undefined), credentialPollMs(process.platform)).unref();
   const handlers = createHandlers(electronHost, coreEmit);
   coreIpc = await startIpcServer(ipcPaths(process.platform, process.env, dataDir()), handlers, { version: app.getVersion() });
   const check = () => void listenerService?.check().catch(() => undefined);

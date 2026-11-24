@@ -15,6 +15,7 @@ import { join } from "node:path";
 
 import { type CoreHost, type Emit, createHandlers } from "./core/handlers";
 import { ClipboardService, POLL_MS } from "./core/clipboard-service";
+import { CredentialGuardService, pollMs as credentialPollMs } from "./core/credential-guard-service";
 import { KeyboardService } from "./core/keyboard-service";
 import { ListenerService } from "./core/listener-service";
 import { SafeDnsService } from "./core/safe-dns-service";
@@ -47,7 +48,7 @@ async function mtime(file: string): Promise<string | null> {
   }
 }
 
-export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService }> {
+export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService }> {
   const settingsFile = join(dataDir, "settings.json");
   const historyFile = join(dataDir, "history.json");
   let settings = await loadSettings(settingsFile, defaultSettings(join(homedir(), "Downloads"), [], hostname().slice(0, 80) || "This computer"));
@@ -69,6 +70,9 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
   await safeDns.load();
   const clipboard = new ClipboardService(systemClipboard(), emit);
   clipboard.configure({ enabled: settings.clipboardGuard, ttlSeconds: settings.clipboardTtl });
+  const credentials = new CredentialGuardService({ file: join(dataDir, "credential-guard.json"), home: homedir(), platform: process.platform, emit });
+  await credentials.load();
+  credentials.configure({ enabled: settings.credentialGuard });
   const clamBinary = await findClam();
   const sevenZip = await findSevenZip();
 
@@ -79,6 +83,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     keyboards,
     safeDns,
     clipboard,
+    credentials,
     async homeInput(): Promise<HomeInput> {
       const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       return {
@@ -104,12 +109,14 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
         newKeyboards: keyboards.newCount(),
         safeDns: { on: safeDns.isOn(), available: safeDns.isSupported() },
         clipboardGuard: { on: settings.clipboardGuard, available: clipboard.status().supported },
+        credentialGuard: { on: settings.credentialGuard, available: credentials.isSupported(), pending: credentials.pendingCount() },
       };
     },
     async updateToggles(changes) {
       settings = { ...settings, ...changes };
       await saveSettings(settingsFile, settings);
       clipboard.configure({ enabled: settings.clipboardGuard });
+      credentials.configure({ enabled: settings.credentialGuard });
     },
     async quickScan() {
       const totals = { scanned: 0, malicious: 0, suspicious: 0 };
@@ -163,6 +170,9 @@ export async function runDaemon(env: NodeJS.ProcessEnv = process.env) {
   void host.safeDns.resume();
   // Clipboard auto-clear: a cheap look every couple of seconds while it's on.
   setInterval(() => void host.clipboard.poll().catch(() => undefined), POLL_MS).unref();
+  // Credential guardrails: who has SSH keys, .env files and browser secrets open.
+  const checkCredentials = () => void host.credentials.poll().then((found) => (found.length ? handlers["home.get"]?.(undefined).then((m) => emit("home.changed", m)) : undefined)).catch(() => undefined);
+  if (host.credentials.isSupported()) setInterval(checkCredentials, credentialPollMs(process.platform)).unref();
   setInterval(() => void host.safeDns.refreshDomains().catch(() => undefined), 60 * 60 * 1000).unref();
   const stop = () => void server?.close().then(() => process.exit(0));
   process.on("SIGINT", stop);

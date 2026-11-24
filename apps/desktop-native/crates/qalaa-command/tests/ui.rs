@@ -173,6 +173,44 @@ fn command_centre_interface() {
     app.set_clip_text("".into());
     assert!(labelled(&app, "Clear now").is_empty());
 
+    // --- Credentials: who opened what, with Pause / Stop / Allow / Dismiss.
+    let status: qalaa_ipc::CredentialStatus = serde_json::from_value(serde_json::json!({
+        "supported": true, "enabled": true, "mode": "polling", "trusted": [],
+        "incidents": [
+            {"id": "c1", "pid": 900, "program": "python3", "exe": "/usr/bin/python3", "credential": "ssh_key", "file": "~/.ssh/id_rsa", "at": "2026-11-24T09:59:00Z", "state": "open"},
+            {"id": "c2", "pid": 901, "program": "node", "exe": "/usr/bin/node", "credential": "env_file", "file": "~/app/.env", "at": "2026-11-24T09:58:00Z", "state": "suspended"}
+        ]
+    }))
+    .expect("status");
+    let (rows, mode) = qalaa_command::view::credentials_view(&status, now, Lang::En);
+    qalaa_command::set_credentials(&app, &rows, &mode);
+    app.set_page("credentials".into());
+    let answers = Rc::new(RefCell::new(Vec::<String>::new()));
+    {
+        let answers = Rc::clone(&answers);
+        app.on_cred_action(move |id, action| answers.borrow_mut().push(format!("{action} {id}")));
+    }
+    labelled(&app, "Pause: python3 opened ~/.ssh/id_rsa")[0].invoke_accessible_default_action();
+    labelled(&app, "Resume: node opened ~/app/.env  · Paused")[0].invoke_accessible_default_action();
+    labelled(&app, "Stop: python3 opened ~/.ssh/id_rsa")[0].invoke_accessible_default_action();
+    labelled(&app, "Allow program: node opened ~/app/.env  · Paused")[0].invoke_accessible_default_action();
+    assert_eq!(
+        *answers.borrow(),
+        vec![
+            "suspend c1".to_owned(),
+            "resume c2".to_owned(),
+            "terminate c1".to_owned(),
+            "allow c2".to_owned()
+        ]
+    );
+    assert!(
+        labelled(&app, "Pause: node opened ~/app/.env  · Paused").is_empty(),
+        "a paused program offers Resume"
+    );
+    assert_eq!(labelled(&app, &mode).len(), 1, "the page says how complete the watching is");
+    qalaa_command::set_credentials(&app, &[], &mode);
+    assert_eq!(labelled(&app, "No unexpected program has opened your credentials.").len(), 1);
+
     // --- About carries the Slint credit the royalty-free licence requires.
     app.set_page("about".into());
     assert!(ElementHandle::find_by_element_type_name(&app, "AboutSlint").count() >= 1);

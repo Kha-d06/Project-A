@@ -105,6 +105,8 @@ export interface OnAccessOptions {
   behaviour?: BehaviourHook;
   /** Called when a process is frozen for ransomware behaviour. */
   onHalt?: (pid: number, reason: string, files: number) => void;
+  /** Sees every open (pid and path) before any verdict, for credential guardrails. Never blocks. */
+  onOpen?: (pid: number, path: string) => void;
   /** Milliseconds to spend on one verdict before failing open. */
   timeoutMs?: number;
 }
@@ -152,6 +154,13 @@ export class OnAccessServer {
         // the helper went away; nothing to do
       }
     };
+    if (this.options.onOpen && typeof request.pid === "number" && request.pid > 0) {
+      try {
+        this.options.onOpen(request.pid, request.path);
+      } catch {
+        // an observer must never hold up or break the open
+      }
+    }
     // Behavioural ransomware check runs on every open, regardless of the file verdict.
     if (this.options.behaviour && typeof request.pid === "number" && request.pid > 0) {
       const halt = this.options.behaviour.feed(request.pid, request.path);

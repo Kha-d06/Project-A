@@ -48,6 +48,21 @@ const MENU_LINK = "sentinel-scan-link";
 const MENU_PAGE = "sentinel-scan-page";
 const WARNING_VERDICTS = new Set(["dangerous", "suspicious", "caution", "blocked_by_you", "blocked_by_family"]);
 
+// Settings live in one stored object that several flows read, change and write back:
+// messages from the options page and popup, account refreshes (sent by every options
+// page as it opens), the screen-time and blocklist alarms. Each flow also applies the
+// result (network rules, content scripts). If two of them interleave, one writes back
+// a stale copy over the other's change (for example turning the assistant back off),
+// or applies rules from an out-of-date copy. So they run one at a time, in order.
+let settingsQueue: Promise<unknown> = Promise.resolve();
+function serialized<T>(task: () => Promise<T>): Promise<T> {
+  const run = settingsQueue.then(task, task);
+  settingsQueue = run.catch(() => undefined);
+  return run;
+}
+/** Messages that change settings, the account or the rules applied from them. */
+const SERIALIZED_MESSAGES = new Set(["settings", "refresh-account", "enroll", "link", "unlink", "apply-rules"]);
+
 /** Last result per tab, for the popup. Lost if the worker restarts; the popup then re-checks. */
 const tabResults = new Map<number, { url: string; result: CheckResult | null }>();
 /** The assistant's last page summary per tab, so questions can be answered from it. */
@@ -651,7 +666,8 @@ chrome.runtime.onMessage.addListener((request: Request, sender, sendResponse) =>
   // Only this extension's own pages and content scripts may ask; web pages cannot
   // message it because the manifest declares no externally_connectable.
   if (sender.id !== chrome.runtime.id) return false;
-  handle(request, sender).then(
+  const work = SERIALIZED_MESSAGES.has(request.type) ? serialized(() => handle(request, sender)) : handle(request, sender);
+  work.then(
     (data) => sendResponse({ ok: true, data } satisfies Response),
     (error: unknown) => sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) } satisfies Response),
   );
@@ -660,12 +676,13 @@ chrome.runtime.onMessage.addListener((request: Request, sender, sendResponse) =>
 
 // Granting or removing site access changes which rules can run (SafeSearch).
 chrome.permissions.onAdded.addListener(() => {
-  void loadSettings().then(applyRules);
+  void serialized(() => loadSettings().then(applyRules));
 });
 
 chrome.permissions.onRemoved.addListener(() => {
-  void loadSettings().then(applyRules);
-  void loadSettings().then(async (settings) => {
+  void serialized(async () => {
+    const settings = await loadSettings();
+    await applyRules(settings);
     const changes: Partial<Settings> = {};
     if (settings.hoverChecks && !chrome.scripting) changes.hoverChecks = false;
     if (settings.assistant && (!chrome.scripting || !chrome.cookies)) changes.assistant = false;
@@ -674,9 +691,10 @@ chrome.permissions.onRemoved.addListener(() => {
 });
 
 chrome.alarms?.onAlarm.addListener((alarm) => {
-  if (alarm.name === SCREEN_TIME_ALARM) void updateScreenTime(true);
+  if (alarm.name === SCREEN_TIME_ALARM) void serialized(() => updateScreenTime(true));
   if (alarm.name === BLOCKLIST_ALARM) {
-    void loadSettings().then(async (settings) => {
+    void serialized(async () => {
+      const settings = await loadSettings();
       await refreshBlocklist(settings, true);
       await refreshAccount(settings);
     });
@@ -702,5 +720,5 @@ async function start(reason?: string) {
   if (reason === "install") await chrome.tabs.create({ url: chrome.runtime.getURL("welcome.html") });
 }
 
-chrome.runtime.onInstalled.addListener(({ reason }) => void start(reason));
-chrome.runtime.onStartup.addListener(() => void start());
+chrome.runtime.onInstalled.addListener(({ reason }) => void serialized(() => start(reason)));
+chrome.runtime.onStartup.addListener(() => void serialized(() => start()));

@@ -30,6 +30,9 @@ const context = await chromium.launchPersistentContext(await mkdtemp(join(tmpdir
   headless: true,
   args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`],
 });
+// The options page attaches its controls' listeners only after it has refreshed the
+// account and rendered (the account box is filled last), so wait for that before using them.
+const optionsReady = (page) => page.locator("#account > *").first().waitFor();
 const shot = async (page, name) => shots && page.screenshot({ path: join(shots, `${name}.png`), fullPage: false });
 
 const PHISH = `<!doctype html><html><head><title>Sign in</title>
@@ -174,6 +177,7 @@ step("third-party tracker blocked when tracker blocking is on");
 // 6. Appearance: dark and light chosen in Options, on the extension's pages and the assistant.
 const themePage = await context.newPage();
 await themePage.goto(`chrome-extension://${extensionId}/options.html`);
+await optionsReady(themePage);
 const pageCanvas = () => themePage.evaluate(() => getComputedStyle(document.body).backgroundColor);
 await themePage.selectOption("#theme", "dark");
 await themePage.waitForFunction(() => document.documentElement.dataset.theme === "dark");

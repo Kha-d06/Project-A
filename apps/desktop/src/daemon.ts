@@ -124,7 +124,7 @@ export async function runDaemon(env: NodeJS.ProcessEnv = process.env) {
   const dataDir = dataDirFor(process.platform, env);
   const host = await createDaemonHost(dataDir);
   let server: Awaited<ReturnType<typeof startIpcServer>> | null = null;
-  const handlers = createHandlers(host, (model) => server?.broadcast("home.changed", model));
+  const handlers = createHandlers(host, (event, payload) => server?.broadcast(event, payload));
   server = await startIpcServer(ipcPaths(process.platform, env, dataDir), handlers, { version: host.version });
   const stop = () => void server?.close().then(() => process.exit(0));
   process.on("SIGINT", stop);

@@ -136,7 +136,7 @@ describe.skipIf(process.platform === "win32")("daemon over a Unix socket", () =>
 
     const host = await createDaemonHost(dataDir);
     let server: IpcServer | null = null;
-    const handlers = createHandlers(host, (model) => server?.broadcast("home.changed", model));
+    const handlers = createHandlers(host, (event, payload) => server?.broadcast(event, payload));
     server = await startIpcServer(paths, handlers, { version: host.version });
     servers.push(server);
 
@@ -167,6 +167,10 @@ describe.skipIf(process.platform === "win32")("daemon over a Unix socket", () =>
 
     const scan = (await client.call("scan.quick")).result as { scanned: number };
     expect(scan.scanned).toBe(1);
+    // The Guardian pet reacts to these.
+    const names = client.events.map((e) => e.event);
+    expect(names.indexOf("scan.started")).toBeLessThan(names.indexOf("scan.finished"));
+    expect(client.events.find((e) => e.event === "scan.finished")).toMatchObject({ payload: { scanned: 1, malicious: 0, suspicious: 0 } });
     expect(JSON.parse(await readFile(join(dataDir, "history.json"), "utf8"))).toHaveLength(1);
 
     // A second service on the same endpoint refuses to start.

@@ -32,11 +32,14 @@ export function toggleChanges(params: unknown): Partial<Record<HomeToggle["key"]
   return changes;
 }
 
-export function createHandlers(host: CoreHost, onChange: (model: HomeModel) => void): Record<string, Handler> {
+/** Events pushed to every client (the native window and the Guardian pet). */
+export type Emit = (event: "home.changed" | "scan.started" | "scan.finished" | "threat.blocked" | "alert", payload: unknown) => void;
+
+export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handler> {
   const home = async () => buildHome(await host.homeInput());
   const changed = async () => {
     const model = await home();
-    onChange(model);
+    emit("home.changed", model);
     return model;
   };
   return {
@@ -51,7 +54,9 @@ export function createHandlers(host: CoreHost, onChange: (model: HomeModel) => v
       return changed();
     },
     "scan.quick": async () => {
+      emit("scan.started", {});
       const totals = await host.quickScan();
+      emit("scan.finished", totals);
       await changed();
       return totals;
     },

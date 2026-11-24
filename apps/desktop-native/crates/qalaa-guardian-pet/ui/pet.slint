@@ -1,0 +1,248 @@
+// Qalaa Guardian: a small original mascot that floats above other windows.
+// Everything here is drawn with vector shapes; no bitmaps, no browser engine.
+import { Button } from "std-widgets.slint";
+
+export global Look {
+    in property <bool> dark: false;
+    out property <color> card: dark ? #131A26 : #FFFFFF;
+    out property <color> line: dark ? #243044 : #E2E8F0;
+    out property <color> ink: dark ? #E6EAF2 : #0F172A;
+    out property <color> muted: dark ? #94A3B8 : #475569;
+    public pure function mood-color(mood: string) -> color {
+        if mood == "alert" { return #EF4444; }
+        if mood == "defend" { return #3B82F6; }
+        if mood == "scan" { return #3B82F6; }
+        if mood == "happy" { return #10B981; }
+        if mood == "sleep" { return #94A3B8; }
+        return #10B981;
+    }
+}
+
+// Eyes that show the mood: open, closed (sleep), smiling (happy), wide (alert).
+component Eyes inherits Rectangle {
+    in property <string> mood;
+    in property <length> spacing: 22px;
+    in property <length> size: 12px;
+    for side in 2: Rectangle {
+        x: parent.width / 2 + (side == 0 ? -1 : 1) * spacing / 2 - self.width / 2;
+        y: (parent.height - self.height) / 2;
+        width: mood == "alert" ? size * 1.3 : size;
+        height: mood == "sleep" || mood == "happy" ? 3px : (mood == "alert" ? size * 1.3 : size);
+        border-radius: self.height / 2;
+        background: mood == "scan" ? #3B82F6 : #0F172A;
+        animate width, height { duration: 160ms; easing: cubic-bezier(0.23, 1, 0.32, 1); }
+    }
+}
+
+component MiniSentinel inherits Rectangle {
+    in property <string> mood;
+    // A small fort tower: crenellated top, body, gate.
+    for i in 3: Rectangle {
+        x: parent.width * 0.2 + i * parent.width * 0.24;
+        y: parent.height * 0.12;
+        width: parent.width * 0.14;
+        height: parent.height * 0.14;
+        background: #E2D4B8;
+        border-radius: 2px;
+    }
+    Rectangle {
+        x: parent.width * 0.2;
+        y: parent.height * 0.24;
+        width: parent.width * 0.6;
+        height: parent.height * 0.62;
+        background: #E9DEC6;
+        border-radius: 6px;
+        border-width: 2px;
+        border-color: Look.mood-color(mood);
+        Eyes { y: parent.height * 0.18; height: parent.height * 0.3; mood: mood; spacing: 20px; size: 10px; }
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: parent.height - self.height;
+            width: parent.width * 0.3;
+            height: parent.height * 0.3;
+            background: #8A6A3D;
+            border-radius: self.width / 2;
+        }
+    }
+}
+
+component CyberOwl inherits Rectangle {
+    in property <string> mood;
+    // Ear tufts.
+    for side in 2: Path {
+        x: side == 0 ? parent.width * 0.18 : parent.width * 0.62;
+        y: parent.height * 0.08;
+        width: parent.width * 0.2;
+        height: parent.height * 0.2;
+        fill: #5B6B82;
+        commands: "M 0 100 L 50 0 L 100 100 Z";
+    }
+    Rectangle {
+        x: parent.width * 0.14;
+        y: parent.height * 0.18;
+        width: parent.width * 0.72;
+        height: parent.height * 0.72;
+        border-radius: self.width / 2;
+        background: #6B7C95;
+        border-width: 2px;
+        border-color: Look.mood-color(mood);
+        for side in 2: Rectangle {
+            x: side == 0 ? parent.width * 0.12 : parent.width * 0.5;
+            y: parent.height * 0.18;
+            width: parent.width * 0.38;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: #F1F5F9;
+        }
+        Eyes { y: parent.height * 0.18; height: parent.width * 0.38; mood: mood; spacing: parent.width * 0.38; size: 9px; }
+        Path {
+            x: parent.width * 0.42;
+            y: parent.height * 0.58;
+            width: parent.width * 0.16;
+            height: parent.height * 0.12;
+            fill: #F59E0B;
+            commands: "M 0 0 L 100 0 L 50 100 Z";
+        }
+    }
+}
+
+component ShieldFox inherits Rectangle {
+    in property <string> mood;
+    for side in 2: Path {
+        x: side == 0 ? parent.width * 0.16 : parent.width * 0.6;
+        y: parent.height * 0.04;
+        width: parent.width * 0.24;
+        height: parent.height * 0.28;
+        fill: #D97706;
+        commands: "M 0 100 L 40 0 L 100 100 Z";
+    }
+    // A shield-shaped head.
+    Path {
+        x: parent.width * 0.14;
+        y: parent.height * 0.18;
+        width: parent.width * 0.72;
+        height: parent.height * 0.74;
+        fill: #F59E0B;
+        stroke: Look.mood-color(mood);
+        stroke-width: 2px;
+        commands: "M 0 0 L 100 0 L 100 45 Q 100 85 50 100 Q 0 85 0 45 Z";
+    }
+    Path {
+        x: parent.width * 0.3;
+        y: parent.height * 0.5;
+        width: parent.width * 0.4;
+        height: parent.height * 0.36;
+        fill: #FFF7ED;
+        commands: "M 0 0 L 100 0 Q 90 70 50 100 Q 10 70 0 0 Z";
+    }
+    Eyes { x: parent.width * 0.14; y: parent.height * 0.3; width: parent.width * 0.72; height: parent.height * 0.2; mood: mood; spacing: 26px; size: 9px; }
+}
+
+component Sprite inherits Rectangle {
+    in property <string> skin: "mini-sentinel";
+    in property <string> mood: "idle";
+    in property <string> label;
+    accessible-role: button;
+    accessible-label: label;
+    if skin == "cyber-owl": CyberOwl { width: 100%; height: 100%; mood: mood; }
+    if skin == "shield-fox": ShieldFox { width: 100%; height: 100%; mood: mood; }
+    if skin != "cyber-owl" && skin != "shield-fox": MiniSentinel { width: 100%; height: 100%; mood: mood; }
+    // Badges for the moods that need words-free emphasis.
+    if mood == "alert": Rectangle {
+        x: parent.width - self.width - 2px;
+        y: 2px;
+        width: 22px;
+        height: 22px;
+        border-radius: 11px;
+        background: #EF4444;
+        Text { text: "!"; color: white; font-weight: 700; font-size: 15px; }
+    }
+    if mood == "defend": Path {
+        x: parent.width - 26px;
+        y: 2px;
+        width: 22px;
+        height: 24px;
+        fill: #3B82F6;
+        commands: "M 0 0 L 100 0 L 100 45 Q 100 85 50 100 Q 0 85 0 45 Z";
+    }
+    if mood == "sleep": Text { x: parent.width - 22px; y: 0px; text: "z"; color: #94A3B8; font-size: 18px; }
+}
+
+export struct Action { id: string, label: string, enabled: bool }
+
+export component PetWindow inherits Window {
+    no-frame: true;
+    always-on-top: true;
+    background: transparent;
+    title: "Qalaa Guardian";
+
+    in property <string> skin;
+    in property <string> mood;
+    in property <string> mood-text;
+    in property <string> status-text;
+    in property <string> note;
+    in property <string> sprite-label;
+    in property <bool> rtl;
+    in property <length> sprite-x;
+    in property <length> sprite-y;
+    in property <length> sprite-size: 96px;
+    in property <bool> popover-open;
+    in property <length> popover-x;
+    in property <length> popover-y;
+    in property <length> popover-width: 280px;
+    in property <length> popover-height: 300px;
+    in property <[Action]> actions;
+    callback sprite-clicked();
+    callback action(string);
+    callback close-popover();
+    callback drain-events();
+    callback connection-changed(bool);
+
+    sprite := Sprite {
+        x: sprite-x;
+        y: sprite-y;
+        width: sprite-size;
+        height: sprite-size;
+        skin: skin;
+        mood: mood;
+        label: sprite-label;
+        accessible-action-default => { root.sprite-clicked(); }
+        TouchArea { clicked => { root.sprite-clicked(); } }
+    }
+
+    if popover-open: Rectangle {
+        x: popover-x;
+        y: popover-y;
+        width: popover-width;
+        height: popover-height;
+        background: Look.card;
+        border-color: Look.line;
+        border-width: 1px;
+        border-radius: 12px;
+        accessible-role: groupbox;
+        accessible-label: mood-text;
+        VerticalLayout {
+            padding: 14px;
+            spacing: 8px;
+            HorizontalLayout {
+                Text {
+                    text: mood-text;
+                    font-weight: 600;
+                    font-size: 15px;
+                    color: Look.mood-color(mood);
+                    horizontal-alignment: rtl ? right : left;
+                    horizontal-stretch: 1;
+                }
+                Button { text: "×"; accessible-label: "Close"; horizontal-stretch: 0; clicked => { root.close-popover(); } }
+            }
+            Text { text: status-text; color: Look.muted; font-size: 13px; wrap: word-wrap; horizontal-alignment: rtl ? right : left; }
+            for a in actions: Button {
+                text: a.label;
+                enabled: a.enabled;
+                accessible-label: a.label;
+                clicked => { root.action(a.id); }
+            }
+            if note != "": Text { text: note; color: Look.muted; font-size: 11px; wrap: word-wrap; horizontal-alignment: rtl ? right : left; }
+        }
+    }
+}

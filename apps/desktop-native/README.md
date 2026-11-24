@@ -7,6 +7,7 @@ page shows the "Made with Slint" credit it requires).
 ```
 crates/qalaa-ipc       client for qalaa-ipc, the local protocol to the background service
 crates/qalaa-command   the command centre window (Home today; more views to come)
+crates/qalaa-guardian-pet   Qalaa Guardian, the optional desktop mascot with quick actions
 ```
 
 ## How it fits together
@@ -42,7 +43,33 @@ cargo test
 `tests/ui.rs` drives the real interface headlessly through Slint's testing
 backend and finds elements by their accessible labels, as a screen reader does.
 
+## Qalaa Guardian
+
+`cargo run -p qalaa-guardian-pet -- --skin cyber-owl` (also `shield-fox`,
+`mini-sentinel`; `--lang ar`). It only runs when started; nothing launches it
+by default.
+
+- A frameless, always-on-top window exactly the size of the pet (plus the card
+  when open), resting above the taskbar in the corner of the current monitor.
+- Click-through over its transparent margins via winit's `set_cursor_hittest`:
+  `WS_EX_TRANSPARENT` on Windows, `ignoresMouseEvents` on macOS, the X11 input
+  shape or Wayland input region on Linux. Hidden from the Windows taskbar.
+- Wayland: runs through XWayland when it's there (always-on-top works on GNOME,
+  KDE and wlroots that way). Without XWayland it opens as a normal window and
+  the card says so.
+- Moods come from the service's events (`scan.started`, `scan.finished`,
+  `threat.blocked`, `alert`) through a pure state machine (`src/mood.rs`) that
+  reports its next deadline, so no timer runs while nothing is happening.
+- Budget, checked in CI by `scripts/pet-budget.sh`: under 30 MB resident and
+  under 1% CPU over 20 idle seconds (measured here: 14.6 MB, 0.00%).
+
 ## Not done yet
+
+- Guardian: no native wlr-layer-shell surface yet (XWayland covers it); the
+  work area is assumed (a 48 px taskbar band) rather than read from the OS; it
+  doesn't yet pause for fullscreen apps; drag-to-move with edge snapping exists
+  as tested geometry but isn't wired to dragging; the ask box and the VPN,
+  camera/mic, SafePay and TOTP actions wait for those service methods.
 
 - Only Home and About are native. Actions that open other views say they are
   still in the classic app.

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/qalaa-ipc", "crates/qalaa-command"]
+members = ["crates/qalaa-ipc", "crates/qalaa-command", "crates/qalaa-guardian-pet"]
 
 [workspace.package]
 version = "0.1.0"

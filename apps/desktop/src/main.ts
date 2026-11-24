@@ -289,6 +289,7 @@ async function record(result: ScanResult, automatic: boolean): Promise<ScanResul
   }
   history = [result, ...history].slice(0, HISTORY_LIMIT);
   void persistHistory();
+  if (automatic && (result.verdict === "malicious" || result.verdict === "suspicious")) coreIpc?.broadcast(quarantined ? "threat.blocked" : "alert", { name: result.name });
   const entry = { ...result, quarantined };
   send("scan-result", entry);
   // Silent mode: still quarantined and listed, just no pop-up.
@@ -1143,6 +1144,7 @@ async function updateSignatures(): Promise<void> {
 }
 
 function onRansomware(alert: RansomwareAlert) {
+  coreIpc?.broadcast("alert", { kind: "ransomware" });
   lastRansomwareAlert = { ...alert, at: new Date().toISOString() };
   send("ransomware-alert", lastRansomwareAlert);
   if (Notification.isSupported()) {
@@ -1230,7 +1232,7 @@ const electronHost: CoreHost = {
 };
 
 async function startCoreIpc() {
-  const handlers = createHandlers(electronHost, (model) => coreIpc?.broadcast("home.changed", model));
+  const handlers = createHandlers(electronHost, (event, payload) => coreIpc?.broadcast(event, payload));
   coreIpc = await startIpcServer(ipcPaths(process.platform, process.env, dataDir()), handlers, { version: app.getVersion() });
 }
 

@@ -34,6 +34,22 @@ class LookupResult(BaseModel):
     reports_awaiting_review: int | None = None
 
 
+class HashCandidate(BaseModel):
+    sha256: str
+    source: str
+
+
+class HashPrefixResult(BaseModel):
+    """Every listed SHA-256 that starts with the prefix. The client compares its
+    full hash against these on the device; the server never learns which file,
+    if any, it was asking about."""
+
+    prefix: str
+    candidates: list[HashCandidate]
+    truncated: bool
+    sources: list[SourceFreshness]
+
+
 class HashList(BaseModel):
     version: str
     generated_at: datetime

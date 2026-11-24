@@ -1,7 +1,8 @@
 /**
  * The Qalaa server, used for three optional things:
  *  - downloading the known-malware fingerprint list (public, nothing sent);
- *  - fingerprint lookups for individual files (opt-in: sends the SHA-256 only);
+ *  - fingerprint lookups for individual files (opt-in: sends only the first six
+ *    characters of the SHA-256, and the match is made on this computer);
  *  - uploading one file for a full server-side scan, only when the user asks.
  */
 import { readFile } from "node:fs/promises";
@@ -22,11 +23,23 @@ export async function fetchSignatures(server: string, fetcher: typeof fetch = fe
   return { version: body.version, sources: body.sources, sha256: body.sha256, updatedAt: body.generated_at };
 }
 
+/** Characters of the SHA-256 sent to the server. Six hex characters match about
+ * 1 in 16.7 million possible hashes, so the server cannot tell which file this is. */
+export const HASH_PREFIX_LENGTH = 6;
+
+/**
+ * k-anonymous reputation lookup: only the first characters of the fingerprint
+ * leave this computer. The server answers with every listed hash that starts
+ * with them, and the full comparison happens here.
+ */
 export async function lookupHash(server: string, sha256: string, fetcher: typeof fetch = fetch): Promise<string | null> {
-  const response = await fetcher(endpoint(server, `/intelligence/hash/${sha256}`), { signal: AbortSignal.timeout(TIMEOUT_MS) });
+  const full = sha256.toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(full)) throw new Error("Not a SHA-256 fingerprint");
+  const prefix = full.slice(0, HASH_PREFIX_LENGTH);
+  const response = await fetcher(endpoint(server, `/intelligence/hash-prefix/${prefix}`), { signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!response.ok) throw new Error(`The server answered ${response.status}`);
-  const body = (await response.json()) as { verdict: string; indicators: { source: string }[] };
-  return body.verdict === "listed" ? (body.indicators[0]?.source ?? "Qalaa threat feeds") : null;
+  const body = (await response.json()) as { candidates: { sha256: string; source: string }[] };
+  return body.candidates.find((candidate) => candidate.sha256.toLowerCase() === full)?.source ?? null;
 }
 
 export async function uploadForFullScan(server: string, path: string, fetcher: typeof fetch = fetch): Promise<string> {

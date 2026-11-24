@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, utcnow
@@ -32,6 +32,13 @@ class ThreatIndicator(Base):
     __table_args__ = (
         UniqueConstraint("source_id", "kind", "value_digest"),
         Index("ix_threat_indicators_kind_value_digest", "kind", "value_digest"),
+        # k-anonymous hash lookups: "value LIKE 'abc123%'" over SHA-256 rows only.
+        Index(
+            "ix_threat_indicators_sha256_prefix",
+            "value",
+            postgresql_where=text("kind = 'sha256'"),
+            postgresql_ops={"value": "text_pattern_ops"},
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)

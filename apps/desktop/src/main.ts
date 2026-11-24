@@ -894,6 +894,12 @@ async function storedMailPassword(): Promise<string | null> {
   }
 }
 
+/** The interface language: the person's choice, or the system's. */
+function uiLanguage(): "en" | "ar" {
+  if (settings.language === "en" || settings.language === "ar") return settings.language;
+  return app.getLocale().toLowerCase().startsWith("ar") ? "ar" : "en";
+}
+
 async function mailStatus() {
   return {
     account: mailConfig.account,
@@ -912,7 +918,7 @@ async function checkMail(): Promise<Awaited<ReturnType<typeof mailStatus>>> {
   if (!mailConfig.account || !password || mailChecking) return mailStatus();
   mailChecking = true;
   try {
-    const { state, added } = await mail.scanInbox(mailConfig.account, password, mailConfig.state, settings.serverUrl);
+    const { state, added } = await mail.scanInbox(mailConfig.account, password, mailConfig.state, settings.serverUrl, { lang: uiLanguage() });
     mailConfig = { ...mailConfig, state };
     await saveJson(mailFile(), mailConfig);
     const worrying = mail.worrying(added);

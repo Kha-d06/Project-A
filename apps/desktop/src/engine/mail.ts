@@ -3,14 +3,30 @@
  *
  * The person connects one mailbox (ideally with an app password). Qalaa opens the
  * inbox read-only, so nothing is moved, deleted or marked as read, and reads new
- * messages since the last check. For each one it sends the sender headers, the
- * mail provider's authentication results, the subject, the text and the links to
- * the Qalaa server's email check, which answers at once and stores nothing.
- * Attachments are never sent. The password stays on this computer, encrypted by
- * the operating system's keychain where one is available.
+ * messages since the last check, and checks each one on this computer with the
+ * same code as the Thunderbird add-on (apps/thunderbird/src/lib/analysis.js):
+ * sender, reply address, the provider's authentication results, link text and
+ * scam wording from the public rule pack. The only thing sent to the Qalaa
+ * server about a message is its bare links (scheme, host and path), for a
+ * threat-list lookup. Bodies, headers and attachments never leave the device.
+ * The password stays on this computer, encrypted by the operating system's
+ * keychain where one is available.
  */
 import { ImapFlow } from "imapflow";
 import { type ParsedMail, simpleParser } from "mailparser";
+
+import {
+  type CompiledPack,
+  type EmailFields,
+  type Finding,
+  type LinkResult,
+  type RulePack,
+  analyzeLocally,
+  compilePack,
+  linkReputationFindings,
+  linksToCheck,
+  verdict as combine,
+} from "../../../thunderbird/src/lib/analysis.js";
 
 export interface MailAccount {
   host: string;
@@ -24,22 +40,13 @@ export interface MailState {
   lastCheck: string | null;
   lastError: string | null;
   results: MailResult[];
+  /** The public rule pack, refreshed once a day. */
+  pack?: RulePack | null;
+  packFetchedAt?: string | null;
 }
 
-export interface EmailCheckRequest {
-  from_header: string;
-  reply_to: string | null;
-  subject: string;
-  authentication_results: string;
-  text: string;
-  links: { href: string; text: string }[];
-}
-
-export interface MailFinding {
-  severity: string;
-  title: string;
-  explanation: string;
-}
+export type EmailCheckRequest = EmailFields;
+export type MailFinding = Pick<Finding, "severity" | "title" | "explanation">;
 
 export interface MailResult {
   uid: number;
@@ -49,6 +56,8 @@ export interface MailResult {
   risk: string;
   summary: string;
   findings: MailFinding[];
+  /** False when the link lookup could not reach the server. */
+  linksChecked?: boolean;
 }
 
 export const EMPTY_STATE: MailState = { uidValidity: null, lastUid: 0, lastCheck: null, lastError: null, results: [] };
@@ -127,15 +136,38 @@ export function toCheckRequest(parsed: ParsedMail): EmailCheckRequest {
   };
 }
 
-export async function checkEmail(server: string, request: EmailCheckRequest, fetcher: typeof fetch = fetch): Promise<{ risk: string; summary: string; findings: MailFinding[] }> {
-  const response = await fetcher(`${server.replace(/\/$/, "")}/api/v1/email/check`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-    signal: AbortSignal.timeout(20_000),
-  });
+const PACK_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const base = (server: string) => `${server.replace(/\/$/, "")}/api/v1/email`;
+
+/** Downloads the public rule pack. Sends nothing about any message. */
+export async function fetchRulePack(server: string, fetcher: typeof fetch = fetch): Promise<RulePack> {
+  const response = await fetcher(`${base(server)}/rules`, { signal: AbortSignal.timeout(20_000) });
   if (!response.ok) throw new Error(`The Qalaa server answered ${response.status}`);
-  return (await response.json()) as { risk: string; summary: string; findings: MailFinding[] };
+  return (await response.json()) as RulePack;
+}
+
+/** Threat-list lookup for bare links only; null when the server could not be reached. */
+export async function checkLinks(server: string, urls: string[], fetcher: typeof fetch = fetch): Promise<LinkResult[] | null> {
+  if (!urls.length) return [];
+  try {
+    const response = await fetcher(`${base(server)}/links`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ urls }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!response.ok) return null;
+    return ((await response.json()) as { results: LinkResult[] }).results;
+  } catch {
+    return null;
+  }
+}
+
+/** Checks one message on the device, plus a link lookup. */
+export async function checkMessage(email: EmailFields, pack: CompiledPack | null, server: string, lang: "en" | "ar", fetcher?: typeof fetch) {
+  const links = await checkLinks(server, linksToCheck(email), fetcher);
+  const result = combine([...analyzeLocally(email, pack, lang), ...linkReputationFindings(links ?? [])], lang);
+  return { ...result, linksChecked: links !== null };
 }
 
 /** Which UIDs to read: new ones since the last check, or the latest few the first time. */
@@ -194,17 +226,30 @@ export async function scanInbox(
   password: string,
   state: MailState,
   server: string,
-  deps: { read?: typeof readNewMessages; fetcher?: typeof fetch; now?: () => Date } = {},
+  deps: { read?: typeof readNewMessages; fetcher?: typeof fetch; now?: () => Date; lang?: "en" | "ar" } = {},
 ): Promise<{ state: MailState; added: MailResult[] }> {
   const read = deps.read ?? readNewMessages;
-  const now = (deps.now ?? (() => new Date()))().toISOString();
+  const clock = (deps.now ?? (() => new Date()))();
+  const now = clock.toISOString();
+  const lang = deps.lang ?? "en";
   try {
+    let pack = state.pack ?? null;
+    let packFetchedAt = state.packFetchedAt ?? null;
+    if (!pack || !packFetchedAt || clock.getTime() - Date.parse(packFetchedAt) > PACK_MAX_AGE_MS) {
+      try {
+        pack = await fetchRulePack(server, deps.fetcher);
+        packFetchedAt = now;
+      } catch {
+        // Keep the previous pack; without one the sender, header and link checks still run.
+      }
+    }
+    const compiled = compilePack(pack);
     const { messages, uidValidity, fresh } = await read(account, password, state);
     const added: MailResult[] = [];
     let lastUid = fresh ? 0 : state.lastUid;
     for (const message of messages.sort((a, b) => a.uid - b.uid)) {
       const parsed = await simpleParser(message.source, { skipImageLinks: true, skipTextToHtml: true });
-      const verdict = await checkEmail(server, toCheckRequest(parsed), deps.fetcher);
+      const verdict = await checkMessage(toCheckRequest(parsed), compiled, server, lang, deps.fetcher);
       added.push({
         uid: message.uid,
         from: parsed.from?.text ?? "",
@@ -212,12 +257,13 @@ export async function scanInbox(
         date: parsed.date ? parsed.date.toISOString() : null,
         risk: verdict.risk,
         summary: verdict.summary,
-        findings: verdict.findings.slice(0, 6),
+        findings: verdict.findings.slice(0, 6).map(({ severity, title, explanation }) => ({ severity, title, explanation })),
+        linksChecked: verdict.linksChecked,
       });
       lastUid = Math.max(lastUid, message.uid);
     }
     return {
-      state: { uidValidity, lastUid, lastCheck: now, lastError: null, results: mergeResults(fresh ? [] : state.results, added) },
+      state: { uidValidity, lastUid, lastCheck: now, lastError: null, results: mergeResults(fresh ? [] : state.results, added), pack, packFetchedAt },
       added,
     };
   } catch (error) {

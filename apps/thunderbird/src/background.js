@@ -1,14 +1,53 @@
 /**
- * Checks each email when it is opened, if the person set a Qalaa server and
- * allowed the add-on to reach it. Results are kept in memory for the popup.
+ * Checks each email when it is opened, on this computer. The rule pack is
+ * downloaded from the Qalaa server once a day; the only thing sent about a
+ * message is its bare links (no query strings), for a reputation lookup.
  */
+import { analyzeLocally, compilePack, linkReputationFindings, linksToCheck, verdict } from "./lib/analysis.js";
+import { language, t } from "./lib/i18n.js";
 import { badgeFor, toCheckRequest } from "./lib/mail.js";
 
+const PACK_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const results = new Map(); // message id -> { state, result?, error? }
+let compiled = null;
 
 async function config() {
-  const stored = await messenger.storage.local.get({ serverUrl: "", autoCheck: true });
-  return stored;
+  return messenger.storage.local.get({ serverUrl: "", autoCheck: true });
+}
+
+/** The cached rule pack, refreshed when older than a day. Never sends anything about mail. */
+async function rulePack(serverUrl) {
+  const { pack, packFetchedAt = 0 } = await messenger.storage.local.get(["pack", "packFetchedAt"]);
+  if (pack && Date.now() - packFetchedAt < PACK_MAX_AGE_MS) {
+    if (!compiled || compiled.version !== pack.version) compiled = compilePack(pack);
+    return compiled;
+  }
+  try {
+    const response = await fetch(`${serverUrl}/api/v1/email/rules`);
+    if (!response.ok) throw new Error(String(response.status));
+    const fresh = await response.json();
+    await messenger.storage.local.set({ pack: fresh, packFetchedAt: Date.now() });
+    compiled = compilePack(fresh);
+  } catch {
+    compiled = pack ? compilePack(pack) : null;
+  }
+  return compiled;
+}
+
+async function linkResults(serverUrl, urls) {
+  if (!urls.length) return { findings: [], checked: true };
+  try {
+    const response = await fetch(`${serverUrl}/api/v1/email/links`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ urls }),
+    });
+    if (!response.ok) throw new Error(String(response.status));
+    const body = await response.json();
+    return { findings: linkReputationFindings(body.results), checked: true };
+  } catch {
+    return { findings: [], checked: false };
+  }
 }
 
 async function setBadge(tabId, risk) {
@@ -25,14 +64,16 @@ export async function checkMessage(message) {
   if (cached && cached.state !== "error") return cached;
   results.set(message.id, { state: "checking" });
   try {
-    const full = await messenger.messages.getFull(message.id);
-    const response = await fetch(`${serverUrl}/api/v1/email/check`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Accept-Language": messenger.i18n.getUILanguage() },
-      body: JSON.stringify(toCheckRequest(full, message)),
-    });
-    if (!response.ok) throw new Error(`the server answered ${response.status}`);
-    const entry = { state: "done", result: await response.json() };
+    const lang = language();
+    const s = t();
+    const email = toCheckRequest(await messenger.messages.getFull(message.id), message);
+    const pack = await rulePack(serverUrl);
+    const links = await linkResults(serverUrl, linksToCheck(email));
+    const result = verdict([...analyzeLocally(email, pack, lang), ...links.findings], lang);
+    const limitations = [];
+    if (!pack) limitations.push(s.rulesUnavailable);
+    if (!links.checked) limitations.push(s.linksUnchecked);
+    const entry = { state: "done", result: { ...result, limitations } };
     results.set(message.id, entry);
     if (results.size > 500) results.delete(results.keys().next().value);
     return entry;

@@ -37,26 +37,54 @@ describe("mail engine", () => {
     expect(fetchRange({ ...EMPTY_STATE, uidValidity: "6", lastUid: 90 }, "7", 100).fresh).toBe(true);
   });
 
-  it("sends the headers, text and links to the server and keeps the verdict", async () => {
-    const sent: Record<string, unknown>[] = [];
-    const fetcher = (async (_url: string, init: RequestInit) => {
-      sent.push(JSON.parse(String(init.body)) as Record<string, unknown>);
-      return new Response(JSON.stringify({ risk: "suspicious", summary: "Warning signs", findings: [{ severity: "high", title: "The sender claims to be PayPal", explanation: "" }] }));
+  it("checks on the device and sends only bare links", async () => {
+    const calls: { url: string; body: string | null }[] = [];
+    const pack = {
+      version: "v1",
+      rules: [{ category: "account_threat", severity: "medium", title: "Threatens that an account will be suspended or closed", explanation: "", title_ar: "تهدّد", explanation_ar: "", patterns: ["\\baccount\\b.{0,30}\\blimited\\b"] }],
+      brands: { paypal: { name: "PayPal", domains: ["paypal.com"] } },
+      shorteners: [],
+    };
+    const fetcher = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, body: init?.body ? String(init.body) : null });
+      if (url.endsWith("/email/rules")) return new Response(JSON.stringify(pack));
+      return new Response(JSON.stringify({ results: [{ url: "https://pay-help.example/login", host: "pay-help.example", findings: [] }] }));
     }) as typeof fetch;
     const read = async () => ({ messages: [{ uid: 42, source: Buffer.from(RAW) }], uidValidity: "7", fresh: true });
-    const { state, added } = await scanInbox({ host: "imap.example.com", port: 993, user: "me" }, "pw", EMPTY_STATE, "https://qalaa.example", { read, fetcher });
+    const now = () => new Date("2026-11-24T10:00:00Z");
+    const { state, added } = await scanInbox({ host: "imap.example.com", port: 993, user: "me" }, "pw", EMPTY_STATE, "https://qalaa.example", { read, fetcher, now });
 
-    expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatchObject({
-      from_header: '"PayPal Service" <notice@pay-help.example>',
-      reply_to: "claims@elsewhere.example",
-      subject: "Your account is limited",
-      links: [{ href: "https://pay-help.example/login", text: "www.paypal.com" }],
-    });
-    expect(String(sent[0]?.authentication_results)).toContain("dmarc=fail");
-    expect(String(sent[0]?.text)).toContain("confirm");
-    expect(state).toMatchObject({ uidValidity: "7", lastUid: 42, lastError: null });
+    expect(calls.map((c) => c.url)).toEqual(["https://qalaa.example/api/v1/email/rules", "https://qalaa.example/api/v1/email/links"]);
+    expect(calls[0]?.body).toBeNull();
+    // The only thing about the message that leaves the device: its bare links.
+    expect(JSON.parse(String(calls[1]?.body))).toEqual({ urls: ["https://pay-help.example/login"] });
+    const sent = calls.map((c) => c.body ?? "").join(" ");
+    for (const secret of ["Your account is limited", "notice@pay-help.example", "dmarc", "confirm"]) expect(sent).not.toContain(secret);
+
+    expect(state).toMatchObject({ uidValidity: "7", lastUid: 42, lastError: null, packFetchedAt: "2026-11-24T10:00:00.000Z" });
+    const [result] = added;
+    expect(result?.risk).toBe("suspicious");
+    expect(result?.linksChecked).toBe(true);
+    expect(result?.findings.map((f) => f.title)).toEqual(
+      expect.arrayContaining([
+        "The sender's domain says this email is not from it",
+        "The sender claims to be PayPal",
+        "A link shows one address but opens another",
+        "Threatens that an account will be suspended or closed",
+      ]),
+    );
     expect(worrying(added).map((r) => r.subject)).toEqual(["Your account is limited"]);
+
+    // The next check within a day reuses the pack; an unreachable server still gives a local verdict.
+    calls.length = 0;
+    const offline = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, body: init?.body ? String(init.body) : null });
+      throw new Error("offline");
+    }) as typeof fetch;
+    const again = await scanInbox({ host: "imap.example.com", port: 993, user: "me" }, "pw", { ...state, uidValidity: null }, "https://qalaa.example", { read, fetcher: offline, now });
+    expect(calls.map((c) => c.url)).toEqual(["https://qalaa.example/api/v1/email/links"]);
+    expect(again.added[0]?.risk).toBe("suspicious");
+    expect(again.added[0]?.linksChecked).toBe(false);
   });
 
   it("keeps a friendly error instead of throwing", async () => {

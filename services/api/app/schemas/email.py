@@ -1,35 +1,51 @@
 from pydantic import BaseModel, Field
 
-MAX_EMAIL_TEXT = 20_000
+MAX_LINKS = 50
 
 
-class EmailLink(BaseModel):
-    href: str = Field(max_length=2048)
-    text: str = Field(default="", max_length=300)
+class LinkCheckRequest(BaseModel):
+    """Bare links found in one email. Clients strip query strings and fragments
+    first; the server strips them again in case one did not."""
+
+    urls: list[str] = Field(max_length=MAX_LINKS)
 
 
-class EmailCheckRequest(BaseModel):
-    """The parts of one email that matter for a check. The text should be the
-    plain-text body (or the HTML with tags removed); attachments are not sent."""
-
-    from_header: str = Field(max_length=500)
-    reply_to: str | None = Field(default=None, max_length=500)
-    subject: str = Field(default="", max_length=1000)
-    authentication_results: str = Field(default="", max_length=4000)
-    text: str = Field(default="", max_length=MAX_EMAIL_TEXT)
-    links: list[EmailLink] = Field(default_factory=list, max_length=200)
-
-
-class EmailFinding(BaseModel):
+class LinkFinding(BaseModel):
     severity: str
     title: str
     explanation: str
 
 
-class EmailCheckOut(BaseModel):
-    risk: str
-    confidence: str
-    summary: str
-    recommendations: list[str]
-    findings: list[EmailFinding]
-    limitations: list[str]
+class LinkResult(BaseModel):
+    url: str
+    host: str
+    findings: list[LinkFinding]
+
+
+class LinkCheckOut(BaseModel):
+    results: list[LinkResult]
+    feed_available: bool
+
+
+class RuleOut(BaseModel):
+    category: str
+    severity: str
+    title: str
+    explanation: str
+    title_ar: str
+    explanation_ar: str
+    patterns: list[str]
+
+
+class BrandOut(BaseModel):
+    name: str
+    domains: list[str]
+
+
+class RulePack(BaseModel):
+    """Everything a client needs to check an email on the device itself."""
+
+    version: str
+    rules: list[RuleOut]
+    brands: dict[str, BrandOut]
+    shorteners: list[str]

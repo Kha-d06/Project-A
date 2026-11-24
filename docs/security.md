@@ -69,6 +69,26 @@ account (cascading to scans and the audit log). [The privacy page](../apps/web/s
 documents exactly what is stored and shared, and must be kept in step with the
 code.
 
+### Lookups that run without the user asking
+
+Background checks by the apps must not reveal what the person has:
+
+- **Email** (desktop mailbox scanner, Thunderbird add-on): every check runs on
+  the device with `apps/thunderbird/src/lib/analysis.js` and the public rule
+  pack from `GET /email/rules`. The only request about a message is
+  `POST /email/links` with bare links (scheme, host and path; the server strips
+  query strings, fragments and user names again). Nothing is stored.
+- **File reputation** (desktop, opt-in): k-anonymity. The client sends the first
+  6 hex characters of the SHA-256 to `GET /intelligence/hash-prefix/{prefix}`,
+  receives every listed hash with that prefix, and compares the full hash
+  locally. The route takes no account or device token.
+- Both routes are dropped from uvicorn's access log
+  (`app/core/private_paths.py`), so an address is never written next to what it
+  looked up. Their rate limits keep only a per-address counter that expires.
+
+The full-hash `GET /intelligence/hash/{sha256}` remains for the website's
+lookup tool, where a person deliberately pastes one fingerprint.
+
 ## API keys and metrics
 
 - **API keys.** Personal keys are 256-bit random values prefixed `snt_`, shown once and stored only as SHA-256 digests. They are revocable and limited to ten per account. Keys authenticate scanning, history and lookups only. Account changes, key management, extension linking and all staff functions require a website session with its CSRF token, so a leaked key cannot take over or escalate an account. Disabling an account stops its keys working immediately.

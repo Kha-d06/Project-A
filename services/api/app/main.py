@@ -30,6 +30,7 @@ from app.api import (
     vpn,
     webhooks,
 )
+from app.core import private_paths
 from app.core.config import get_settings
 from app.core.errors import register_error_handlers
 
@@ -48,6 +49,7 @@ _DOCS_PATHS = (f"{API_PREFIX}/docs", f"{API_PREFIX}/openapi.json")
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    private_paths.install()
     app = FastAPI(
         title="Qalaa API",
         version="0.1.0",

@@ -18,7 +18,14 @@ from app.intel.feeds import COMMUNITY, MALWAREBAZAAR, OPENPHISH, THREATFOX, URLH
 from app.intel.lookup import IndicatorMatch, find_by_host, find_indicators
 from app.models import CommunityReport, ThreatIndicator, ThreatSource
 from app.models.base import utcnow
-from app.schemas.intel import HashList, IndicatorOut, LookupResult, SourceFreshness
+from app.schemas.intel import (
+    HashCandidate,
+    HashList,
+    HashPrefixResult,
+    IndicatorOut,
+    LookupResult,
+    SourceFreshness,
+)
 
 router = APIRouter(prefix="/intelligence", tags=["Threat intelligence"])
 
@@ -27,6 +34,11 @@ HASH_LIST_LIMIT = RateLimit("intel-hash-list", max_requests=12, window_seconds=3
 STIX_LIMIT = RateLimit("intel-stix", max_requests=30, window_seconds=3600)
 HASH_LIST_MAX = 200_000
 _SHA256 = re.compile(r"^[a-f0-9]{64}$")
+_HASH_PREFIX = re.compile(r"^[a-f0-9]{6,8}$")
+# A 6-character prefix covers 1 in 16.7 million of all possible hashes; for the
+# feeds' few hundred thousand entries that is almost always zero or one candidate.
+_MAX_CANDIDATES = 200
+PREFIX_LIMIT = RateLimit("intel-hash-prefix", max_requests=2000, window_seconds=3600)
 _OTHER_HASHES = {32: "MD5", 40: "SHA-1"}
 NOT_A_GUARANTEE = (
     "Not being listed is not a guarantee: these sources only contain what has been "
@@ -120,6 +132,31 @@ def lookup_ip(ip: str, request: Request, db: Db) -> LookupResult:
         "ip",
         find_by_host(db, query),
         _sources(db, (URLHAUS, THREATFOX, OPENPHISH, COMMUNITY)),
+    )
+
+
+@router.get("/hash-prefix/{prefix}", response_model=HashPrefixResult)
+def lookup_hash_prefix(prefix: str, request: Request, db: Db) -> HashPrefixResult:
+    """k-anonymous file reputation. Takes only the first 6 to 8 hexadecimal
+    characters of a SHA-256 and records nothing: no account, no device and no
+    log of the prefix. The rate limit keeps only a per-address counter that expires
+    after an hour."""
+    rate_limit.enforce(PREFIX_LIMIT, client_address(request))
+    value = prefix.strip().lower()
+    if not _HASH_PREFIX.match(value):
+        raise ApiError(422, "invalid_prefix", "Send the first 6 to 8 hexadecimal characters.")
+    rows = db.execute(
+        select(ThreatIndicator.value, ThreatSource.name)
+        .join(ThreatSource)
+        .where(ThreatIndicator.kind == "sha256", ThreatIndicator.value.startswith(value))
+        .limit(_MAX_CANDIDATES + 1)
+    ).all()
+    candidates = [HashCandidate(sha256=sha, source=source) for sha, source in rows]
+    return HashPrefixResult(
+        prefix=value,
+        candidates=candidates[:_MAX_CANDIDATES],
+        truncated=len(candidates) > _MAX_CANDIDATES,
+        sources=_sources(db, (MALWAREBAZAAR, THREATFOX)),
     )
 
 

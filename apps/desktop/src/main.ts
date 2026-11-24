@@ -72,6 +72,7 @@ import * as mail from "./engine/mail";
 import { type CoreHost, type Emit, createHandlers } from "./core/handlers";
 import { KeyboardService } from "./core/keyboard-service";
 import { ListenerService } from "./core/listener-service";
+import { SafeDnsService } from "./core/safe-dns-service";
 import { listKeyboards, pollMs } from "./engine/hid";
 import { ipcPaths } from "./core/paths";
 import { type IpcServer, startIpcServer } from "./core/server";
@@ -1200,6 +1201,7 @@ let coreIpc: IpcServer | null = null;
 const coreEmit: Emit = (event, payload) => coreIpc?.broadcast(event, payload);
 let listenerService: ListenerService | null = null;
 let keyboardService: KeyboardService | null = null;
+let safeDnsService: SafeDnsService | null = null;
 
 const electronHost: CoreHost = {
   version: app.getVersion(),
@@ -1226,6 +1228,7 @@ const electronHost: CoreHost = {
       silentUntil: settings.silentUntil,
       newListeners: listenerService?.newCount() ?? 0,
       newKeyboards: keyboardService?.newCount() ?? 0,
+      safeDns: safeDnsService ? { on: safeDnsService.isOn(), available: safeDnsService.isSupported() } : undefined,
     };
   },
   get listeners() {
@@ -1233,6 +1236,9 @@ const electronHost: CoreHost = {
   },
   get keyboards() {
     return keyboardService ?? undefined;
+  },
+  get safeDns() {
+    return safeDnsService ?? undefined;
   },
   async updateToggles(changes) {
     const { onAccessScan, ...rest } = changes;
@@ -1262,6 +1268,9 @@ async function startCoreIpc() {
     logEvent("security", "warning", `New keyboard: ${k.name ?? "unknown"}`);
   });
   await keyboardService.load();
+  safeDnsService = new SafeDnsService(join(dataDir(), "safe-dns.json"), () => settings.serverUrl, { platform: process.platform });
+  await safeDnsService.load();
+  void safeDnsService.resume();
   const handlers = createHandlers(electronHost, coreEmit);
   coreIpc = await startIpcServer(ipcPaths(process.platform, process.env, dataDir()), handlers, { version: app.getVersion() });
   const check = () => void listenerService?.check().catch(() => undefined);

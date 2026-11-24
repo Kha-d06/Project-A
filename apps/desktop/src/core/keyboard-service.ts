@@ -3,10 +3,11 @@
  * and the classic app. Never blocks a device: it alerts, and the person either
  * confirms they plugged it in or unplugs it.
  */
-import { readFile, rename, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 
 import { EMPTY_KEYBOARDS, type Keyboard, type KeyboardBaseline, diffKeyboards } from "../engine/hid";
 import type { Emit } from "./handlers";
+import { atomicWrite } from "./atomic-write";
 
 export interface KeyboardStatus {
   keyboards: (Keyboard & { fresh: boolean })[];
@@ -33,9 +34,8 @@ export class KeyboardService {
     }
   }
 
-  private async save(): Promise<void> {
-    await writeFile(`${this.file}.tmp`, JSON.stringify(this.baseline));
-    await rename(`${this.file}.tmp`, this.file);
+  private save(): Promise<void> {
+    return atomicWrite(this.file, JSON.stringify(this.baseline));
   }
 
   async check(): Promise<Keyboard[]> {

@@ -6,6 +6,7 @@
 import { type HomeInput, type HomeModel, type HomeToggle, buildHome } from "./home";
 import type { KeyboardService } from "./keyboard-service";
 import type { ListenerService } from "./listener-service";
+import type { SafeDnsService } from "./safe-dns-service";
 import { IpcError } from "./protocol";
 
 export interface CoreHost {
@@ -19,11 +20,13 @@ export interface CoreHost {
   listeners?: ListenerService;
   /** New-keyboard (BadUSB) warnings, where the host runs them. */
   keyboards?: KeyboardService;
+  /** Safe DNS, where the host runs it. */
+  safeDns?: SafeDnsService;
 }
 
 export type Handler = (params: unknown) => Promise<unknown>;
 
-const TOGGLE_KEYS: HomeToggle["key"][] = ["watchEnabled", "onAccessScan", "ransomwareWatch", "networkWatch", "cloudLookup"];
+const TOGGLE_KEYS: HomeToggle["key"][] = ["watchEnabled", "onAccessScan", "ransomwareWatch", "networkWatch", "cloudLookup", "safeDns"];
 
 /** Only the Home toggles can be changed over IPC, and only with booleans. */
 export function toggleChanges(params: unknown): Partial<Record<HomeToggle["key"], boolean>> {
@@ -56,7 +59,13 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       for (const key of Object.keys(changes) as HomeToggle["key"][]) {
         if (changes[key] && !toggles.toggles.find((t) => t.key === key)?.available) throw new IpcError("unavailable", `"${key}" isn't available on this system.`);
       }
-      await host.updateToggles(changes);
+      // Safe DNS changes the system resolver (consent prompt), so it has its own path.
+      const { safeDns, ...rest } = changes;
+      if (safeDns !== undefined) {
+        if (!host.safeDns) throw new IpcError("unavailable", "Safe DNS isn't running here.");
+        await host.safeDns.setEnabled(safeDns);
+      }
+      if (Object.keys(rest).length) await host.updateToggles(rest);
       return changed();
     },
     "scan.quick": async () => {
@@ -69,6 +78,10 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
     "signatures.update": async () => {
       await host.updateSignatures();
       return changed();
+    },
+    "safedns.get": async () => {
+      if (!host.safeDns) throw new IpcError("unavailable", "Safe DNS isn't running here.");
+      return host.safeDns.status();
     },
     "keyboards.get": async () => requireKeyboards(host).status(),
     "keyboards.trust_all": async () => {

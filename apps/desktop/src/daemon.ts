@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { type CoreHost, type Emit, createHandlers } from "./core/handlers";
 import { KeyboardService } from "./core/keyboard-service";
 import { ListenerService } from "./core/listener-service";
+import { SafeDnsService } from "./core/safe-dns-service";
 import type { HomeInput } from "./core/home";
 import { dataDirFor, ipcPaths } from "./core/paths";
 import { startIpcServer } from "./core/server";
@@ -44,7 +45,7 @@ async function mtime(file: string): Promise<string | null> {
   }
 }
 
-export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService }> {
+export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService }> {
   const settingsFile = join(dataDir, "settings.json");
   const historyFile = join(dataDir, "history.json");
   let settings = await loadSettings(settingsFile, defaultSettings(join(homedir(), "Downloads"), [], hostname().slice(0, 80) || "This computer"));
@@ -62,6 +63,8 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
   await listeners.load();
   const keyboards = new KeyboardService(join(dataDir, "keyboards.json"), () => listKeyboards(), emit);
   await keyboards.load();
+  const safeDns = new SafeDnsService(join(dataDir, "safe-dns.json"), () => settings.serverUrl, { platform: process.platform });
+  await safeDns.load();
   const clamBinary = await findClam();
   const sevenZip = await findSevenZip();
 
@@ -70,6 +73,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     settings: () => settings,
     listeners,
     keyboards,
+    safeDns,
     async homeInput(): Promise<HomeInput> {
       const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       return {
@@ -93,6 +97,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
         silentUntil: settings.silentUntil,
         newListeners: listeners.newCount(),
         newKeyboards: keyboards.newCount(),
+        safeDns: { on: safeDns.isOn(), available: safeDns.isSupported() },
       };
     },
     async updateToggles(changes) {
@@ -147,6 +152,9 @@ export async function runDaemon(env: NodeJS.ProcessEnv = process.env) {
   const checkKeyboards = () => void host.keyboards.check().then((fresh) => (fresh.length ? handlers["home.get"]?.(undefined).then((m) => emit("home.changed", m)) : undefined)).catch(() => undefined);
   checkKeyboards();
   setInterval(checkKeyboards, pollMs(process.platform)).unref();
+  // Safe DNS: if it was left on, the system already points at the proxy.
+  void host.safeDns.resume();
+  setInterval(() => void host.safeDns.refreshDomains().catch(() => undefined), 60 * 60 * 1000).unref();
   const stop = () => void server?.close().then(() => process.exit(0));
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);

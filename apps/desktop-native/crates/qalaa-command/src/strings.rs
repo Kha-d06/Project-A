@@ -36,6 +36,7 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
 }
 
 pub const EN: &[(&str, &str)] = &[
+    ("toggle.safeDns", "Safe DNS: block malicious sites for every app"),
     ("action.review_keyboard", "A new keyboard was connected"),
     (
         "action.review_keyboard.detail",
@@ -139,6 +140,7 @@ pub const EN: &[(&str, &str)] = &[
 ];
 
 pub const AR: &[(&str, &str)] = &[
+    ("toggle.safeDns", "DNS الآمن: احجب المواقع الخبيثة لكل التطبيقات"),
     ("action.review_keyboard", "وُصلت لوحة مفاتيح جديدة"),
     (
         "action.review_keyboard.detail",

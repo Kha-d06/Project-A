@@ -28,6 +28,8 @@ export interface HomeInput {
   newListeners?: number;
   /** Keyboards connected since the last check that nobody has confirmed yet. */
   newKeyboards?: number;
+  /** Safe DNS (the local filtering resolver), where the host runs it. */
+  safeDns?: { on: boolean; available: boolean };
 }
 
 export interface HomeCheck {
@@ -45,7 +47,7 @@ export interface HomeAction {
 }
 
 export interface HomeToggle {
-  key: "watchEnabled" | "onAccessScan" | "ransomwareWatch" | "networkWatch" | "cloudLookup";
+  key: "watchEnabled" | "onAccessScan" | "ransomwareWatch" | "networkWatch" | "cloudLookup" | "safeDns";
   on: boolean;
   available: boolean;
 }
@@ -112,6 +114,7 @@ export function buildHome(input: HomeInput): HomeModel {
     { key: "networkWatch", on: input.networkWatch, available: true },
     { key: "cloudLookup", on: input.cloudLookup, available: true },
   ];
+  if (input.safeDns) toggles.push({ key: "safeDns", on: input.safeDns.on, available: input.safeDns.available });
 
   return { score, state, checks, actions, toggles, silentUntil: input.silentUntil, generatedAt: now.toISOString() };
 }

@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 
 from app.analyzers.urls import InvalidUrlError, parse_url
 from app.api.deps import Db, OptionalUser
+from app.api.extension import build_blocklist
 from app.core import rate_limit
 from app.core.config import get_settings
 from app.core.errors import ApiError
@@ -18,6 +19,7 @@ from app.intel.feeds import COMMUNITY, MALWAREBAZAAR, OPENPHISH, THREATFOX, URLH
 from app.intel.lookup import IndicatorMatch, find_by_host, find_indicators
 from app.models import CommunityReport, ThreatIndicator, ThreatSource
 from app.models.base import utcnow
+from app.schemas.extension import Blocklist
 from app.schemas.intel import (
     HashCandidate,
     HashList,
@@ -220,6 +222,14 @@ def lookup_phone(number: str, request: Request, db: Db) -> LookupResult:
     result.country = info.country
     result.reports_awaiting_review = pending or 0
     return result
+
+
+@router.get("/domain-list", response_model=Blocklist)
+def domain_list(request: Request, db: Db) -> Blocklist:
+    """Recent malicious domains, for Qalaa Desktop's Safe DNS. The whole list is
+    downloaded, so nothing about anyone's browsing is sent; no account needed."""
+    rate_limit.enforce(HASH_LIST_LIMIT, client_address(request))
+    return build_blocklist(db)
 
 
 @router.get("/hash-list", response_model=HashList)

@@ -96,3 +96,22 @@ def test_private_lookups_stay_out_of_the_access_log() -> None:
     assert not keep.filter(record("/api/v1/intelligence/hash-prefix/abcdef"))
     assert not keep.filter(record("/api/v1/email/links"))
     assert keep.filter(record("/api/v1/scans/url"))
+
+
+def test_public_domain_list_for_safe_dns(client: TestClient, db: Session) -> None:
+    from app.intel.feeds import THREATFOX
+
+    seed_feed(
+        db,
+        THREATFOX,
+        [
+            FeedIndicator("host", "evil-c2.example.net", "botnet_cc"),
+            FeedIndicator("host", "203.0.113.9", "botnet_cc"),
+        ],
+    )
+    response = client.get(f"{API}/intelligence/domain-list")
+    assert response.status_code == 200
+    body = response.json()
+    # Domains only (an IP can't be blocked by DNS), and no account needed.
+    assert body["hosts"] == ["evil-c2.example.net"]
+    assert body["sources"]

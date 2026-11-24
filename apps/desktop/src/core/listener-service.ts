@@ -4,12 +4,13 @@
  * Shared by the headless daemon and the Electron shell.
  */
 import { execFile } from "node:child_process";
-import { readFile, rename, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 
 import { EMPTY_BASELINE, type ElevatedCommand, type Listener, type ListenerBaseline, blockCommand, describeBlock, diffListeners, setBlocked, trust, validPort, withKeys } from "../engine/listeners";
 import type { ListeningPort } from "../engine/security";
 import type { Emit } from "./handlers";
 import { IpcError } from "./protocol";
+import { atomicWrite } from "./atomic-write";
 
 export interface ListenerStatus {
   /** Everything listening now; `fresh` marks the ones waiting for a decision. */
@@ -49,9 +50,8 @@ export class ListenerService {
     }
   }
 
-  private async save(): Promise<void> {
-    await writeFile(`${this.file}.tmp`, JSON.stringify(this.baseline));
-    await rename(`${this.file}.tmp`, this.file);
+  private save(): Promise<void> {
+    return atomicWrite(this.file, JSON.stringify(this.baseline));
   }
 
   /** Looks at what listens now; alerts once for each new reachable listener. */

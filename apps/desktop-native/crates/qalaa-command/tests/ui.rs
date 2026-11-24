@@ -121,6 +121,42 @@ fn command_centre_interface() {
     assert_eq!(*ran_palette.borrow(), vec!["scan.quick".to_owned()]);
     assert!(!app.get_palette_open(), "running a command closes the palette");
 
+    // --- Ports: new listeners first, with Expected and Block buttons that call back.
+    let status: qalaa_ipc::ListenerStatus = serde_json::from_value(serde_json::json!({
+        "listeners": [
+            {"key": "sshd|22|net", "port": 22, "address": "0.0.0.0", "process": "sshd", "pid": 2, "exposed": true, "risk": null, "fresh": false},
+            {"key": "nc|4444|net", "port": 4444, "address": "0.0.0.0", "process": "nc", "pid": 3, "exposed": true, "risk": null, "fresh": true}
+        ],
+        "blockedPorts": [22], "canBlock": true, "checkedAt": null
+    }))
+    .expect("status");
+    qalaa_command::set_ports(&app, &qalaa_command::view::ports_view(&status, Lang::En), true);
+    app.set_page("ports".into());
+    let decisions = Rc::new(RefCell::new(Vec::<String>::new()));
+    {
+        let decisions = Rc::clone(&decisions);
+        app.on_port_trust(move |key| decisions.borrow_mut().push(format!("trust {key}")));
+    }
+    {
+        let decisions = Rc::clone(&decisions);
+        app.on_port_block(move |port, block| decisions.borrow_mut().push(format!("block {port} {block}")));
+    }
+    labelled(&app, "Expected: nc on port 4444")[0].invoke_accessible_default_action();
+    labelled(&app, "Block port: nc on port 4444")[0].invoke_accessible_default_action();
+    labelled(&app, "Allow again: sshd on port 22")[0].invoke_accessible_default_action();
+    assert_eq!(
+        *decisions.borrow(),
+        vec![
+            "trust nc|4444|net".to_owned(),
+            "block 4444 true".to_owned(),
+            "block 22 false".to_owned()
+        ]
+    );
+    assert!(
+        labelled(&app, "Expected: sshd on port 22").is_empty(),
+        "only new listeners ask for a decision"
+    );
+
     // --- About carries the Slint credit the royalty-free licence requires.
     app.set_page("about".into());
     assert!(ElementHandle::find_by_element_type_name(&app, "AboutSlint").count() >= 1);

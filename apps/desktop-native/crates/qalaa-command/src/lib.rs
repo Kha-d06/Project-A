@@ -16,7 +16,7 @@ use std::rc::Rc;
 use slint::{ModelRc, SharedString, VecModel};
 
 use crate::strings::{t, Lang};
-use crate::view::{HomeView, PaletteEntry};
+use crate::view::{HomeView, PaletteEntry, PortView};
 
 pub fn labels(lang: Lang) -> Labels {
     let s = |key: &str| SharedString::from(t(lang, key));
@@ -37,6 +37,16 @@ pub fn labels(lang: Lang) -> Labels {
         retry: s("retry"),
         busy: s("busy"),
         about_body: s("about.body"),
+        ports: s("nav.ports"),
+        ports_title: s("ports.title"),
+        ports_intro: s("ports.intro"),
+        ports_none: s("ports.none"),
+        ports_new: s("ports.new"),
+        ports_blocked: s("ports.blocked"),
+        ports_trust: s("ports.trust"),
+        ports_block: s("ports.block"),
+        ports_unblock: s("ports.unblock"),
+        ports_prompt: s("ports.prompt"),
     }
 }
 
@@ -110,4 +120,21 @@ pub fn now_secs() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
+}
+
+pub fn set_ports(app: &App, rows: &[PortView], can_block: bool) {
+    let items: Vec<PortRow> = rows
+        .iter()
+        .map(|r| PortRow {
+            key: r.key.clone().into(),
+            port: i32::from(r.port),
+            title: r.title.clone().into(),
+            detail: r.detail.clone().into(),
+            fresh: r.fresh,
+            blocked: r.blocked,
+            exposed: r.exposed,
+        })
+        .collect();
+    app.set_ports(ModelRc::from(Rc::new(VecModel::from(items))));
+    app.set_can_block(can_block);
 }

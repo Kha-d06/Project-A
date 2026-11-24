@@ -8,10 +8,13 @@ export struct CheckRow { id: string, label: string, status: string, status-text:
 export struct ActionCard { id: string, title: string, detail: string, priority: int }
 export struct ToggleRow { key: string, label: string, hint: string, on: bool, available: bool }
 export struct PaletteItem { id: string, title: string }
+export struct PortRow { key: string, port: int, title: string, detail: string, fresh: bool, blocked: bool, exposed: bool }
 export struct Labels {
     title: string, home: string, about: string, score: string, checks: string, actions: string,
     actions-none: string, dock: string, go: string, palette-placeholder: string, palette-hint: string,
     offline-title: string, offline-body: string, retry: string, busy: string, about-body: string,
+    ports: string, ports-title: string, ports-intro: string, ports-none: string, ports-new: string,
+    ports-blocked: string, ports-trust: string, ports-block: string, ports-unblock: string, ports-prompt: string,
 }
 
 component Card inherits Rectangle {
@@ -87,6 +90,8 @@ export component App inherits Window {
     in property <[CheckRow]> checks;
     in property <[ActionCard]> actions;
     in property <[ToggleRow]> toggles;
+    in property <[PortRow]> ports;
+    in property <bool> can-block: true;
     in-out property <[PaletteItem]> palette-items;
     in-out property <bool> palette-open: false;
     in-out property <string> page: "home";
@@ -96,6 +101,10 @@ export component App inherits Window {
     callback palette-filter(string);
     callback palette-run(string);
     callback retry();
+    callback port-trust(string);
+    callback port-block(int, bool);
+    callback page-changed(string);
+    changed page => { page-changed(page); }
 
     changed rtl => { Theme.rtl = rtl; }
     init => { Theme.rtl = rtl; }
@@ -134,6 +143,7 @@ export component App inherits Window {
                 Text { text: labels.title; font-size: 20px; font-weight: 600; color: Theme.ink; }
                 Rectangle { height: 12px; }
                 Button { text: labels.home; checkable: true; checked: page == "home"; clicked => { page = "home"; } }
+                Button { text: labels.ports; checkable: true; checked: page == "ports"; clicked => { page = "ports"; } }
                 Button { text: labels.about; checkable: true; checked: page == "about"; clicked => { page = "about"; } }
                 Rectangle {}
                 Muted { text: labels.palette-hint; }
@@ -243,6 +253,58 @@ export component App inherits Window {
                         }
                     }
 
+                    if connected && page == "ports": Card {
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 12px;
+                            Heading { text: labels.ports-title; font-size: 20px; }
+                            Muted { text: labels.ports-intro; }
+                            if ports.length == 0: Muted { text: labels.ports-none; }
+                            for row in ports: Rectangle {
+                                border-color: row.fresh ? Theme.attention : Theme.line;
+                                border-width: 1px;
+                                border-radius: 8px;
+                                accessible-role: groupbox;
+                                accessible-label: row.title;
+                                HorizontalLayout {
+                                    padding: 12px;
+                                    spacing: 10px;
+                                    alignment: stretch;
+                                    VerticalLayout {
+                                        horizontal-stretch: 1;
+                                        alignment: center;
+                                        spacing: 2px;
+                                        Text {
+                                            text: row.title + (row.fresh ? "  · " + labels.ports-new : "") + (row.blocked ? "  · " + labels.ports-blocked : "");
+                                            font-size: 14px;
+                                            font-weight: 600;
+                                            color: row.fresh ? Theme.attention : Theme.ink;
+                                            horizontal-alignment: Theme.rtl ? right : left;
+                                        }
+                                        Muted { text: row.detail; }
+                                    }
+                                    if row.fresh: VerticalLayout { alignment: center; Button {
+                                        horizontal-stretch: 0;
+                                        vertical-stretch: 0;
+                                        text: labels.ports-trust;
+                                        accessible-label: labels.ports-trust + ": " + row.title;
+                                        enabled: !busy;
+                                        clicked => { root.port-trust(row.key); }
+                                    } }
+                                    if row.exposed && can-block: VerticalLayout { alignment: center; Button {
+                                        horizontal-stretch: 0;
+                                        vertical-stretch: 0;
+                                        text: row.blocked ? labels.ports-unblock : labels.ports-block;
+                                        accessible-label: (row.blocked ? labels.ports-unblock : labels.ports-block) + ": " + row.title;
+                                        enabled: !busy;
+                                        clicked => { root.port-block(row.port, !row.blocked); }
+                                    } }
+                                }
+                            }
+                            Muted { text: labels.ports-prompt; font-size: 12px; }
+                        }
+                    }
+
                     if connected && page == "about": Card {
                         VerticalLayout {
                             padding: 24px;
@@ -263,6 +325,7 @@ export component App inherits Window {
                 Text { text: labels.title; font-size: 20px; font-weight: 600; color: Theme.ink; horizontal-alignment: right; }
                 Rectangle { height: 12px; }
                 Button { text: labels.home; checkable: true; checked: page == "home"; clicked => { page = "home"; } }
+                Button { text: labels.ports; checkable: true; checked: page == "ports"; clicked => { page = "ports"; } }
                 Button { text: labels.about; checkable: true; checked: page == "about"; clicked => { page = "about"; } }
                 Rectangle {}
                 Muted { text: labels.palette-hint; }

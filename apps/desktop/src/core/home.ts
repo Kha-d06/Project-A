@@ -24,6 +24,8 @@ export interface HomeInput {
   ransomwareAlertAt: string | null;
   updateAvailable: string | null;
   silentUntil: string | null;
+  /** Programs newly listening for connections from other machines, awaiting a decision. */
+  newListeners?: number;
 }
 
 export interface HomeCheck {
@@ -91,6 +93,7 @@ export function buildHome(input: HomeInput): HomeModel {
 
   const actions: HomeAction[] = [];
   if (input.recentThreats > 0) actions.push({ id: "review_threats", priority: 1, command: { method: "view.open", params: { view: "timeline" } } });
+  if ((input.newListeners ?? 0) > 0) actions.push({ id: "review_listeners", priority: 1, command: { method: "view.open", params: { view: "listeners" } } });
   if (checks[1]?.status === "off") actions.push({ id: "turn_on_realtime", priority: 1, command: { method: "settings.set", params: { watchEnabled: true } } });
   if (checks[0]?.status !== "ok") actions.push({ id: "update_signatures", priority: 1, command: { method: "signatures.update" } });
   if (checks[3]?.status === "attention" && input.recentThreats === 0) actions.push({ id: "quick_scan", priority: 2, command: { method: "scan.quick" } });

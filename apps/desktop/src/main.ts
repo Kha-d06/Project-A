@@ -69,7 +69,8 @@ import { type DecoyRecord, DropWatcher, RemovableWatcher, executableDropFolders,
 import { parseDesktopEntry, parseLaunchPlist, startupWarnings } from "./engine/security";
 import * as tools from "./engine/tools";
 import * as mail from "./engine/mail";
-import { type CoreHost, createHandlers } from "./core/handlers";
+import { type CoreHost, type Emit, createHandlers } from "./core/handlers";
+import { ListenerService } from "./core/listener-service";
 import { ipcPaths } from "./core/paths";
 import { type IpcServer, startIpcServer } from "./core/server";
 import { disableTerminal, enableTerminal, terminalStatus } from "./engine/shell-init";
@@ -1194,6 +1195,8 @@ async function status() {
 // so the native command centre works with either.
 
 let coreIpc: IpcServer | null = null;
+const coreEmit: Emit = (event, payload) => coreIpc?.broadcast(event, payload);
+let listenerService: ListenerService | null = null;
 
 const electronHost: CoreHost = {
   version: app.getVersion(),
@@ -1218,7 +1221,11 @@ const electronHost: CoreHost = {
       ransomwareAlertAt: lastRansomwareAlert?.at ?? null,
       updateAvailable: updateState.state === "available" || updateState.state === "ready" ? updateState.version : null,
       silentUntil: settings.silentUntil,
+      newListeners: listenerService?.newCount() ?? 0,
     };
+  },
+  get listeners() {
+    return listenerService ?? undefined;
   },
   async updateToggles(changes) {
     const { onAccessScan, ...rest } = changes;
@@ -1232,8 +1239,20 @@ const electronHost: CoreHost = {
 };
 
 async function startCoreIpc() {
-  const handlers = createHandlers(electronHost, (event, payload) => coreIpc?.broadcast(event, payload));
+  listenerService = new ListenerService(join(dataDir(), "listeners.json"), process.platform, () => listeningPorts(), (event, payload) => {
+    coreEmit(event, payload);
+    const p = payload as { kind?: string; port?: number; process?: string | null };
+    if (event === "alert" && p.kind === "listener") {
+      notify("A program started accepting connections", `${p.process ?? "A program"} is listening on port ${p.port} and can be reached from other machines.`);
+      logEvent("security", "warning", `New listener: ${p.process ?? "unknown"} on port ${p.port}`);
+    }
+  });
+  await listenerService.load();
+  const handlers = createHandlers(electronHost, coreEmit);
   coreIpc = await startIpcServer(ipcPaths(process.platform, process.env, dataDir()), handlers, { version: app.getVersion() });
+  const check = () => void listenerService?.check().catch(() => undefined);
+  check();
+  setInterval(check, 60_000).unref();
 }
 
 function stringArray(value: unknown, max = 1000): string[] {

@@ -36,6 +36,27 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
 }
 
 pub const EN: &[(&str, &str)] = &[
+    ("nav.ports", "Ports"),
+    ("ports.title", "Programs accepting connections"),
+    (
+        "ports.intro",
+        "Programs listening for connections from other machines. Qalaa tells you when a new one appears; you decide whether it's expected.",
+    ),
+    ("ports.none", "Nothing on this computer accepts connections from other machines."),
+    ("ports.new", "New"),
+    ("ports.blocked", "Blocked"),
+    ("ports.local", "This computer only"),
+    ("ports.reachable", "Reachable from other machines"),
+    ("ports.trust", "Expected"),
+    ("ports.block", "Block port"),
+    ("ports.unblock", "Allow again"),
+    (
+        "ports.prompt",
+        "Blocking asks for your system password. It only stops connections from other machines and can be undone here.",
+    ),
+    ("ports.unknown_program", "Unknown program"),
+    ("action.review_listeners", "A program started accepting connections"),
+    ("action.review_listeners.detail", "Check that you expected it, or block its port."),
     ("app.title", "Qalaa"),
     ("nav.home", "Home"),
     ("nav.about", "About"),
@@ -112,6 +133,27 @@ pub const EN: &[(&str, &str)] = &[
 ];
 
 pub const AR: &[(&str, &str)] = &[
+    ("nav.ports", "المنافذ"),
+    ("ports.title", "برامج تقبل الاتصالات"),
+    (
+        "ports.intro",
+        "برامج تنتظر اتصالات من أجهزة أخرى. ينبهك قلعة عند ظهور برنامج جديد، وأنت تقرر إن كان متوقعًا.",
+    ),
+    ("ports.none", "لا شيء على هذا الحاسوب يقبل اتصالات من أجهزة أخرى."),
+    ("ports.new", "جديد"),
+    ("ports.blocked", "محظور"),
+    ("ports.local", "هذا الحاسوب فقط"),
+    ("ports.reachable", "يمكن الوصول إليه من أجهزة أخرى"),
+    ("ports.trust", "متوقع"),
+    ("ports.block", "احظر المنفذ"),
+    ("ports.unblock", "اسمح مجددًا"),
+    (
+        "ports.prompt",
+        "يطلب الحظر كلمة مرور النظام. يوقف الاتصالات من الأجهزة الأخرى فقط ويمكن التراجع عنه من هنا.",
+    ),
+    ("ports.unknown_program", "برنامج غير معروف"),
+    ("action.review_listeners", "بدأ برنامج بقبول الاتصالات"),
+    ("action.review_listeners.detail", "تأكد أنك تتوقعه، أو احظر منفذه."),
     ("app.title", "قلعة"),
     ("nav.home", "الرئيسية"),
     ("nav.about", "حول"),

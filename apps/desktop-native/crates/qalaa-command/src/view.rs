@@ -1,7 +1,7 @@
 //! Turns the service's Home model into rows for the interface. Plain Rust with
 //! no window, so it is tested directly.
 
-use qalaa_ipc::{CheckStatus, HomeModel, PostureState};
+use qalaa_ipc::{CheckStatus, HomeModel, ListenerStatus, PostureState};
 
 use crate::strings::{t, Lang};
 
@@ -169,6 +169,10 @@ pub fn palette_entries(view: Option<&HomeView>, lang: Lang) -> Vec<PaletteEntry>
             title: t(lang, "palette.home").into(),
         },
         PaletteEntry {
+            id: "page.ports".into(),
+            title: t(lang, "nav.ports").into(),
+        },
+        PaletteEntry {
             id: "page.about".into(),
             title: t(lang, "palette.about").into(),
         },
@@ -192,6 +196,44 @@ pub fn filter_palette(entries: &[PaletteEntry], query: &str) -> Vec<PaletteEntry
         .filter(|e| words.iter().all(|w| e.title.to_lowercase().contains(w)))
         .cloned()
         .collect()
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PortView {
+    pub key: String,
+    pub port: u16,
+    pub title: String,
+    pub detail: String,
+    pub fresh: bool,
+    pub blocked: bool,
+    pub exposed: bool,
+}
+
+/// New listeners first, then those reachable from other machines, then by port.
+pub fn ports_view(status: &ListenerStatus, lang: Lang) -> Vec<PortView> {
+    let mut rows: Vec<PortView> = status
+        .listeners
+        .iter()
+        .map(|l| {
+            let program = l.process.clone().unwrap_or_else(|| t(lang, "ports.unknown_program").to_owned());
+            let reach = t(lang, if l.exposed { "ports.reachable" } else { "ports.local" });
+            PortView {
+                key: l.key.clone(),
+                port: l.port,
+                title: match lang {
+                    Lang::En => format!("{program} on port {}", l.port),
+                    Lang::Ar => format!("{program} على المنفذ {}", l.port),
+                },
+                detail: l.risk.as_ref().map_or_else(|| reach.to_owned(), |risk| format!("{reach}. {risk}")),
+                fresh: l.fresh,
+                blocked: status.blocked_ports.contains(&l.port),
+                exposed: l.exposed,
+            }
+        })
+        .collect();
+    rows.sort_by_key(|r| (!r.fresh, !r.exposed, r.port));
+    rows.dedup_by(|a, b| a.key == b.key);
+    rows
 }
 
 #[cfg(test)]
@@ -240,10 +282,34 @@ mod tests {
     }
 
     #[test]
+    fn ports_view_puts_new_listeners_first() {
+        let status: ListenerStatus = serde_json::from_value(serde_json::json!({
+            "listeners": [
+                {"key": "cupsd|631|local", "port": 631, "address": "127.0.0.1", "process": "cupsd", "pid": 1, "exposed": false, "risk": null, "fresh": false},
+                {"key": "sshd|22|net", "port": 22, "address": "0.0.0.0", "process": "sshd", "pid": 2, "exposed": true, "risk": null, "fresh": false},
+                {"key": "telnetd|23|net", "port": 23, "address": "0.0.0.0", "process": "telnetd", "pid": 3, "exposed": true, "risk": "Telnet sends everything unencrypted", "fresh": true},
+                {"key": "unknown|9|net", "port": 9, "address": "0.0.0.0", "process": null, "pid": null, "exposed": true, "risk": null, "fresh": false}
+            ],
+            "blockedPorts": [9], "canBlock": true, "checkedAt": null
+        }))
+        .expect("status");
+        let rows = ports_view(&status, Lang::En);
+        assert_eq!(rows.iter().map(|r| r.port).collect::<Vec<_>>(), [23, 9, 22, 631]);
+        assert_eq!(rows[0].title, "telnetd on port 23");
+        assert_eq!(rows[0].detail, "Reachable from other machines. Telnet sends everything unencrypted");
+        assert!(rows[1].blocked && rows[1].title.starts_with("Unknown program"));
+        assert_eq!(ports_view(&status, Lang::Ar)[0].title, "telnetd على المنفذ 23");
+    }
+
+    #[test]
     fn palette_lists_available_toggles_and_filters_by_words() {
         let view = home_view(&fixture(), 0, Lang::En);
         let entries = palette_entries(Some(&view), Lang::En);
         assert!(entries.iter().any(|e| e.id == "toggle.onAccessScan"));
+        assert_eq!(
+            filter_palette(&entries, "ports").iter().map(|e| e.id.as_str()).collect::<Vec<_>>(),
+            ["page.ports"]
+        );
         let found = filter_palette(&entries, "SCAN quick");
         assert_eq!(found.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(), ["scan.quick"]);
         assert_eq!(filter_palette(&entries, "").len(), entries.len());

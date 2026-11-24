@@ -71,3 +71,27 @@ pub struct ScanTotals {
     pub malicious: u64,
     pub suspicious: u64,
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Listener {
+    pub key: String,
+    pub port: u16,
+    pub address: String,
+    pub process: Option<String>,
+    pub pid: Option<u32>,
+    pub exposed: bool,
+    pub risk: Option<String>,
+    pub fresh: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListenerStatus {
+    pub listeners: Vec<Listener>,
+    pub blocked_ports: Vec<u16>,
+    pub can_block: bool,
+    pub checked_at: Option<String>,
+    /// Present after a block or unblock: what was changed.
+    #[serde(default)]
+    pub change: Option<String>,
+}

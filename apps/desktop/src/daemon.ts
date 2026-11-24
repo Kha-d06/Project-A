@@ -13,7 +13,8 @@ import { readFile, stat, writeFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 
-import { type CoreHost, createHandlers } from "./core/handlers";
+import { type CoreHost, type Emit, createHandlers } from "./core/handlers";
+import { ListenerService } from "./core/listener-service";
 import type { HomeInput } from "./core/home";
 import { dataDirFor, ipcPaths } from "./core/paths";
 import { startIpcServer } from "./core/server";
@@ -24,6 +25,7 @@ import { Quarantine } from "./engine/quarantine";
 import { scanFile } from "./engine/scanner";
 import { fetchSignatures, lookupHash } from "./engine/server";
 import { type DesktopSettings, defaultSettings, loadSettings, saveSettings } from "./engine/settings";
+import { listeningPorts } from "./engine/security";
 import { SignatureStore } from "./engine/signatures";
 import type { ScanResult } from "./engine/types";
 import { isDirectory, walk } from "./engine/walk";
@@ -40,7 +42,7 @@ async function mtime(file: string): Promise<string | null> {
   }
 }
 
-export async function createDaemonHost(dataDir: string): Promise<CoreHost & { settings: () => DesktopSettings }> {
+export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService }> {
   const settingsFile = join(dataDir, "settings.json");
   const historyFile = join(dataDir, "history.json");
   let settings = await loadSettings(settingsFile, defaultSettings(join(homedir(), "Downloads"), [], hostname().slice(0, 80) || "This computer"));
@@ -54,12 +56,15 @@ export async function createDaemonHost(dataDir: string): Promise<CoreHost & { se
   } catch {
     history = [];
   }
+  const listeners = new ListenerService(join(dataDir, "listeners.json"), process.platform, () => listeningPorts(), emit);
+  await listeners.load();
   const clamBinary = await findClam();
   const sevenZip = await findSevenZip();
 
   return {
     version: VERSION,
     settings: () => settings,
+    listeners,
     async homeInput(): Promise<HomeInput> {
       const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       return {
@@ -81,6 +86,7 @@ export async function createDaemonHost(dataDir: string): Promise<CoreHost & { se
         ransomwareAlertAt: null,
         updateAvailable: null,
         silentUntil: settings.silentUntil,
+        newListeners: listeners.newCount(),
       };
     },
     async updateToggles(changes) {
@@ -122,10 +128,15 @@ export async function createDaemonHost(dataDir: string): Promise<CoreHost & { se
 
 export async function runDaemon(env: NodeJS.ProcessEnv = process.env) {
   const dataDir = dataDirFor(process.platform, env);
-  const host = await createDaemonHost(dataDir);
   let server: Awaited<ReturnType<typeof startIpcServer>> | null = null;
-  const handlers = createHandlers(host, (event, payload) => server?.broadcast(event, payload));
+  const emit: Emit = (event, payload) => server?.broadcast(event, payload);
+  const host = await createDaemonHost(dataDir, emit);
+  const handlers = createHandlers(host, emit);
   server = await startIpcServer(ipcPaths(process.platform, env, dataDir), handlers, { version: host.version });
+  // New listening ports: checked every minute; the first check only records what's there.
+  const checkListeners = () => void host.listeners.check().then((fresh) => (fresh.length ? handlers["home.get"]?.(undefined).then((m) => emit("home.changed", m)) : undefined)).catch(() => undefined);
+  checkListeners();
+  setInterval(checkListeners, 60_000).unref();
   const stop = () => void server?.close().then(() => process.exit(0));
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);

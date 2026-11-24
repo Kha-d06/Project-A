@@ -4,6 +4,7 @@
  * supplies the state; the logic lives here once.
  */
 import { type HomeInput, type HomeModel, type HomeToggle, buildHome } from "./home";
+import type { ListenerService } from "./listener-service";
 import { IpcError } from "./protocol";
 
 export interface CoreHost {
@@ -13,6 +14,8 @@ export interface CoreHost {
   updateToggles(changes: Partial<Record<HomeToggle["key"], boolean>>): Promise<void>;
   quickScan(): Promise<{ scanned: number; malicious: number; suspicious: number }>;
   updateSignatures(): Promise<void>;
+  /** New listening-port alerts, where the host runs them. */
+  listeners?: ListenerService;
 }
 
 export type Handler = (params: unknown) => Promise<unknown>;
@@ -64,5 +67,27 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       await host.updateSignatures();
       return changed();
     },
+    "listeners.get": async () => requireListeners(host).status(),
+    "listeners.check": async () => {
+      await requireListeners(host).check();
+      await changed();
+      return requireListeners(host).status();
+    },
+    "listeners.trust": async (params) => {
+      const status = await requireListeners(host).trust((params as { key?: unknown } | undefined)?.key);
+      await changed();
+      return status;
+    },
+    "listeners.block": async (params) => {
+      const { port, block } = (params ?? {}) as { port?: unknown; block?: unknown };
+      const status = await requireListeners(host).block(port, block);
+      await changed();
+      return status;
+    },
   };
+}
+
+function requireListeners(host: CoreHost): ListenerService {
+  if (!host.listeners) throw new IpcError("unavailable", "Port alerts aren't running here.");
+  return host.listeners;
 }

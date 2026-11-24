@@ -1,0 +1,11 @@
+{
+  "name": "@qalaa/thunderbird",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Qalaa for Thunderbird: checks the email you open for scam and phishing signs",
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "pack": "node scripts/pack.mjs"
+  }
+}

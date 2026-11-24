@@ -58,6 +58,23 @@ jobs:
       - name: Dependency vulnerability scan
         run: npm audit --omit=dev --audit-level=high
 
+  thunderbird:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/thunderbird
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+      - run: npm run pack
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qalaa-thunderbird
+          path: apps/thunderbird/dist/*.xpi
+
   extension:
     runs-on: ubuntu-latest
     defaults:

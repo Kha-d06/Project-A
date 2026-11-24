@@ -1,0 +1,5 @@
+{
+  "name": { "message": "Qalaa for Thunderbird" },
+  "description": { "message": "Checks each email you open for scam and phishing signs: forged senders, look-alike links and pressure tactics." },
+  "actionTitle": { "message": "Qalaa email check" }
+}

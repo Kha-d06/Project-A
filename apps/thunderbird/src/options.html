@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="ui.css" />
+</head>
+<body class="options">
+  <main>
+    <p data-i18n="optionsIntro"></p>
+    <form id="form">
+      <label for="server" data-i18n="serverLabel">Qalaa server address</label>
+      <input id="server" type="url" placeholder="https://qalaa.example.org" required />
+      <label class="check"><input id="auto" type="checkbox" checked /> <span data-i18n="autoCheck"></span></label>
+      <button type="submit" data-i18n="save">Save and allow</button>
+      <p id="status" role="status"></p>
+    </form>
+  </main>
+  <script src="options.js" type="module"></script>
+</body>
+</html>

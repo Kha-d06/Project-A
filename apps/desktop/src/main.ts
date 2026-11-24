@@ -13,7 +13,7 @@ import { readFile, readdir, rm, stat, unlink, writeFile } from "node:fs/promises
 import { homedir, hostname, userInfo } from "node:os";
 import { basename, join } from "node:path";
 
-import { BrowserWindow, Menu, Notification, Tray, app, dialog, ipcMain, nativeImage, nativeTheme, safeStorage, session, shell } from "electron";
+import { BrowserWindow, Menu, Notification, Tray, app, clipboard as electronClipboard, dialog, ipcMain, nativeImage, nativeTheme, safeStorage, session, shell } from "electron";
 
 import { type LinkedAccount, loadAccount, register, saveAccount, unlinkSelf } from "./engine/account";
 import { BackupError, MIN_PASSWORD_LENGTH, createBackup, pruneBackups, readBackup } from "./engine/backup";
@@ -70,6 +70,7 @@ import { parseDesktopEntry, parseLaunchPlist, startupWarnings } from "./engine/s
 import * as tools from "./engine/tools";
 import * as mail from "./engine/mail";
 import { type CoreHost, type Emit, createHandlers } from "./core/handlers";
+import { ClipboardService, POLL_MS } from "./core/clipboard-service";
 import { KeyboardService } from "./core/keyboard-service";
 import { ListenerService } from "./core/listener-service";
 import { SafeDnsService } from "./core/safe-dns-service";
@@ -1202,6 +1203,7 @@ const coreEmit: Emit = (event, payload) => coreIpc?.broadcast(event, payload);
 let listenerService: ListenerService | null = null;
 let keyboardService: KeyboardService | null = null;
 let safeDnsService: SafeDnsService | null = null;
+let clipboardService: ClipboardService | null = null;
 
 const electronHost: CoreHost = {
   version: app.getVersion(),
@@ -1229,6 +1231,7 @@ const electronHost: CoreHost = {
       newListeners: listenerService?.newCount() ?? 0,
       newKeyboards: keyboardService?.newCount() ?? 0,
       safeDns: safeDnsService ? { on: safeDnsService.isOn(), available: safeDnsService.isSupported() } : undefined,
+      clipboardGuard: { on: settings.clipboardGuard, available: true },
     };
   },
   get listeners() {
@@ -1240,10 +1243,14 @@ const electronHost: CoreHost = {
   get safeDns() {
     return safeDnsService ?? undefined;
   },
+  get clipboard() {
+    return clipboardService ?? undefined;
+  },
   async updateToggles(changes) {
     const { onAccessScan, ...rest } = changes;
     settings = { ...settings, ...rest };
     await saveSettings(join(dataDir(), "settings.json"), settings);
+    clipboardService?.configure({ enabled: settings.clipboardGuard });
     applyWatching();
     if (onAccessScan !== undefined) await setOnAccess(onAccessScan);
   },
@@ -1271,6 +1278,17 @@ async function startCoreIpc() {
   safeDnsService = new SafeDnsService(join(dataDir(), "safe-dns.json"), () => settings.serverUrl, { platform: process.platform });
   await safeDnsService.load();
   void safeDnsService.resume();
+  // The classic app reads the clipboard through Electron, so no extra tools are needed.
+  clipboardService = new ClipboardService(
+    {
+      read: async () => electronClipboard.readText(),
+      clear: async () => electronClipboard.clear(),
+      write: async (text) => electronClipboard.writeText(text),
+    },
+    coreEmit,
+  );
+  clipboardService.configure({ enabled: settings.clipboardGuard, ttlSeconds: settings.clipboardTtl });
+  setInterval(() => void clipboardService?.poll().catch(() => undefined), POLL_MS).unref();
   const handlers = createHandlers(electronHost, coreEmit);
   coreIpc = await startIpcServer(ipcPaths(process.platform, process.env, dataDir()), handlers, { version: app.getVersion() });
   const check = () => void listenerService?.check().catch(() => undefined);

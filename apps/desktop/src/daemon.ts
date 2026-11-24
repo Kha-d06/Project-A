@@ -14,6 +14,7 @@ import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 
 import { type CoreHost, type Emit, createHandlers } from "./core/handlers";
+import { ClipboardService, POLL_MS } from "./core/clipboard-service";
 import { KeyboardService } from "./core/keyboard-service";
 import { ListenerService } from "./core/listener-service";
 import { SafeDnsService } from "./core/safe-dns-service";
@@ -21,6 +22,7 @@ import type { HomeInput } from "./core/home";
 import { dataDirFor, ipcPaths } from "./core/paths";
 import { startIpcServer } from "./core/server";
 import { findClam } from "./engine/clamav";
+import { systemClipboard } from "./engine/clipboard";
 import { findSevenZip } from "./engine/formats";
 import { listKeyboards, pollMs } from "./engine/hid";
 import { isExcluded } from "./engine/protection";
@@ -45,7 +47,7 @@ async function mtime(file: string): Promise<string | null> {
   }
 }
 
-export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService }> {
+export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService }> {
   const settingsFile = join(dataDir, "settings.json");
   const historyFile = join(dataDir, "history.json");
   let settings = await loadSettings(settingsFile, defaultSettings(join(homedir(), "Downloads"), [], hostname().slice(0, 80) || "This computer"));
@@ -65,6 +67,8 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
   await keyboards.load();
   const safeDns = new SafeDnsService(join(dataDir, "safe-dns.json"), () => settings.serverUrl, { platform: process.platform });
   await safeDns.load();
+  const clipboard = new ClipboardService(systemClipboard(), emit);
+  clipboard.configure({ enabled: settings.clipboardGuard, ttlSeconds: settings.clipboardTtl });
   const clamBinary = await findClam();
   const sevenZip = await findSevenZip();
 
@@ -74,6 +78,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     listeners,
     keyboards,
     safeDns,
+    clipboard,
     async homeInput(): Promise<HomeInput> {
       const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       return {
@@ -98,11 +103,13 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
         newListeners: listeners.newCount(),
         newKeyboards: keyboards.newCount(),
         safeDns: { on: safeDns.isOn(), available: safeDns.isSupported() },
+        clipboardGuard: { on: settings.clipboardGuard, available: clipboard.status().supported },
       };
     },
     async updateToggles(changes) {
       settings = { ...settings, ...changes };
       await saveSettings(settingsFile, settings);
+      clipboard.configure({ enabled: settings.clipboardGuard });
     },
     async quickScan() {
       const totals = { scanned: 0, malicious: 0, suspicious: 0 };
@@ -154,6 +161,8 @@ export async function runDaemon(env: NodeJS.ProcessEnv = process.env) {
   setInterval(checkKeyboards, pollMs(process.platform)).unref();
   // Safe DNS: if it was left on, the system already points at the proxy.
   void host.safeDns.resume();
+  // Clipboard auto-clear: a cheap look every couple of seconds while it's on.
+  setInterval(() => void host.clipboard.poll().catch(() => undefined), POLL_MS).unref();
   setInterval(() => void host.safeDns.refreshDomains().catch(() => undefined), 60 * 60 * 1000).unref();
   const stop = () => void server?.close().then(() => process.exit(0));
   process.on("SIGINT", stop);

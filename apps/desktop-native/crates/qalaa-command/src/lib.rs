@@ -52,6 +52,7 @@ pub fn labels(lang: Lang) -> Labels {
 
 /// Sets language, direction and labels.
 pub fn set_language(app: &App, lang: Lang) {
+    app.set_clip_clear_label(t(lang, "clip.clear").into());
     app.set_labels(labels(lang));
     app.set_rtl(lang.rtl());
 }

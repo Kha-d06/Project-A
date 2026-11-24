@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use qalaa_command::strings::{t, Lang};
-use qalaa_command::view::{filter_palette, home_view, palette_entries, ports_view, PaletteEntry};
+use qalaa_command::view::{clipboard_text, filter_palette, home_view, palette_entries, ports_view, PaletteEntry};
 use qalaa_command::{apply_home, now_secs, set_language, set_offline, set_palette, set_ports, App};
 use qalaa_ipc::{Client, HomeModel, IpcError, ListenerStatus, Message, Stream};
 use serde_json::json;
@@ -105,6 +105,21 @@ fn listen(app: &App, state: &Arc<State>) {
         let Ok(mut events) = connect() else { return };
         while let Ok(message) = events.read_message() {
             if let Message::Event(event) = message {
+                if event.name == "clipboard.armed" || event.name == "clipboard.cleared" {
+                    let kind = if event.name == "clipboard.armed" {
+                        event
+                            .payload
+                            .get("kind")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or("high_entropy")
+                            .to_owned()
+                    } else {
+                        String::new()
+                    };
+                    let ms = event.payload.get("ttlMs").and_then(serde_json::Value::as_i64).unwrap_or(0);
+                    let _ = weak.upgrade_in_event_loop(move |app| app.invoke_clip_event(kind.into(), i32::try_from(ms).unwrap_or(0)));
+                    continue;
+                }
                 if event.name != "home.changed" {
                     continue;
                 }
@@ -238,6 +253,40 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
 
+    // Clipboard countdown: a one-second timer that runs only while a secret is armed.
+    {
+        let countdown = std::rc::Rc::new(slint::Timer::default());
+        let (weak, lang) = (app.as_weak(), state.lang);
+        app.on_clip_event(move |kind, remaining_ms| {
+            let Some(app) = weak.upgrade() else { return };
+            countdown.stop();
+            if kind.is_empty() || remaining_ms <= 0 {
+                app.set_clip_text("".into());
+                return;
+            }
+            let deadline = std::time::Instant::now() + std::time::Duration::from_millis(u64::try_from(remaining_ms).unwrap_or(0));
+            let kind = kind.to_string();
+            app.set_clip_text(clipboard_text(&kind, u64::try_from(remaining_ms).unwrap_or(0), lang).into());
+            let inner = weak.clone();
+            countdown.start(slint::TimerMode::Repeated, std::time::Duration::from_secs(1), move || {
+                let Some(app) = inner.upgrade() else { return };
+                let left = deadline.saturating_duration_since(std::time::Instant::now());
+                if left.is_zero() {
+                    app.set_clip_text("".into());
+                } else {
+                    app.set_clip_text(clipboard_text(&kind, u64::try_from(left.as_millis()).unwrap_or(0), lang).into());
+                }
+            });
+        });
+    }
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_clip_clear(move || {
+            if let Some(app) = weak.upgrade() {
+                call(&app, &state, "clipboard.clear_now", None);
+            }
+        });
+    }
     {
         let (weak, state) = (app.as_weak(), Arc::clone(&state));
         app.on_page_changed(move |page| {

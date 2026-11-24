@@ -204,6 +204,19 @@ pub fn filter_palette(entries: &[PaletteEntry], query: &str) -> Vec<PaletteEntry
         .collect()
 }
 
+/// "An API token is on the clipboard: clearing in 23 s".
+pub fn clipboard_text(kind: &str, remaining_ms: u64, lang: Lang) -> String {
+    let what = match t(lang, &format!("clip.kind.{kind}")) {
+        "?" => t(lang, "clip.kind.high_entropy"),
+        known => known,
+    };
+    let secs = remaining_ms.div_ceil(1000);
+    match lang {
+        Lang::En => format!("{what} is on the clipboard: clearing in {secs} s"),
+        Lang::Ar => format!("{what} في الحافظة: تُمسح خلال {secs} ث"),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct PortView {
     pub key: String,
@@ -285,6 +298,19 @@ mod tests {
         let arabic = home_view(&fixture(), parse_iso(NOW).expect("now"), Lang::Ar);
         assert_eq!(arabic.state_text, "في خطر");
         assert!(arabic.actions.iter().all(|a| !a.title.contains('?')));
+    }
+
+    #[test]
+    fn clipboard_countdown_text() {
+        assert_eq!(
+            clipboard_text("api_token", 23_400, Lang::En),
+            "An API token is on the clipboard: clearing in 24 s"
+        );
+        assert_eq!(
+            clipboard_text("mystery", 1, Lang::En),
+            "Something that looks like a password is on the clipboard: clearing in 1 s"
+        );
+        assert_eq!(clipboard_text("private_key", 5_000, Lang::Ar), "مفتاح خاص في الحافظة: تُمسح خلال 5 ث");
     }
 
     #[test]

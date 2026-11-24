@@ -92,6 +92,8 @@ export component App inherits Window {
     in property <[ToggleRow]> toggles;
     in property <[PortRow]> ports;
     in property <bool> can-block: true;
+    in property <string> clip-text;
+    in property <string> clip-clear-label;
     in-out property <[PaletteItem]> palette-items;
     in-out property <bool> palette-open: false;
     in-out property <string> page: "home";
@@ -102,6 +104,9 @@ export component App inherits Window {
     callback palette-run(string);
     callback retry();
     callback port-trust(string);
+    callback clip-clear();
+    // From the event thread: a secret was armed (kind, remaining ms) or cleared ("", 0).
+    callback clip-event(string, int);
     callback port-block(int, bool);
     callback page-changed(string);
     changed page => { page-changed(page); }
@@ -164,6 +169,32 @@ export component App inherits Window {
                             HorizontalLayout {
                                 alignment: Theme.rtl ? end : start;
                                 Button { text: labels.retry; primary: true; clicked => { root.retry(); } }
+                            }
+                        }
+                    }
+
+                    if connected && clip-text != "": Rectangle {
+                        background: Theme.elevated;
+                        border-color: Theme.active;
+                        border-width: 1px;
+                        border-radius: Theme.radius;
+                        accessible-role: groupbox;
+                        accessible-label: clip-text;
+                        HorizontalLayout {
+                            padding: 12px;
+                            spacing: 12px;
+                            Text {
+                                text: clip-text;
+                                color: Theme.ink;
+                                vertical-alignment: center;
+                                horizontal-stretch: 1;
+                                horizontal-alignment: Theme.rtl ? right : left;
+                            }
+                            Button {
+                                horizontal-stretch: 0;
+                                text: clip-clear-label;
+                                accessible-label: clip-clear-label;
+                                clicked => { root.clip-clear(); }
                             }
                         }
                     }

@@ -116,6 +116,7 @@ pub fn text(key: &str, lang: Lang) -> &'static str {
         (Lang::En, "snooze") => "Hide for 2 hours",
         (Lang::En, "offline") => "The Qalaa background service isn't running.",
         (Lang::En, "connected") => "Connected to Qalaa on this computer.",
+        (Lang::En, "clipboard.clear_now") => "Clear the clipboard now",
         (Lang::Ar, "sprite") => "حارس قلعة: افتح الإجراءات السريعة",
         (Lang::Ar, "scan.quick") => "شغّل فحصًا سريعًا",
         (Lang::Ar, "signatures.update") => "حدّث بصمات البرمجيات الخبيثة",
@@ -123,20 +124,38 @@ pub fn text(key: &str, lang: Lang) -> &'static str {
         (Lang::Ar, "snooze") => "أخفِ لمدة ساعتين",
         (Lang::Ar, "offline") => "خدمة قلعة الخلفية لا تعمل.",
         (Lang::Ar, "connected") => "متصل بقلعة على هذا الحاسوب.",
+        (Lang::Ar, "clipboard.clear_now") => "امسح الحافظة الآن",
         _ => "",
     }
 }
 
 /// The popover's buttons. Service actions are disabled while offline.
 pub fn actions(lang: Lang, connected: bool) -> Vec<Action> {
-    ["scan.quick", "signatures.update", "open", "snooze"]
-        .iter()
+    actions_with(lang, connected, false)
+}
+
+/// "Clear the clipboard now" appears first, only while a secret is waiting to be wiped.
+pub fn actions_with(lang: Lang, connected: bool, clipboard_armed: bool) -> Vec<Action> {
+    let mut ids = vec!["scan.quick", "signatures.update", "open", "snooze"];
+    if clipboard_armed {
+        ids.insert(0, "clipboard.clear_now");
+    }
+    ids.iter()
         .map(|id| Action {
             id: (*id).into(),
             label: text(id, lang).into(),
             enabled: connected || matches!(*id, "open" | "snooze"),
         })
         .collect()
+}
+
+/// "A secret is on the clipboard: clearing in 12 s".
+pub fn clipboard_text(remaining_ms: u64, lang: Lang) -> String {
+    let secs = remaining_ms.div_ceil(1000);
+    match lang {
+        Lang::En => format!("A secret is on the clipboard: clearing in {secs} s"),
+        Lang::Ar => format!("يوجد سر في الحافظة: يُمسح خلال {secs} ث"),
+    }
 }
 
 #[cfg(test)]
@@ -198,5 +217,9 @@ mod tests {
         let offline = actions(Lang::En, false);
         assert!(offline.iter().any(|a| a.id == "scan.quick" && !a.enabled));
         assert!(offline.iter().any(|a| a.id == "snooze" && a.enabled));
+        let armed = actions_with(Lang::En, true, true);
+        assert_eq!(armed[0].id, "clipboard.clear_now");
+        assert!(!actions(Lang::En, true).iter().any(|a| a.id == "clipboard.clear_now"));
+        assert_eq!(clipboard_text(11_200, Lang::En), "A secret is on the clipboard: clearing in 12 s");
     }
 }

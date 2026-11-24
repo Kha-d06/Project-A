@@ -197,6 +197,7 @@ export component PetWindow inherits Window {
     callback close-popover();
     callback drain-events();
     callback connection-changed(bool);
+    callback clipboard-changed(int);
 
     sprite := Sprite {
         x: sprite-x;

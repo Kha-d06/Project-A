@@ -11,7 +11,9 @@ use qalaa_guardian_pet::geometry::{assumed_work_area, rest_position, Corner, Rec
 use qalaa_guardian_pet::hit::{HitAction, HitController};
 use qalaa_guardian_pet::mood::{Input, Mood, Pet, Timing};
 use qalaa_guardian_pet::platform::{plan, Os};
-use qalaa_guardian_pet::{actions, input_for, layout, mood_text, skin_from, text, Lang, Layout, PetWindow, SPRITE};
+use qalaa_guardian_pet::{
+    actions, actions_with, clipboard_text, input_for, layout, mood_text, skin_from, text, Lang, Layout, PetWindow, SPRITE,
+};
 use qalaa_ipc::{Client, Message, Stream};
 use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
 use slint::{ComponentHandle, LogicalPosition, LogicalSize, ModelRc, Timer, TimerMode, VecModel};
@@ -139,6 +141,15 @@ fn listen(window: slint::Weak<PetWindow>, sink: Arc<Mutex<Vec<Input>>>) {
         if let Ok(mut client) = connected {
             while let Ok(message) = client.read_message() {
                 if let Message::Event(event) = message {
+                    if event.name == "clipboard.armed" || event.name == "clipboard.cleared" {
+                        let ms = if event.name == "clipboard.armed" {
+                            event.payload.get("ttlMs").and_then(serde_json::Value::as_i64).unwrap_or(0)
+                        } else {
+                            0
+                        };
+                        let _ = window.upgrade_in_event_loop(move |w| w.invoke_clipboard_changed(i32::try_from(ms).unwrap_or(0)));
+                        continue;
+                    }
                     if let Some(input) = input_for(&event) {
                         if let Ok(mut queue) = sink.lock() {
                             queue.push(input);
@@ -234,6 +245,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let Some(shared) = weak.upgrade() else { return };
             match id.as_str() {
                 "scan.quick" => call_service("scan.quick"),
+                "clipboard.clear_now" => call_service("clipboard.clear_now"),
                 "signatures.update" => call_service("signatures.update"),
                 "open" => {
                     let exe = std::env::current_exe().ok().and_then(|p| {
@@ -316,6 +328,62 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             }
             EventResult::Propagate
+        });
+    }
+
+    // Clipboard countdown in the card; the timer runs only while a secret is armed.
+    {
+        let weak = Rc::downgrade(&shared);
+        let countdown = Rc::new(Timer::default());
+        window.on_clipboard_changed(move |remaining_ms| {
+            let Some(shared) = weak.upgrade() else { return };
+            countdown.stop();
+            let (lang, connected) = {
+                let app = shared.borrow();
+                (app.lang, app.connected)
+            };
+            let restore = {
+                let shared = Rc::clone(&shared);
+                move || {
+                    let app = shared.borrow();
+                    app.window
+                        .set_status_text(text(if app.connected { "connected" } else { "offline" }, app.lang).into());
+                    app.window
+                        .set_actions(ModelRc::from(Rc::new(VecModel::from(actions(app.lang, app.connected)))));
+                }
+            };
+            if remaining_ms <= 0 {
+                restore();
+                return;
+            }
+            let deadline = Instant::now() + Duration::from_millis(u64::try_from(remaining_ms).unwrap_or(0));
+            {
+                let app = shared.borrow();
+                app.window
+                    .set_status_text(clipboard_text(u64::try_from(remaining_ms).unwrap_or(0), lang).into());
+                app.window
+                    .set_actions(ModelRc::from(Rc::new(VecModel::from(actions_with(lang, connected, true)))));
+            }
+            let inner = Rc::downgrade(&shared);
+            let stop = Rc::downgrade(&countdown);
+            countdown.start(TimerMode::Repeated, Duration::from_secs(1), move || {
+                let Some(shared) = inner.upgrade() else { return };
+                let left = deadline.saturating_duration_since(Instant::now());
+                if left.is_zero() {
+                    if let Some(timer) = stop.upgrade() {
+                        timer.stop();
+                    }
+                    let app = shared.borrow();
+                    app.window
+                        .set_status_text(text(if app.connected { "connected" } else { "offline" }, app.lang).into());
+                    app.window
+                        .set_actions(ModelRc::from(Rc::new(VecModel::from(actions(app.lang, app.connected)))));
+                } else {
+                    let app = shared.borrow();
+                    app.window
+                        .set_status_text(clipboard_text(u64::try_from(left.as_millis()).unwrap_or(0), app.lang).into());
+                }
+            });
         });
     }
 

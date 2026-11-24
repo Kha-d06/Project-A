@@ -4,6 +4,7 @@
  * supplies the state; the logic lives here once.
  */
 import { type HomeInput, type HomeModel, type HomeToggle, buildHome } from "./home";
+import type { ClipboardService } from "./clipboard-service";
 import type { KeyboardService } from "./keyboard-service";
 import type { ListenerService } from "./listener-service";
 import type { SafeDnsService } from "./safe-dns-service";
@@ -22,11 +23,13 @@ export interface CoreHost {
   keyboards?: KeyboardService;
   /** Safe DNS, where the host runs it. */
   safeDns?: SafeDnsService;
+  /** Clipboard auto-clear, where the host runs it. */
+  clipboard?: ClipboardService;
 }
 
 export type Handler = (params: unknown) => Promise<unknown>;
 
-const TOGGLE_KEYS: HomeToggle["key"][] = ["watchEnabled", "onAccessScan", "ransomwareWatch", "networkWatch", "cloudLookup", "safeDns"];
+const TOGGLE_KEYS: HomeToggle["key"][] = ["watchEnabled", "onAccessScan", "ransomwareWatch", "networkWatch", "cloudLookup", "safeDns", "clipboardGuard"];
 
 /** Only the Home toggles can be changed over IPC, and only with booleans. */
 export function toggleChanges(params: unknown): Partial<Record<HomeToggle["key"], boolean>> {
@@ -42,7 +45,10 @@ export function toggleChanges(params: unknown): Partial<Record<HomeToggle["key"]
 }
 
 /** Events pushed to every client (the native window and the Guardian pet). */
-export type Emit = (event: "home.changed" | "scan.started" | "scan.finished" | "threat.blocked" | "alert", payload: unknown) => void;
+export type Emit = (
+  event: "home.changed" | "scan.started" | "scan.finished" | "threat.blocked" | "alert" | "clipboard.armed" | "clipboard.cleared",
+  payload: unknown,
+) => void;
 
 export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handler> {
   const home = async () => buildHome(await host.homeInput());
@@ -79,6 +85,9 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       await host.updateSignatures();
       return changed();
     },
+    "clipboard.get": async () => requireClipboard(host).status(),
+    "clipboard.copy_secret": async (params) => requireClipboard(host).copySecret((params as { text?: unknown } | undefined)?.text),
+    "clipboard.clear_now": async () => requireClipboard(host).clearNow(),
     "safedns.get": async () => {
       if (!host.safeDns) throw new IpcError("unavailable", "Safe DNS isn't running here.");
       return host.safeDns.status();
@@ -117,4 +126,9 @@ function requireListeners(host: CoreHost): ListenerService {
 function requireKeyboards(host: CoreHost): KeyboardService {
   if (!host.keyboards) throw new IpcError("unavailable", "Keyboard warnings aren't running here.");
   return host.keyboards;
+}
+
+function requireClipboard(host: CoreHost): ClipboardService {
+  if (!host.clipboard) throw new IpcError("unavailable", "Clipboard auto-clear isn't running here.");
+  return host.clipboard;
 }

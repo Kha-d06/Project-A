@@ -30,6 +30,8 @@ export interface HomeInput {
   newKeyboards?: number;
   /** Safe DNS (the local filtering resolver), where the host runs it. */
   safeDns?: { on: boolean; available: boolean };
+  /** Clipboard auto-clear, where the host runs it. */
+  clipboardGuard?: { on: boolean; available: boolean };
 }
 
 export interface HomeCheck {
@@ -47,7 +49,7 @@ export interface HomeAction {
 }
 
 export interface HomeToggle {
-  key: "watchEnabled" | "onAccessScan" | "ransomwareWatch" | "networkWatch" | "cloudLookup" | "safeDns";
+  key: "watchEnabled" | "onAccessScan" | "ransomwareWatch" | "networkWatch" | "cloudLookup" | "safeDns" | "clipboardGuard";
   on: boolean;
   available: boolean;
 }
@@ -114,6 +116,7 @@ export function buildHome(input: HomeInput): HomeModel {
     { key: "networkWatch", on: input.networkWatch, available: true },
     { key: "cloudLookup", on: input.cloudLookup, available: true },
   ];
+  if (input.clipboardGuard) toggles.push({ key: "clipboardGuard", on: input.clipboardGuard.on, available: input.clipboardGuard.available });
   if (input.safeDns) toggles.push({ key: "safeDns", on: input.safeDns.on, available: input.safeDns.available });
 
   return { score, state, checks, actions, toggles, silentUntil: input.silentUntil, generatedAt: now.toISOString() };

@@ -36,6 +36,15 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
 }
 
 pub const EN: &[(&str, &str)] = &[
+    ("clip.clear", "Clear now"),
+    ("toggle.clipboardGuard", "Wipe secrets from the clipboard after 30 seconds"),
+    ("clip.kind.private_key", "A private key"),
+    ("clip.kind.cloud_key", "A cloud access key"),
+    ("clip.kind.api_token", "An API token"),
+    ("clip.kind.jwt", "A sign-in token"),
+    ("clip.kind.env_secret", "A password or secret setting"),
+    ("clip.kind.high_entropy", "Something that looks like a password"),
+    ("clip.kind.copied_from_qalaa", "A code copied from Qalaa"),
     ("toggle.safeDns", "Safe DNS: block malicious sites for every app"),
     ("action.review_keyboard", "A new keyboard was connected"),
     (
@@ -140,6 +149,15 @@ pub const EN: &[(&str, &str)] = &[
 ];
 
 pub const AR: &[(&str, &str)] = &[
+    ("clip.clear", "امسح الآن"),
+    ("toggle.clipboardGuard", "امسح الأسرار من الحافظة بعد 30 ثانية"),
+    ("clip.kind.private_key", "مفتاح خاص"),
+    ("clip.kind.cloud_key", "مفتاح وصول سحابي"),
+    ("clip.kind.api_token", "رمز API"),
+    ("clip.kind.jwt", "رمز تسجيل دخول"),
+    ("clip.kind.env_secret", "كلمة مرور أو إعداد سري"),
+    ("clip.kind.high_entropy", "شيء يشبه كلمة مرور"),
+    ("clip.kind.copied_from_qalaa", "رمز نُسخ من قلعة"),
     ("toggle.safeDns", "DNS الآمن: احجب المواقع الخبيثة لكل التطبيقات"),
     ("action.review_keyboard", "وُصلت لوحة مفاتيح جديدة"),
     (

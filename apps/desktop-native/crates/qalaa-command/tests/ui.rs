@@ -157,6 +157,22 @@ fn command_centre_interface() {
         "only new listeners ask for a decision"
     );
 
+    // --- Clipboard countdown banner with Clear now.
+    app.set_page("home".into());
+    app.set_clip_text(qalaa_command::view::clipboard_text("api_token", 12_000, Lang::En).into());
+    let cleared = Rc::new(RefCell::new(0));
+    {
+        let cleared = Rc::clone(&cleared);
+        app.on_clip_clear(move || *cleared.borrow_mut() += 1);
+    }
+    assert!(labelled(&app, "An API token is on the clipboard: clearing in 12 s")
+        .iter()
+        .any(|e| e.accessible_role() == Some(i_slint_core::items::AccessibleRole::Groupbox)));
+    labelled(&app, "Clear now")[0].invoke_accessible_default_action();
+    assert_eq!(*cleared.borrow(), 1);
+    app.set_clip_text("".into());
+    assert!(labelled(&app, "Clear now").is_empty());
+
     // --- About carries the Slint credit the royalty-free licence requires.
     app.set_page("about".into());
     assert!(ElementHandle::find_by_element_type_name(&app, "AboutSlint").count() >= 1);

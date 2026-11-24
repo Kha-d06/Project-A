@@ -70,7 +70,9 @@ import { parseDesktopEntry, parseLaunchPlist, startupWarnings } from "./engine/s
 import * as tools from "./engine/tools";
 import * as mail from "./engine/mail";
 import { type CoreHost, type Emit, createHandlers } from "./core/handlers";
+import { KeyboardService } from "./core/keyboard-service";
 import { ListenerService } from "./core/listener-service";
+import { listKeyboards, pollMs } from "./engine/hid";
 import { ipcPaths } from "./core/paths";
 import { type IpcServer, startIpcServer } from "./core/server";
 import { disableTerminal, enableTerminal, terminalStatus } from "./engine/shell-init";
@@ -1197,6 +1199,7 @@ async function status() {
 let coreIpc: IpcServer | null = null;
 const coreEmit: Emit = (event, payload) => coreIpc?.broadcast(event, payload);
 let listenerService: ListenerService | null = null;
+let keyboardService: KeyboardService | null = null;
 
 const electronHost: CoreHost = {
   version: app.getVersion(),
@@ -1222,10 +1225,14 @@ const electronHost: CoreHost = {
       updateAvailable: updateState.state === "available" || updateState.state === "ready" ? updateState.version : null,
       silentUntil: settings.silentUntil,
       newListeners: listenerService?.newCount() ?? 0,
+      newKeyboards: keyboardService?.newCount() ?? 0,
     };
   },
   get listeners() {
     return listenerService ?? undefined;
+  },
+  get keyboards() {
+    return keyboardService ?? undefined;
   },
   async updateToggles(changes) {
     const { onAccessScan, ...rest } = changes;
@@ -1248,11 +1255,21 @@ async function startCoreIpc() {
     }
   });
   await listenerService.load();
+  keyboardService = new KeyboardService(join(dataDir(), "keyboards.json"), () => listKeyboards(), (event, payload) => {
+    coreEmit(event, payload);
+    const k = payload as { name?: string };
+    notify("A new keyboard was connected", `${k.name ?? "A keyboard"}. If you didn't just plug in a keyboard, unplug it: some USB sticks pretend to be keyboards to type commands.`);
+    logEvent("security", "warning", `New keyboard: ${k.name ?? "unknown"}`);
+  });
+  await keyboardService.load();
   const handlers = createHandlers(electronHost, coreEmit);
   coreIpc = await startIpcServer(ipcPaths(process.platform, process.env, dataDir()), handlers, { version: app.getVersion() });
   const check = () => void listenerService?.check().catch(() => undefined);
   check();
   setInterval(check, 60_000).unref();
+  const checkKeyboards = () => void keyboardService?.check().catch(() => undefined);
+  checkKeyboards();
+  setInterval(checkKeyboards, pollMs(process.platform)).unref();
 }
 
 function stringArray(value: unknown, max = 1000): string[] {

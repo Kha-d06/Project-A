@@ -26,6 +26,8 @@ export interface HomeInput {
   silentUntil: string | null;
   /** Programs newly listening for connections from other machines, awaiting a decision. */
   newListeners?: number;
+  /** Keyboards connected since the last check that nobody has confirmed yet. */
+  newKeyboards?: number;
 }
 
 export interface HomeCheck {
@@ -93,6 +95,7 @@ export function buildHome(input: HomeInput): HomeModel {
 
   const actions: HomeAction[] = [];
   if (input.recentThreats > 0) actions.push({ id: "review_threats", priority: 1, command: { method: "view.open", params: { view: "timeline" } } });
+  if ((input.newKeyboards ?? 0) > 0) actions.push({ id: "review_keyboard", priority: 1, command: { method: "keyboards.trust_all" } });
   if ((input.newListeners ?? 0) > 0) actions.push({ id: "review_listeners", priority: 1, command: { method: "view.open", params: { view: "listeners" } } });
   if (checks[1]?.status === "off") actions.push({ id: "turn_on_realtime", priority: 1, command: { method: "settings.set", params: { watchEnabled: true } } });
   if (checks[0]?.status !== "ok") actions.push({ id: "update_signatures", priority: 1, command: { method: "signatures.update" } });

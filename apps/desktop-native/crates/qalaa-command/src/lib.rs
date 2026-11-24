@@ -79,6 +79,7 @@ pub fn apply_home(app: &App, view: &HomeView) {
             id: a.id.clone().into(),
             title: a.title.clone().into(),
             detail: a.detail.clone().into(),
+            button: a.button.clone().into(),
             priority: i32::from(a.priority),
         })
         .collect();

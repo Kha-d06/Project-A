@@ -4,6 +4,7 @@
  * supplies the state; the logic lives here once.
  */
 import { type HomeInput, type HomeModel, type HomeToggle, buildHome } from "./home";
+import type { KeyboardService } from "./keyboard-service";
 import type { ListenerService } from "./listener-service";
 import { IpcError } from "./protocol";
 
@@ -16,6 +17,8 @@ export interface CoreHost {
   updateSignatures(): Promise<void>;
   /** New listening-port alerts, where the host runs them. */
   listeners?: ListenerService;
+  /** New-keyboard (BadUSB) warnings, where the host runs them. */
+  keyboards?: KeyboardService;
 }
 
 export type Handler = (params: unknown) => Promise<unknown>;
@@ -67,6 +70,12 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       await host.updateSignatures();
       return changed();
     },
+    "keyboards.get": async () => requireKeyboards(host).status(),
+    "keyboards.trust_all": async () => {
+      const status = await requireKeyboards(host).trustAll();
+      await changed();
+      return status;
+    },
     "listeners.get": async () => requireListeners(host).status(),
     "listeners.check": async () => {
       await requireListeners(host).check();
@@ -90,4 +99,9 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
 function requireListeners(host: CoreHost): ListenerService {
   if (!host.listeners) throw new IpcError("unavailable", "Port alerts aren't running here.");
   return host.listeners;
+}
+
+function requireKeyboards(host: CoreHost): KeyboardService {
+  if (!host.keyboards) throw new IpcError("unavailable", "Keyboard warnings aren't running here.");
+  return host.keyboards;
 }

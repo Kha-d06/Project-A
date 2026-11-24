@@ -19,6 +19,8 @@ pub struct ActionView {
     pub id: String,
     pub title: String,
     pub detail: String,
+    /// The button's words: the action's own answer where it has one.
+    pub button: String,
     pub priority: u8,
 }
 
@@ -132,6 +134,10 @@ pub fn home_view(model: &HomeModel, now: i64, lang: Lang) -> HomeView {
                 id: action.id.clone(),
                 title: t(lang, &format!("action.{}", action.id)).to_owned(),
                 detail: t(lang, &format!("action.{}.detail", action.id)).to_owned(),
+                button: match t(lang, &format!("action.{}.button", action.id)) {
+                    "?" => t(lang, "action.go").to_owned(),
+                    own => own.to_owned(),
+                },
                 priority: action.priority,
             })
             .collect(),
@@ -279,6 +285,23 @@ mod tests {
         let arabic = home_view(&fixture(), parse_iso(NOW).expect("now"), Lang::Ar);
         assert_eq!(arabic.state_text, "في خطر");
         assert!(arabic.actions.iter().all(|a| !a.title.contains('?')));
+    }
+
+    #[test]
+    fn keyboard_action_has_its_own_answer() {
+        let mut model = fixture();
+        model.actions.insert(
+            0,
+            serde_json::from_value(
+                serde_json::json!({"id": "review_keyboard", "priority": 1, "command": {"method": "keyboards.trust_all"}}),
+            )
+            .expect("action"),
+        );
+        let view = home_view(&model, 0, Lang::En);
+        assert_eq!(view.actions[0].title, "A new keyboard was connected");
+        assert_eq!(view.actions[0].button, "I plugged it in");
+        assert_eq!(view.actions[1].button, "Do it");
+        assert_eq!(home_view(&model, 0, Lang::Ar).actions[0].button, "أنا وصلتها");
     }
 
     #[test]

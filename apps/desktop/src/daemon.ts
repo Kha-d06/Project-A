@@ -14,12 +14,14 @@ import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 
 import { type CoreHost, type Emit, createHandlers } from "./core/handlers";
+import { KeyboardService } from "./core/keyboard-service";
 import { ListenerService } from "./core/listener-service";
 import type { HomeInput } from "./core/home";
 import { dataDirFor, ipcPaths } from "./core/paths";
 import { startIpcServer } from "./core/server";
 import { findClam } from "./engine/clamav";
 import { findSevenZip } from "./engine/formats";
+import { listKeyboards, pollMs } from "./engine/hid";
 import { isExcluded } from "./engine/protection";
 import { Quarantine } from "./engine/quarantine";
 import { scanFile } from "./engine/scanner";
@@ -42,7 +44,7 @@ async function mtime(file: string): Promise<string | null> {
   }
 }
 
-export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService }> {
+export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService }> {
   const settingsFile = join(dataDir, "settings.json");
   const historyFile = join(dataDir, "history.json");
   let settings = await loadSettings(settingsFile, defaultSettings(join(homedir(), "Downloads"), [], hostname().slice(0, 80) || "This computer"));
@@ -58,6 +60,8 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
   }
   const listeners = new ListenerService(join(dataDir, "listeners.json"), process.platform, () => listeningPorts(), emit);
   await listeners.load();
+  const keyboards = new KeyboardService(join(dataDir, "keyboards.json"), () => listKeyboards(), emit);
+  await keyboards.load();
   const clamBinary = await findClam();
   const sevenZip = await findSevenZip();
 
@@ -65,6 +69,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     version: VERSION,
     settings: () => settings,
     listeners,
+    keyboards,
     async homeInput(): Promise<HomeInput> {
       const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       return {
@@ -87,6 +92,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
         updateAvailable: null,
         silentUntil: settings.silentUntil,
         newListeners: listeners.newCount(),
+        newKeyboards: keyboards.newCount(),
       };
     },
     async updateToggles(changes) {
@@ -137,6 +143,10 @@ export async function runDaemon(env: NodeJS.ProcessEnv = process.env) {
   const checkListeners = () => void host.listeners.check().then((fresh) => (fresh.length ? handlers["home.get"]?.(undefined).then((m) => emit("home.changed", m)) : undefined)).catch(() => undefined);
   checkListeners();
   setInterval(checkListeners, 60_000).unref();
+  // New keyboards (BadUSB): checked every few seconds; the first look records what's there.
+  const checkKeyboards = () => void host.keyboards.check().then((fresh) => (fresh.length ? handlers["home.get"]?.(undefined).then((m) => emit("home.changed", m)) : undefined)).catch(() => undefined);
+  checkKeyboards();
+  setInterval(checkKeyboards, pollMs(process.platform)).unref();
   const stop = () => void server?.close().then(() => process.exit(0));
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);

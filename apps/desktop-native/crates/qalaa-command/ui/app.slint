@@ -5,7 +5,7 @@ import { PostureRing } from "ring.slint";
 export { Theme }
 
 export struct CheckRow { id: string, label: string, status: string, status-text: string, freshness: string }
-export struct ActionCard { id: string, title: string, detail: string, priority: int }
+export struct ActionCard { id: string, title: string, detail: string, button: string, priority: int }
 export struct ToggleRow { key: string, label: string, hint: string, on: bool, available: bool }
 export struct PaletteItem { id: string, title: string }
 export struct PortRow { key: string, port: int, title: string, detail: string, fresh: bool, blocked: bool, exposed: bool }
@@ -222,7 +222,7 @@ export component App inherits Window {
                                         Button {
                                             horizontal-stretch: 0;
                                             min-width: 96px;
-                                            text: labels.go;
+                                            text: card.button;
                                             enabled: !busy;
                                             accessible-label: card.title;
                                             clicked => { root.run-action(card.id); }

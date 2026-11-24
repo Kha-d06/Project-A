@@ -36,6 +36,12 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
 }
 
 pub const EN: &[(&str, &str)] = &[
+    ("action.review_keyboard", "A new keyboard was connected"),
+    (
+        "action.review_keyboard.detail",
+        "If you didn't just plug in a keyboard, unplug the device now: some USB sticks pretend to be keyboards to type commands.",
+    ),
+    ("action.review_keyboard.button", "I plugged it in"),
     ("nav.ports", "Ports"),
     ("ports.title", "Programs accepting connections"),
     (
@@ -133,6 +139,12 @@ pub const EN: &[(&str, &str)] = &[
 ];
 
 pub const AR: &[(&str, &str)] = &[
+    ("action.review_keyboard", "وُصلت لوحة مفاتيح جديدة"),
+    (
+        "action.review_keyboard.detail",
+        "إن لم توصل لوحة مفاتيح للتو، افصل الجهاز الآن: بعض وحدات USB تتظاهر بأنها لوحة مفاتيح لتكتب أوامر.",
+    ),
+    ("action.review_keyboard.button", "أنا وصلتها"),
     ("nav.ports", "المنافذ"),
     ("ports.title", "برامج تقبل الاتصالات"),
     (

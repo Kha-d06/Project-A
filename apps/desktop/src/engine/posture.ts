@@ -9,6 +9,8 @@ import { execFile } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
 import { delimiter } from "node:path";
 
+import { firmwarePosture } from "./firmware";
+
 export type CheckStatus = "pass" | "fail" | "warn" | "unknown";
 
 export interface PostureCheck {
@@ -296,7 +298,10 @@ async function linuxChecks(): Promise<PostureCheck[]> {
 }
 
 export async function posture(facts: KnownFacts, platform = process.platform): Promise<Posture> {
-  const extra = await (platform === "win32" ? windowsChecks() : platform === "darwin" ? macChecks() : platform === "linux" ? linuxChecks() : Promise.resolve([]));
-  const checks = [...commonChecks(facts), ...extra];
+  const [extra, firmware] = await Promise.all([
+    platform === "win32" ? windowsChecks() : platform === "darwin" ? macChecks() : platform === "linux" ? linuxChecks() : Promise.resolve([]),
+    firmwarePosture(platform).catch(() => []),
+  ]);
+  const checks = [...commonChecks(facts), ...firmware, ...extra];
   return { score: scoreChecks(checks), checks, checkedAt: new Date().toISOString() };
 }

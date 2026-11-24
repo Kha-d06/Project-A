@@ -15,16 +15,21 @@ import { ToastProvider } from "@/components/ui/toast";
 import { I18nProvider } from "@/lib/i18n/client";
 import { directionOf } from "@/lib/i18n/locales";
 import { getDictionary, getLocale } from "@/lib/i18n/server";
+import { siteUrl } from "@/lib/seo";
 import { SessionProvider } from "@/lib/session";
 import { themeBootScript } from "@/lib/theme";
 
-export const metadata: Metadata = {
+export const generateMetadata = async (): Promise<Metadata> => ({
+  metadataBase: new URL(siteUrl()),
+  applicationName: "Qalaa",
+  openGraph: { type: "website", siteName: "Qalaa", images: [{ url: "/icons/icon-512.png", width: 512, height: 512, alt: "Qalaa" }] },
+  twitter: { card: "summary" },
   appleWebApp: { capable: true, title: "Qalaa", statusBarStyle: "black-translucent" },
   icons: { apple: "/icons/apple-touch-icon.png" },
   title: { default: "Qalaa: check links, messages and files", template: "%s · Qalaa" },
   description:
     "Qalaa helps you spot phishing links, scam messages and malicious files, and explains what it found in plain language. Free for everyone.",
-};
+});
 
 export const viewport: Viewport = {
   themeColor: [

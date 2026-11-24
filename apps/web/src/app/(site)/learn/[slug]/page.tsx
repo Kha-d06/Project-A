@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { JsonLd } from "@/components/seo/json-ld";
 import { ButtonLink } from "@/components/ui/button";
 import { ARTICLES, articleText } from "@/content/awareness";
 import { getDictionary, getLocale } from "@/lib/i18n/server";
+import { articleLd, breadcrumbLd, breadcrumbs } from "@/lib/seo";
 
 export function generateStaticParams() {
   return ARTICLES.map((article) => ({ slug: article.slug }));
@@ -13,7 +15,9 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const article = ARTICLES.find((item) => item.slug === slug);
-  return article ? { title: article.en.title, description: article.en.summary } : {};
+  if (!article) return {};
+  const text = articleText(article, await getLocale());
+  return { title: text.title, description: text.summary };
 }
 
 export default async function ArticlePage({ params }: { params: Promise<{ slug: string }> }) {
@@ -23,8 +27,10 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
   const locale = await getLocale();
   const t = getDictionary(locale).extra.learn;
   const text = articleText(article, locale);
+  const path = `/learn/${article.slug}`;
   return (
     <article className="mx-auto max-w-3xl space-y-8 px-4 py-12 sm:px-6">
+      <JsonLd data={[articleLd({ title: text.title, description: text.summary, path, locale }), breadcrumbLd(breadcrumbs(path, locale, text.title))]} />
       <Link href="/learn" className="text-sm text-ink-muted hover:text-ink">
         ← {t.back}
       </Link>

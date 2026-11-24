@@ -26,6 +26,11 @@ export function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", policy);
+  // For metadata: which page this is, and an explicit language from ?lang= (crawlable Arabic URLs).
+  requestHeaders.set("x-pathname", request.nextUrl.pathname);
+  const lang = request.nextUrl.searchParams.get("lang");
+  if (lang === "en" || lang === "ar") requestHeaders.set("x-qalaa-lang", lang);
+  else requestHeaders.delete("x-qalaa-lang");
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set("Content-Security-Policy", policy);

@@ -17,6 +17,7 @@ import {
 import Link from "next/link";
 
 import { RiskBadge } from "@/components/scan/risk-badge";
+import { JsonLd } from "@/components/seo/json-ld";
 import { BrowserGuardVisual } from "@/components/site/browser-guard-visual";
 import { IntegrationsStatus } from "@/components/site/integrations-status";
 import { DownloadPrompt } from "@/components/site/platform-download";
@@ -25,6 +26,7 @@ import { VerdictSpecimen } from "@/components/site/verdict-specimen";
 import { ButtonLink } from "@/components/ui/button";
 import type { RiskLevel, ScanType } from "@/lib/api/types";
 import { getDictionary, getLocale } from "@/lib/i18n/server";
+import { faqPageLd, softwareApplicationLd } from "@/lib/seo";
 
 const TOOLS: { type: ScanType; icon: typeof Link2 }[] = [
   { type: "url", icon: Link2 },
@@ -44,6 +46,8 @@ export default async function HomePage() {
   const h = t.home;
   return (
     <>
+      {/* The FAQ below is shown on this page, so it may be marked up. */}
+      <JsonLd data={[softwareApplicationLd(), faqPageLd(h.faq)]} />
       {/* Hero: what Qalaa does, and the thing it actually hands back. */}
       <section className="mx-auto grid max-w-6xl items-center gap-12 px-4 pt-12 pb-20 sm:px-6 sm:pt-16 lg:grid-cols-12 lg:gap-8 lg:pt-24 lg:pb-28">
         <div className="min-w-0 space-y-7 lg:col-span-6">

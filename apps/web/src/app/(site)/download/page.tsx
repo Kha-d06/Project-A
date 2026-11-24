@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 
+import { JsonLd } from "@/components/seo/json-ld";
 import { DownloadView } from "@/components/site/download";
+import { softwareApplicationLd } from "@/lib/seo";
 
 export const metadata: Metadata = {
   title: "Download",
@@ -8,5 +10,10 @@ export const metadata: Metadata = {
 };
 
 export default function DownloadPage() {
-  return <DownloadView />;
+  return (
+    <>
+      <JsonLd data={softwareApplicationLd()} />
+      <DownloadView />
+    </>
+  );
 }

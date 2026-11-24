@@ -2084,10 +2084,89 @@ async function securityView() {
     programsPanel(),
     browsingPanel(),
     privacyPanel(sec),
+    mailPanel(),
     reportsPanel(),
     schedulePanel(),
     backupPanel(),
   ];
+}
+
+// --- Email -------------------------------------------------------------------------------
+
+interface MailFindingView { severity: string; title: string; explanation: string }
+interface MailResultView { uid: number; from: string; subject: string; date: string | null; risk: string; summary: string; findings: MailFindingView[] }
+interface MailView {
+  account: { host: string; port: number; user: string } | null;
+  watch: boolean;
+  checking: boolean;
+  hasPassword: boolean;
+  keychain: boolean;
+  lastCheck: string | null;
+  lastError: string | null;
+  results: MailResultView[];
+}
+let mailView: MailView | null | undefined;
+let mailBusy = false;
+
+const mailBadge = (risk: string) => (risk === "known_malicious" ? "malicious" : risk === "suspicious" ? "suspicious" : "no_known_threat");
+
+function mailPanel() {
+  const m = t.mail;
+  if (mailView === undefined) {
+    mailView = null;
+    void guard(() => api.mailStatus() as Promise<MailView>).then((value) => { mailView = value ?? null; if (tab === "security") void render(); });
+  }
+  const run = async (action: () => Promise<unknown>) => {
+    mailBusy = true;
+    void render();
+    const next = (await guard(action)) as MailView | { error: string } | undefined;
+    mailBusy = false;
+    if (next && "error" in next) flash(next.error, "error");
+    else if (next) mailView = next;
+    void render();
+  };
+  const view = mailView;
+  if (!view?.account || !view.hasPassword) {
+    const value = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.value ?? "";
+    const field = (id: string, label: string, type = "text", extra: Record<string, unknown> = {}) =>
+      h("label", { class: "field", for: id }, h("span", { class: "small muted block" }, label), h("input", { id, type, autocomplete: "off", spellcheck: "false", ...extra }));
+    return h("section", { class: "panel", id: "mail" },
+      h("h2", {}, m.heading),
+      h("p", { class: "muted" }, m.intro),
+      h("p", { class: "muted small" }, m.appPassword),
+      h("form", {
+        class: "stack",
+        onsubmit: (event: Event) => {
+          event.preventDefault();
+          void run(() => api.mailConnect({ host: value("mail-host"), port: Number(value("mail-port") || 993), user: value("mail-user") }, value("mail-password")));
+        },
+      },
+        field("mail-host", m.host, "text", { value: view?.account?.host ?? "", placeholder: "imap.example.com" }),
+        field("mail-port", m.port, "number", { value: String(view?.account?.port ?? 993), min: "1", max: "65535" }),
+        field("mail-user", m.user, "text", { value: view?.account?.user ?? "" }),
+        field("mail-password", m.password, "password"),
+        h("div", { class: "row" }, h("button", { type: "submit", disabled: mailBusy }, mailBusy ? m.checking : m.connect))));
+  }
+  const warnings = view.results.filter((r) => r.risk === "suspicious" || r.risk === "known_malicious");
+  return h("section", { class: "panel", id: "mail" },
+    h("h2", {}, m.heading),
+    h("p", {}, m.connected(view.account.user, view.account.host)),
+    view.keychain ? null : h("p", { class: "muted small" }, m.keychainOff),
+    toggle(m.watch, view.watch, (value) => void run(() => api.mailWatch(value)), undefined, "mail-watch"),
+    h("div", { class: "row" },
+      h("button", { type: "button", id: "mail-check", disabled: mailBusy || view.checking, onclick: () => void run(() => api.mailCheck()) }, mailBusy || view.checking ? m.checking : m.checkNow),
+      h("button", { type: "button", class: "secondary", onclick: () => void run(() => api.mailDisconnect()) }, m.disconnect)),
+    view.lastError ? h("p", { class: "error", role: "alert" }, view.lastError) : null,
+    view.lastCheck ? h("p", { class: "muted small" }, m.lastCheck(date(view.lastCheck))) : h("p", { class: "muted small" }, m.none),
+    view.results.length ? h("p", {}, warnings.length ? m.warnings(warnings.length) : m.clear) : null,
+    warnings.length
+      ? h("ul", { class: "list", id: "mail-warnings" },
+          ...warnings.slice(0, 20).map((r) =>
+            h("li", {},
+              h("div", { class: "row spread" }, h("strong", { dir: "auto" }, r.subject || m.noSubject), h("span", { class: `badge ${mailBadge(r.risk)}` }, m.risk[r.risk] ?? r.risk)),
+              h("p", { class: "muted small", dir: "auto" }, r.from),
+              ...r.findings.slice(0, 3).map((f) => h("p", { class: "small", dir: "auto" }, f.title)))))
+      : null);
 }
 
 // --- Home network -----------------------------------------------------------------------

@@ -431,6 +431,15 @@ step("reports: security audit (HTML), hardware inventory (PDF) and performance s
 await page.waitForFunction(() => !document.querySelector("#startup")?.textContent?.includes("New since your last review"));
 step("security centre: risky open port, startup entry running a downloaded script, new startup item since last review");
 
+// Email: the mailbox form validates before connecting anywhere.
+await page.locator("#mail #mail-host").waitFor();
+await page.fill("#mail-host", "imaps://not a host");
+await page.fill("#mail-user", "me@example.com");
+await page.fill("#mail-password", "app-password");
+await page.click('#mail button[type="submit"]');
+await page.locator("#toast.error", { hasText: "mail server" }).waitFor();
+step("email: mailbox form shown in the security centre; a bad server name is refused before connecting");
+
 // System monitor: live readings, connections with their programs, services, log.
 await page.click('[data-tab="monitor"]');
 await page.waitForFunction(() => /\d+%/.test(document.querySelector("#monitor-cpu .big")?.textContent ?? ""));

@@ -68,6 +68,7 @@ import { isDirectory, walk } from "./engine/walk";
 import { type DecoyRecord, DropWatcher, RemovableWatcher, executableDropFolders, isExcluded, isSilent, looksRunnable, persistenceFolders, plantDecoys, removableMounts, silentUntilFrom, tamperedDecoys } from "./engine/protection";
 import { parseDesktopEntry, parseLaunchPlist, startupWarnings } from "./engine/security";
 import * as tools from "./engine/tools";
+import * as mail from "./engine/mail";
 import { disableTerminal, enableTerminal, terminalStatus } from "./engine/shell-init";
 import { FolderWatcher } from "./engine/watcher";
 
@@ -95,6 +96,17 @@ let remote: RemoteAgent;
 let personalFolders: string[] = [];
 const accountFile = () => join(dataDir(), "account.json");
 const backupKeyFile = () => join(dataDir(), "backup-key.bin");
+const mailFile = () => join(dataDir(), "mail.json");
+const mailKeyFile = () => join(dataDir(), "mail-key.bin");
+interface MailConfig {
+  account: mail.MailAccount | null;
+  watch: boolean;
+  state: mail.MailState;
+}
+let mailConfig: MailConfig = { account: null, watch: false, state: { ...mail.EMPTY_STATE } };
+/** Used only when the system keychain is unavailable; lost when the app quits. */
+let sessionMailPassword: string | null = null;
+let mailChecking = false;
 let scanning = false;
 let backingUp = false;
 /** Used only when the system keychain is unavailable; lost when the app quits. */
@@ -870,6 +882,79 @@ function applyPrivacyWatch() {
   privacyTimer.unref();
 }
 
+// --- Mailbox scanning ------------------------------------------------------------
+
+async function storedMailPassword(): Promise<string | null> {
+  if (sessionMailPassword) return sessionMailPassword;
+  try {
+    if (!safeStorage.isEncryptionAvailable()) return null;
+    return safeStorage.decryptString(await readFile(mailKeyFile()));
+  } catch {
+    return null;
+  }
+}
+
+async function mailStatus() {
+  return {
+    account: mailConfig.account,
+    watch: mailConfig.watch,
+    checking: mailChecking,
+    hasPassword: Boolean(await storedMailPassword()),
+    keychain: safeStorage.isEncryptionAvailable(),
+    lastCheck: mailConfig.state.lastCheck,
+    lastError: mailConfig.state.lastError,
+    results: mailConfig.state.results,
+  };
+}
+
+async function checkMail(): Promise<Awaited<ReturnType<typeof mailStatus>>> {
+  const password = await storedMailPassword();
+  if (!mailConfig.account || !password || mailChecking) return mailStatus();
+  mailChecking = true;
+  try {
+    const { state, added } = await mail.scanInbox(mailConfig.account, password, mailConfig.state, settings.serverUrl);
+    mailConfig = { ...mailConfig, state };
+    await saveJson(mailFile(), mailConfig);
+    const worrying = mail.worrying(added);
+    const first = worrying[0];
+    if (first) {
+      notify(
+        worrying.length === 1 ? "An email shows warning signs" : `${worrying.length} emails show warning signs`,
+        `${first.subject || "(no subject)"} · ${first.findings[0]?.title ?? first.summary}`,
+      );
+    }
+  } finally {
+    mailChecking = false;
+  }
+  return mailStatus();
+}
+
+async function connectMail(input: Record<string, unknown>, password: string) {
+  try {
+    const accountIn = mail.sanitizeAccount(input);
+    if (!password) return { error: "Enter the password or app password." };
+    if (safeStorage.isEncryptionAvailable()) {
+      await writeFile(mailKeyFile(), safeStorage.encryptString(password), { mode: 0o600 });
+      sessionMailPassword = null;
+    } else {
+      sessionMailPassword = password;
+    }
+    mailConfig = { account: accountIn, watch: mailConfig.watch, state: { ...mail.EMPTY_STATE } };
+    await saveJson(mailFile(), mailConfig);
+    return await checkMail();
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+async function disconnectMail() {
+  sessionMailPassword = null;
+  await rm(mailKeyFile(), { force: true });
+  mailConfig = { account: null, watch: false, state: { ...mail.EMPTY_STATE } };
+  await saveJson(mailFile(), mailConfig);
+  return mailStatus();
+}
+
 // --- Backups ---------------------------------------------------------------------
 
 async function storedBackupPassword(): Promise<string | null> {
@@ -1320,6 +1405,17 @@ function registerIpc() {
   ipcMain.handle("utilities-duplicates", () => findDuplicateFiles());
   ipcMain.handle("utilities-apps", () => installedApps());
   ipcMain.handle("privacy-block-status", () => privacyBlockStatus());
+  ipcMain.handle("mail-status", () => mailStatus());
+  ipcMain.handle("mail-connect", (_event, input: unknown, password: unknown) =>
+    connectMail(input && typeof input === "object" ? (input as Record<string, unknown>) : {}, typeof password === "string" ? password : ""),
+  );
+  ipcMain.handle("mail-disconnect", () => disconnectMail());
+  ipcMain.handle("mail-check", () => checkMail());
+  ipcMain.handle("mail-watch", async (_event, watch: unknown) => {
+    mailConfig = { ...mailConfig, watch: Boolean(watch) };
+    await saveJson(mailFile(), mailConfig);
+    return mailStatus();
+  });
   ipcMain.handle("privacy-block-set", (_event, device: unknown, block: unknown) => setPrivacyBlock(device === "microphone" ? "microphone" : "camera", Boolean(block)));
   ipcMain.handle("cfa-status", () => cfa.cfaStatus());
   ipcMain.handle("cfa-apply", async (_event, action: unknown, path: unknown) => {
@@ -1592,6 +1688,11 @@ async function start() {
     if (settings.networkWatch && !silent() && !networkScanning) void runNetworkScan().catch(() => {});
   }, 6 * 60 * 60 * 1000).unref();
   setInterval(() => void updateSignatures(), SIGNATURE_REFRESH_MS).unref();
+  // Mailbox scanning: new mail every 15 minutes when the person turned it on.
+  mailConfig = { ...mailConfig, ...(await loadJson<Partial<MailConfig>>(mailFile(), {})) };
+  setInterval(() => {
+    if (mailConfig.watch && mailConfig.account && !silent()) void checkMail().catch(() => {});
+  }, 15 * 60 * 1000).unref();
 
   account = await loadAccount(accountFile());
   remote = new RemoteAgent({

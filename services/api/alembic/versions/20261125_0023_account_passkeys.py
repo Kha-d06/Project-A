@@ -45,7 +45,10 @@ def upgrade() -> None:
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("used_at", sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(
-            ["user_id"], ["users.id"], name="fk_webauthn_challenges_user_id_users", ondelete="CASCADE"
+            ["user_id"],
+            ["users.id"],
+            name="fk_webauthn_challenges_user_id_users",
+            ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", name="pk_webauthn_challenges"),
     )

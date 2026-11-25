@@ -24,8 +24,9 @@ export function createManifest({ version, serverOrigin, browser = "chrome" }) {
     // they load (block rules need no host access). alarms: refresh that list.
     permissions: ["storage", "webNavigation", "downloads", "notifications", "contextMenus", "activeTab", "declarativeNetRequest", "alarms", "idle"],
     // Requested only when the user turns on hover checks or the on-screen assistant
-    // (scripting, cookie names) or picks another server.
-    optional_permissions: ["scripting", "cookies"],
+    // (scripting, cookie names), fingerprint noise (scripting, and privacy to stop
+    // WebRTC revealing local addresses) or picks another server.
+    optional_permissions: ["scripting", "cookies", "privacy"],
     host_permissions: [`${serverOrigin}/*`],
     optional_host_permissions: ["http://*/*", "https://*/*"],
     content_security_policy: {

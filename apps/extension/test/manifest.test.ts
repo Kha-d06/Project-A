@@ -18,7 +18,7 @@ describe("manifest", () => {
       "idle",
     ]);
     // Page access and cookie names only when the user turns a feature on.
-    expect(manifest.optional_permissions).toEqual(["scripting", "cookies"]);
+    expect(manifest.optional_permissions).toEqual(["scripting", "cookies", "privacy"]);
     expect(manifest.permissions).not.toContain("declarativeNetRequestWithHostAccess");
     expect(manifest.host_permissions).toEqual(["https://sentinel.example/*"]);
     // Access to web pages is only ever requested at runtime, for optional features.

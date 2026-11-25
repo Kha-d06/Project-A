@@ -11,7 +11,7 @@ const SWITCHES = ["paused", "warnOnSuspicious", "preloadBlocking", "blockTracker
 const PAGE_ORIGINS = ["http://*/*", "https://*/*"];
 const FEATURE_PERMISSIONS: Partial<Record<(typeof SWITCHES)[number], chrome.permissions.Permissions>> = {
   hoverChecks: { permissions: ["scripting"], origins: PAGE_ORIGINS },
-  fingerprintNoise: { permissions: ["scripting"], origins: PAGE_ORIGINS },
+  fingerprintNoise: { permissions: ["scripting", "privacy"], origins: PAGE_ORIGINS },
   assistant: { permissions: ["scripting", "cookies"], origins: PAGE_ORIGINS },
   searchBadges: { permissions: ["scripting"], origins: SEARCH_ORIGINS },
 };

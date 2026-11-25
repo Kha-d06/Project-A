@@ -338,6 +338,18 @@ let noise: { on: boolean; bypass: string[] } = { on: false, bypass: [] };
 
 function updateNoise(settings: Settings) {
   noise = { on: settings.fingerprintNoise && !settings.paused, bypass: settings.fingerprintBypass };
+  void applyWebRtcPolicy(noise.on);
+}
+
+/**
+ * WebRTC can reveal the computer's local network addresses to any page. With
+ * fingerprint noise on, only the public interface is used (calls keep working).
+ */
+async function applyWebRtcPolicy(on: boolean) {
+  const policy = chrome.privacy?.network?.webRTCIPHandlingPolicy;
+  if (!policy) return; // optional permission not granted
+  if (on) await policy.set({ value: "default_public_interface_only" }).catch(() => undefined);
+  else await policy.clear({}).catch(() => undefined);
 }
 void loadSettings().then(updateNoise);
 chrome.storage.onChanged.addListener((changes, area) => {

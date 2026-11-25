@@ -12,6 +12,8 @@ atomic_tests:
         # one running, so it is repeated back to back for a minute.
         ( n=0; end=$((SECONDS + 60)); while [ "$SECONDS" -lt "$end" ]; do /usr/bin/security dump-keychain /Library/Keychains/System.keychain >/dev/null || echo "dump failed ($?)"; n=$((n+1)); done; echo "$n dumps" ) &
         echo $! > "$HOME/atomic.pid"
+        # Evidence for the log: is a dump visible to ps at all while the loop runs?
+        ( for t in 3 10 20; do sleep 4; echo "ps at ~${t}s: $(ps -axww -o pid=,command= | grep -c '[d]ump-keychain') dump(s) running"; done ) &
       cleanup_command: |
         pkill -P "$(cat "$HOME/atomic.pid")" 2>/dev/null; kill "$(cat "$HOME/atomic.pid")" 2>/dev/null; rm -f "$HOME/atomic.pid"
     qalaa:

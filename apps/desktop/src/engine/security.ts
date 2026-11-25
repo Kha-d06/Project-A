@@ -10,13 +10,21 @@ import { readFile, readdir, readlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
-function run(command: string, args: string[], timeout = 15_000): Promise<string> {
+function run(command: string, args: string[], timeout = 15_000, emptyOk = false): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(command, args, { timeout, windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (error, stdout) => {
-      if (error && !stdout) reject(error);
+      if (error && !stdout && !(emptyOk && lsofFoundNothing(error))) reject(error);
       else resolve(String(stdout));
     });
   });
+}
+
+/**
+ * lsof exits 1 with no output when nothing matches, e.g. no program listens.
+ * That is an answer ("none"), not a failure; a timeout or a missing lsof is.
+ */
+export function lsofFoundNothing(error: Error & { code?: unknown; killed?: boolean; signal?: unknown }): boolean {
+  return error.code === 1 && !error.killed && !error.signal;
 }
 
 // --- Firewall ------------------------------------------------------------------------
@@ -265,7 +273,7 @@ export async function listeningPorts(platform = process.platform): Promise<Liste
       return parseNetstat(netstat, tasks);
     }
     // A cold lsof on a busy Mac can take more than 15 seconds (seen on CI).
-    if (platform === "darwin") return parseLsof(await run("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN"], 30_000));
+    if (platform === "darwin") return parseLsof(await run("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN"], 30_000, true));
     return await linuxListeningPorts();
   } catch {
     return null;

@@ -238,6 +238,8 @@ def run_one(atomic: Atomic, service: Service) -> tuple[str, str]:
                     break
                 time.sleep(1)
                 service.call(before["method"], before.get("params"), timeout=60)
+            else:
+                print(f"WARN  {atomic.technique} {atomic.name}: the baseline look never completed", flush=True)
     log = Path(service.env["HOME"]) / f"atomic-{atomic.guid}.log"
     proc = start(atomic, service.env, log)
     expected = q.get("expect") or q.get("expect_none")

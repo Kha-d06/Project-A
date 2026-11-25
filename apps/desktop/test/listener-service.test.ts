@@ -107,3 +107,22 @@ describe("overlapping checks (slow lsof on macOS)", () => {
     expect(events).toHaveLength(1);
   });
 });
+
+describe("lsof finding nothing (a Mac where nothing listens yet)", () => {
+  it("is an empty answer, not a failure, so the first look still records the baseline", async () => {
+    const { lsofFoundNothing } = await import("../src/engine/security");
+    expect(lsofFoundNothing(Object.assign(new Error("Command failed"), { code: 1 }))).toBe(true);
+    expect(lsofFoundNothing(Object.assign(new Error("timed out"), { code: null, killed: true, signal: "SIGTERM" }))).toBe(false);
+    expect(lsofFoundNothing(Object.assign(new Error("not found"), { code: "ENOENT" }))).toBe(false);
+
+    const dir = await mkdtemp(join(tmpdir(), "qalaa-listeners-"));
+    let ports: ListeningPort[] = [];
+    const events: unknown[] = [];
+    const service = new ListenerService(join(dir, "l.json"), "darwin", async () => ports, (_e, p) => events.push(p));
+    await service.load();
+    await service.check();
+    expect(service.status().checkedAt).not.toBeNull();
+    ports = [port(48731, "Python")];
+    expect((await service.check()).map((l) => l.port)).toEqual([48731]);
+  });
+});

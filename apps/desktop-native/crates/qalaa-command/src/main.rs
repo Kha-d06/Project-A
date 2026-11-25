@@ -8,17 +8,18 @@ use std::thread;
 use qalaa_command::strings::{t, Lang};
 use qalaa_command::view::{
     alias_notice, brokers_view, clipboard_text, content_protected, credential_text, credentials_view, deep_view, filter_palette, home_view,
-    inspector_text, network_progress_text, network_view, palette_entries, ports_view, posture_view, privacy_view, progress_text,
+    inspector_text, mail_view, network_progress_text, network_view, palette_entries, ports_view, posture_view, privacy_view, progress_text,
     protection_view, quarantine_view, scan_view, system_view, vpn_view, PaletteEntry,
 };
 use qalaa_command::{
-    apply_home, now_secs, set_behaviour, set_brokers, set_credentials, set_deep, set_language, set_network, set_offline, set_palette,
-    set_ports, set_posture, set_privacy, set_protection, set_protection_system, set_quarantine, set_sandbox, set_scan, set_vpn, App,
+    apply_home, now_secs, set_behaviour, set_brokers, set_credentials, set_deep, set_language, set_mail, set_network, set_offline,
+    set_palette, set_ports, set_posture, set_privacy, set_protection, set_protection_system, set_quarantine, set_sandbox, set_scan,
+    set_vpn, App,
 };
 use qalaa_ipc::{
-    BehaviourStatus, BrokerStatus, Client, CredentialChecks, CredentialStatus, DeepCheck, HomeModel, IpcError, ListenerStatus, Message,
-    NetworkStatus, PostureStatus, PrivacyStatus, ProtectionStatus, QuarantineItem, QuarantineList, SandboxList, SandboxRun, ScanDetails,
-    ScanStatus, Stream, SystemChecks, VpnStatus,
+    BehaviourStatus, BrokerStatus, Client, CredentialChecks, CredentialStatus, DeepCheck, HomeModel, IpcError, ListenerStatus, MailStatus,
+    Message, NetworkStatus, PostureStatus, PrivacyStatus, ProtectionStatus, QuarantineItem, QuarantineList, SandboxList, SandboxRun,
+    ScanDetails, ScanStatus, Stream, SystemChecks, VpnStatus,
 };
 use serde_json::json;
 use slint::winit_030::WinitWindowAccessor;
@@ -259,6 +260,37 @@ fn privacy(app: &App, state: &Arc<State>, method: &'static str, params: Option<s
         move |c| c.call::<PrivacyStatus>(method, params),
         |app, lang, status| {
             set_privacy(app, &privacy_view(&status, now_secs(), lang));
+        },
+    );
+}
+
+/// Calls a mail.* method. Connecting and checking read the inbox (seconds), so they get their
+/// own connection; the rest use the shared one.
+fn mail(app: &App, state: &Arc<State>, method: &'static str, params: Option<serde_json::Value>) {
+    if method == "mail.connect" || method == "mail.check" {
+        let weak = app.as_weak();
+        let lang = state.lang;
+        app.set_mail_checking(true);
+        thread::spawn(move || {
+            let result = connect()
+                .and_then(|mut c| c.call::<MailStatus>(method, params))
+                .map_err(|e| e.to_string());
+            let _ = weak.upgrade_in_event_loop(move |app| {
+                app.set_mail_checking(false);
+                match result {
+                    Ok(status) => set_mail(&app, &mail_view(&status, now_secs(), lang)),
+                    Err(message) => app.set_notice(message.into()),
+                }
+            });
+        });
+        return;
+    }
+    on_client(
+        app,
+        state,
+        move |c| c.call::<MailStatus>(method, params),
+        |app, lang, status| {
+            set_mail(app, &mail_view(&status, now_secs(), lang));
         },
     );
 }
@@ -546,6 +578,13 @@ fn listen(app: &App, state: &Arc<State>) {
                     });
                     continue;
                 }
+                if event.name == "alert" && event.payload.get("kind").and_then(serde_json::Value::as_str) == Some("mail") {
+                    let _ = weak.upgrade_in_event_loop(|app| {
+                        if app.get_page() == "mail" {
+                            app.invoke_page_changed("mail".into());
+                        }
+                    });
+                }
                 let refresh_privacy = matches!(event.name.as_str(), "clipboard.armed" | "clipboard.cleared")
                     || (event.name == "alert" && event.payload.get("kind").and_then(serde_json::Value::as_str) == Some("device_use"));
                 if refresh_privacy {
@@ -775,6 +814,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 "page.vpn" => app.set_page("vpn".into()),
                 "page.posture" => app.set_page("posture".into()),
                 "page.privacy" => app.set_page("privacy".into()),
+                "page.mail" => app.set_page("mail".into()),
                 "page.about" => app.set_page("about".into()),
                 "page.ports" => app.set_page("ports".into()),
                 "page.credentials" => app.set_page("credentials".into()),
@@ -851,6 +891,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 "network" => network_page(&app, &state),
                 "vpn" => vpn(&app, &state, "vpn.get", None),
                 "privacy" => privacy(&app, &state, "privacy.get", None),
+                "mail" => mail(&app, &state, "mail.get", None),
                 // Shows what's known at once, then runs a fresh check.
                 "posture" => {
                     posture(&app, &state, "posture.get", None);
@@ -1354,6 +1395,33 @@ fn main() -> Result<(), slint::PlatformError> {
                 "alias" => new_alias(&app, &state),
                 "brokers" => app.set_page("brokers".into()),
                 "open" => open_in_browser(value.as_str()),
+                _ => {}
+            }
+        });
+    }
+
+    // --- Email --------------------------------------------------------------------------
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_mail_action(move |action| {
+            let Some(app) = weak.upgrade() else { return };
+            match action.as_str() {
+                "connect" => {
+                    let port: u16 = app.get_mail_port_input().trim().parse().unwrap_or(993);
+                    let params = json!({
+                        "host": app.get_mail_host_input().trim(),
+                        "port": port,
+                        "user": app.get_mail_user_input().trim(),
+                        "password": app.get_mail_password_input().as_str(),
+                    });
+                    // The password leaves the window as soon as it's sent.
+                    app.set_mail_password_input("".into());
+                    mail(&app, &state, "mail.connect", Some(params));
+                }
+                "check" => mail(&app, &state, "mail.check", None),
+                "disconnect" => mail(&app, &state, "mail.disconnect", None),
+                "watch-on" => mail(&app, &state, "mail.watch", Some(json!({ "on": true }))),
+                "watch-off" => mail(&app, &state, "mail.watch", Some(json!({ "on": false }))),
                 _ => {}
             }
         });

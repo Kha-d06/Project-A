@@ -796,3 +796,48 @@ pub struct PrivacyStatus {
     /// https links into the web dashboard; `None` when the server isn't on https.
     pub web: Option<WebLinks>,
 }
+
+/// The local IMAP inbox check (`mail.get`). Mirrors core/mail-service.ts.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MailAccount {
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MailFinding {
+    pub severity: String,
+    pub title: String,
+    pub explanation: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MailResult {
+    pub uid: u64,
+    pub from: String,
+    pub subject: String,
+    pub date: Option<String>,
+    /// "known_malicious", "suspicious", "no_known_threat" or "inconclusive".
+    pub risk: String,
+    pub summary: String,
+    pub findings: Vec<MailFinding>,
+    /// False when the link lookup couldn't reach the server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub links_checked: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MailStatus {
+    pub account: Option<MailAccount>,
+    pub watch: bool,
+    pub checking: bool,
+    pub has_password: bool,
+    /// The password is in the system keychain (false: in memory until the service restarts).
+    pub keychain: bool,
+    pub last_check: Option<String>,
+    pub last_error: Option<String>,
+    pub results: Vec<MailResult>,
+}

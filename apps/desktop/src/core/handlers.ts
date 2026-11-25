@@ -18,6 +18,7 @@ import type { ScanEngineService } from "./scan-engine-service";
 import type { NetworkService } from "./network-service";
 import type { PostureService } from "./posture-service";
 import type { PrivacyService } from "./privacy-service";
+import type { MailService } from "./mail-service";
 import type { VpnService } from "./vpn-service";
 import type { ProtectionService } from "./protection-service";
 import type { ScanService } from "./scan-service";
@@ -64,6 +65,8 @@ export interface CoreHost {
   posture?: PostureService;
   /** Camera and microphone locks and use, clipboard status, web dashboard links. */
   privacy?: PrivacyService;
+  /** The local IMAP inbox check. */
+  mail?: MailService;
 }
 
 export type Handler = (params: unknown) => Promise<unknown>;
@@ -126,6 +129,11 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       await changed();
       return totals;
     },
+    "mail.get": async () => requireMail(host).status(),
+    "mail.connect": async (params) => requireMail(host).connect(params),
+    "mail.disconnect": async () => requireMail(host).disconnect(),
+    "mail.check": async () => requireMail(host).check(),
+    "mail.watch": async (params) => requireMail(host).setWatch(params),
     "privacy.get": async () => requirePrivacy(host).status(),
     "privacy.lock": async (params) => requirePrivacy(host).setLock(params),
     "privacy.watch": async (params) => requirePrivacy(host).setWatch(params),
@@ -289,6 +297,11 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       return status;
     },
   };
+}
+
+function requireMail(host: CoreHost): MailService {
+  if (!host.mail) throw new IpcError("unavailable", "The email check needs the background service.");
+  return host.mail;
 }
 
 function requirePrivacy(host: CoreHost): PrivacyService {

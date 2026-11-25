@@ -191,3 +191,14 @@ fn decodes_the_privacy_fixture_written_by_the_typescript_tests() {
     assert!(status.web.as_ref().is_some_and(|w| w.vault.ends_with("/dashboard/passwords")));
     assert_eq!(serde_json::to_value(&status).expect("encodes"), json["status"]);
 }
+
+#[test]
+fn decodes_the_mail_fixture_written_by_the_typescript_tests() {
+    use qalaa_ipc::MailStatus;
+    let json: serde_json::Value = serde_json::from_str(include_str!("fixtures/mail.json")).expect("json");
+    let status: MailStatus = serde_json::from_value(json["status"].clone()).expect("status decodes");
+    assert_eq!(status.account.as_ref().map(|a| a.port), Some(993));
+    assert_eq!(status.results[0].risk, "suspicious");
+    assert_eq!(status.results[1].links_checked, Some(false));
+    assert_eq!(serde_json::to_value(&status).expect("encodes"), json["status"]);
+}

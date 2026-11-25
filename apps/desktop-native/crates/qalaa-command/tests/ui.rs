@@ -647,6 +647,45 @@ fn command_centre_interface() {
     );
     assert!(!labelled(&app, "zoom is using the camera now").is_empty());
 
+    // --- Email: connect with a masked password that's cleared once sent; results with warning signs first.
+    let mail_json: serde_json::Value =
+        serde_json::from_str(include_str!("../../qalaa-ipc/tests/fixtures/mail.json")).expect("mail fixture");
+    let mut mail_status: qalaa_ipc::MailStatus = serde_json::from_value(mail_json["status"].clone()).expect("mail status");
+    let mail_now = qalaa_command::view::parse_iso("2026-11-25T13:00:00Z").expect("time");
+    let connected = mail_status.clone();
+    mail_status.account = None;
+    mail_status.results.clear();
+    qalaa_command::set_mail(&app, &qalaa_command::view::mail_view(&mail_status, mail_now, Lang::En));
+    app.set_page("mail".into());
+    let mail_calls = Rc::new(RefCell::new(Vec::<String>::new()));
+    {
+        let calls = Rc::clone(&mail_calls);
+        app.on_mail_action(move |action| calls.borrow_mut().push(action.to_string()));
+    }
+    assert_eq!(labelled(&app, "Connect and check")[0].accessible_enabled(), Some(false));
+    app.set_mail_host_input("imap.example.com".into());
+    app.set_mail_user_input("me@example.com".into());
+    app.set_mail_password_input("app-password".into());
+    labelled(&app, "Connect and check")[0].invoke_accessible_default_action();
+    qalaa_command::set_mail(&app, &qalaa_command::view::mail_view(&connected, mail_now, Lang::En));
+    assert!(!labelled(&app, "1 message(s) show warning signs. Checked 1 hour ago.").is_empty());
+    assert!(
+        labelled(&app, "Connect and check").is_empty(),
+        "connected with a saved password: no form"
+    );
+    labelled(&app, "Check now")[0].invoke_accessible_default_action();
+    labelled(&app, "Check new mail every 15 minutes")[0].invoke_accessible_default_action();
+    labelled(&app, "Disconnect")[0].invoke_accessible_default_action();
+    assert_eq!(
+        *mail_calls.borrow(),
+        vec![
+            "connect".to_owned(),
+            "check".to_owned(),
+            "watch-off".to_owned(),
+            "disconnect".to_owned()
+        ]
+    );
+
     // --- About carries the Slint credit the royalty-free licence requires.
     app.set_page("about".into());
     assert!(ElementHandle::find_by_element_type_name(&app, "AboutSlint").count() >= 1);

@@ -17,8 +17,8 @@ use slint::{ModelRc, SharedString, VecModel};
 
 use crate::strings::{t, Lang};
 use crate::view::{
-    BehaviourView, BrokerView, CredentialView, HomeView, NetworkPageView, PaletteEntry, PortView, PosturePageView, PrivacyPageView,
-    ProtectionPageView, QuarantineView, SandboxView, ScanPageView, VpnPageView,
+    BehaviourView, BrokerView, CredentialView, HomeView, MailPageView, NetworkPageView, PaletteEntry, PortView, PosturePageView,
+    PrivacyPageView, ProtectionPageView, QuarantineView, SandboxView, ScanPageView, VpnPageView,
 };
 
 pub fn labels(lang: Lang) -> Labels {
@@ -183,6 +183,17 @@ pub fn labels(lang: Lang) -> Labels {
         priv_brokers: s("priv.brokers"),
         priv_vault: s("priv.vault"),
         priv_aliases_web: s("priv.aliases_web"),
+        mail: s("nav.mail"),
+        mail_title: s("mail.title"),
+        mail_intro: s("mail.intro"),
+        mail_app_password: s("mail.app_password"),
+        mail_host: s("mail.host"),
+        mail_port: s("mail.port"),
+        mail_user: s("mail.user"),
+        mail_password: s("mail.password"),
+        mail_connect: s("mail.connect"),
+        mail_check: s("mail.check"),
+        mail_disconnect: s("mail.disconnect"),
     }
 }
 
@@ -546,4 +557,29 @@ pub fn set_privacy(app: &App, view: &PrivacyPageView) {
     app.set_priv_vault_url(view.vault_url.clone().into());
     app.set_priv_aliases_url(view.aliases_url.clone().into());
     app.set_priv_web_note(view.web_note.clone().into());
+}
+
+pub fn set_mail(app: &App, view: &MailPageView) {
+    app.set_mail_connected(view.connected);
+    app.set_mail_account(view.account.clone().into());
+    app.set_mail_summary(view.summary.clone().into());
+    app.set_mail_password_note(view.password_note.clone().into());
+    app.set_mail_checking(view.checking);
+    app.set_mail_watch(ToggleRow {
+        key: view.watch.key.clone().into(),
+        label: view.watch.label.clone().into(),
+        hint: view.watch.hint.clone().into(),
+        on: view.watch.on,
+        available: view.watch.available,
+    });
+    let results: Vec<FindingRow> = view
+        .results
+        .iter()
+        .map(|(title, detail, risk)| FindingRow {
+            title: title.clone().into(),
+            detail: detail.clone().into(),
+            severity: risk.clone().into(),
+        })
+        .collect();
+    app.set_mail_results(ModelRc::from(Rc::new(VecModel::from(results))));
 }

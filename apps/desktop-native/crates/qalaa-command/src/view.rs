@@ -2,9 +2,9 @@
 //! no window, so it is tested directly.
 
 use qalaa_ipc::{
-    BehaviourStatus, BrokerStatus, CheckStatus, CredentialChecks, CredentialStatus, DeepCheck, HomeModel, ListenerStatus, NetworkStatus,
-    PostureState, PostureStatus, PrivacyStatus, ProtectionStatus, QuarantineItem, SandboxRun, ScanDetails, ScanStatus, SystemChecks,
-    VpnStatus,
+    BehaviourStatus, BrokerStatus, CheckStatus, CredentialChecks, CredentialStatus, DeepCheck, HomeModel, ListenerStatus, MailStatus,
+    NetworkStatus, PostureState, PostureStatus, PrivacyStatus, ProtectionStatus, QuarantineItem, SandboxRun, ScanDetails, ScanStatus,
+    SystemChecks, VpnStatus,
 };
 
 use crate::strings::{t, Lang};
@@ -213,6 +213,10 @@ pub fn palette_entries(view: Option<&HomeView>, lang: Lang) -> Vec<PaletteEntry>
         PaletteEntry {
             id: "page.privacy".into(),
             title: t(lang, "nav.privacy").into(),
+        },
+        PaletteEntry {
+            id: "page.mail".into(),
+            title: t(lang, "nav.mail").into(),
         },
         PaletteEntry {
             id: "page.ports".into(),
@@ -1392,9 +1396,130 @@ pub fn privacy_view(status: &PrivacyStatus, now: i64, lang: Lang) -> PrivacyPage
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct MailPageView {
+    pub connected: bool,
+    /// "me@example.com on imap.example.com", or "".
+    pub account: String,
+    pub summary: String,
+    /// The password is kept for this session only, or must be entered again.
+    pub password_note: String,
+    pub watch: ToggleView,
+    /// (title, detail, risk), messages with warning signs first.
+    pub results: Vec<(String, String, String)>,
+    pub checking: bool,
+}
+
+pub fn mail_view(status: &MailStatus, now: i64, lang: Lang) -> MailPageView {
+    let account = status
+        .account
+        .as_ref()
+        .map(|a| fill(lang, "mail.account", &[("user", a.user.clone()), ("host", a.host.clone())]))
+        .unwrap_or_default();
+    let worrying = status
+        .results
+        .iter()
+        .filter(|r| r.risk == "suspicious" || r.risk == "known_malicious")
+        .count();
+    let summary = if status.account.is_none() {
+        t(lang, "mail.none").to_owned()
+    } else if let Some(error) = &status.last_error {
+        fill(lang, "mail.error", &[("error", error.clone())])
+    } else if status.last_check.is_none() {
+        t(lang, "mail.never").to_owned()
+    } else if worrying > 0 {
+        fill(
+            lang,
+            "mail.worrying",
+            &[
+                ("n", worrying.to_string()),
+                ("when", relative(status.last_check.as_deref(), now, lang)),
+            ],
+        )
+    } else {
+        fill(lang, "mail.clear", &[("when", relative(status.last_check.as_deref(), now, lang))])
+    };
+    let password_note = if status.account.is_some() && !status.has_password {
+        t(lang, "mail.password_again").to_owned()
+    } else if status.account.is_some() && !status.keychain {
+        t(lang, "mail.session_only").to_owned()
+    } else {
+        String::new()
+    };
+    let rank = |r: &str| match r {
+        "known_malicious" => 0,
+        "suspicious" => 1,
+        _ => 2,
+    };
+    let mut results: Vec<(String, String, String)> = status
+        .results
+        .iter()
+        .map(|r| {
+            let risk = match t(lang, &format!("mail.risk.{}", r.risk)) {
+                "?" => r.risk.clone(),
+                s => s.to_owned(),
+            };
+            let subject = if r.subject.is_empty() {
+                t(lang, "mail.no_subject").to_owned()
+            } else {
+                r.subject.clone()
+            };
+            let mut detail = vec![r.from.clone(), risk];
+            detail.extend(r.findings.iter().map(|f| f.title.clone()));
+            if r.links_checked == Some(false) {
+                detail.push(t(lang, "mail.links_unchecked").to_owned());
+            }
+            (subject, detail.join(" · "), r.risk.clone())
+        })
+        .collect();
+    results.sort_by_key(|r| rank(&r.2));
+    MailPageView {
+        connected: status.account.is_some(),
+        account,
+        summary,
+        password_note,
+        watch: ToggleView {
+            key: "watch".into(),
+            label: t(lang, "mail.watch").into(),
+            hint: String::new(),
+            on: status.watch,
+            available: status.account.is_some(),
+        },
+        results,
+        checking: status.checking,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mail_page_lists_warning_signs_first_and_never_says_safe() {
+        let json: serde_json::Value = serde_json::from_str(include_str!("../../qalaa-ipc/tests/fixtures/mail.json")).expect("fixture");
+        let status: qalaa_ipc::MailStatus = serde_json::from_value(json["status"].clone()).expect("status");
+        let now = parse_iso("2026-11-25T13:00:00Z").expect("time");
+        let view = mail_view(&status, now, Lang::En);
+        assert_eq!(view.account, "me@example.com on imap.example.com");
+        assert_eq!(view.summary, "1 message(s) show warning signs. Checked 1 hour ago.");
+        assert_eq!(view.results[0].0, "Your parcel is waiting");
+        assert!(view.results[0].1.contains("The sender's name doesn't match its address"));
+        assert!(view.results[1].1.ends_with("links not checked (server unreachable)"));
+        for (title, detail, _) in &view.results {
+            assert!(!format!("{title} {detail}").to_lowercase().contains("safe"));
+        }
+        assert!(view.password_note.is_empty());
+
+        let mut restarted = status.clone();
+        restarted.has_password = false;
+        restarted.keychain = false;
+        assert!(mail_view(&restarted, now, Lang::En)
+            .password_note
+            .starts_with("Enter the password again"));
+        let mut none = status;
+        none.account = None;
+        assert!(!mail_view(&none, now, Lang::Ar).connected);
+    }
 
     #[test]
     fn privacy_page_shows_locks_use_clipboard_and_web_links() {

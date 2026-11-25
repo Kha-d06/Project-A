@@ -25,6 +25,8 @@ import { ScanEngineService } from "./core/scan-engine-service";
 import { NetworkService } from "./core/network-service";
 import { PostureService } from "./core/posture-service";
 import { PrivacyService } from "./core/privacy-service";
+import { MailService } from "./core/mail-service";
+import { systemKeychain } from "./core/keychain";
 import { VpnService } from "./core/vpn-service";
 import { ProtectionService, onAccessIdentity } from "./core/protection-service";
 import { HISTORY_LIMIT, ScanService } from "./core/scan-service";
@@ -60,6 +62,7 @@ import { IntegrityMonitor } from "./engine/integrity";
 import { posture } from "./engine/posture";
 import { cameraAndMicrophoneUse, firewallStatus, newUses, startupItems } from "./engine/security";
 import * as privacyBlock from "./engine/privacy-block";
+import * as mail from "./engine/mail";
 import { execFile } from "node:child_process";
 import { canSwitchOff, switchOffStartup, switchOnStartup, type DisabledStartup } from "./engine/tools";
 import * as vpn from "./engine/vpn";
@@ -82,7 +85,7 @@ async function mtime(file: string): Promise<string | null> {
   }
 }
 
-export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService; safePay: SafePayService; aliases: AliasService; brokers: BrokerService; scanEngine: ScanEngineService; behaviour: BehaviourService; protection: ProtectionService; network: NetworkService; vpn: VpnService; posture: PostureService; integrity: IntegrityMonitor; privacy: PrivacyService }> {
+export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService; safePay: SafePayService; aliases: AliasService; brokers: BrokerService; scanEngine: ScanEngineService; behaviour: BehaviourService; protection: ProtectionService; network: NetworkService; vpn: VpnService; posture: PostureService; integrity: IntegrityMonitor; privacy: PrivacyService; mail: MailService }> {
   const settingsFile = join(dataDir, "settings.json");
   const historyFile = join(dataDir, "history.json");
   let settings = await loadSettings(settingsFile, defaultSettings(join(homedir(), "Downloads"), [], hostname().slice(0, 80) || "This computer"));
@@ -286,6 +289,18 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     serverUrl: () => settings.serverUrl,
     emit,
   });
+  const mailService = new MailService({
+    // The same file the classic app keeps the account (not the password) in.
+    file: join(dataDir, "mail.json"),
+    keychain: systemKeychain(process.platform, dataDir),
+    emptyState: mail.EMPTY_STATE,
+    sanitizeAccount: (input) => mail.sanitizeAccount(input),
+    scanInbox: (account, password, state) =>
+      mail.scanInbox(account, password, state, settings.serverUrl, { lang: settings.language === "ar" ? "ar" : "en" }),
+    worrying: (results) => mail.worrying(results),
+    emit,
+  });
+  await mailService.load();
   const vpnService = new VpnService({
     platform: process.platform,
     tunnelFile: join(dataDir, `${vpn.CONNECTION_NAME}.conf`),
@@ -340,6 +355,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     posture: postureService,
     integrity,
     privacy,
+    mail: mailService,
     async homeInput(): Promise<HomeInput> {
       const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       return {
@@ -419,6 +435,8 @@ export async function runDaemon(env: NodeJS.ProcessEnv = process.env) {
   host.integrity.start();
   // Who's using the camera or microphone (Linux and Windows), when it's on.
   host.privacy.applyWatch();
+  // New mail every 15 minutes, when the person turned it on.
+  host.mail.applyWatch();
   // Behaviour rules: new programs every second or two (the first look only records what runs).
   const behaviourCap = host.behaviour.capability();
   if (host.behaviour.isSupported()) {

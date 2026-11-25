@@ -53,6 +53,8 @@ export struct Labels {
     privacy: string, priv-title: string, priv-intro: string, priv-block: string, priv-allow: string, priv-clipboard: string,
     priv-clear: string, priv-tools: string, priv-safepay: string, priv-alias: string, priv-brokers: string, priv-vault: string,
     priv-aliases-web: string,
+    mail: string, mail-title: string, mail-intro: string, mail-app-password: string, mail-host: string, mail-port: string,
+    mail-user: string, mail-password: string, mail-connect: string, mail-check: string, mail-disconnect: string,
 }
 
 component Card inherits Rectangle {
@@ -123,6 +125,7 @@ component NavRail inherits VerticalLayout {
     Button { text: labels.protection; checkable: true; checked: page == "protection"; clicked => { page = "protection"; } }
     Button { text: labels.posture; checkable: true; checked: page == "posture"; clicked => { page = "posture"; } }
     Button { text: labels.privacy; checkable: true; checked: page == "privacy"; clicked => { page = "privacy"; } }
+    Button { text: labels.mail; checkable: true; checked: page == "mail"; clicked => { page = "mail"; } }
     Button { text: labels.network; checkable: true; checked: page == "network"; clicked => { page = "network"; } }
     Button { text: labels.vpn; checkable: true; checked: page == "vpn"; clicked => { page = "vpn"; } }
     Button { text: labels.ports; checkable: true; checked: page == "ports"; clicked => { page = "ports"; } }
@@ -212,6 +215,17 @@ export component App inherits Window {
     in property <string> priv-vault-url;
     in property <string> priv-aliases-url;
     in property <string> priv-web-note;
+    in property <bool> mail-connected: false;
+    in property <string> mail-account;
+    in property <string> mail-summary;
+    in property <string> mail-password-note;
+    in property <ToggleRow> mail-watch;
+    in property <[FindingRow]> mail-results;
+    in property <bool> mail-checking: false;
+    in-out property <string> mail-host-input;
+    in-out property <string> mail-port-input: "993";
+    in-out property <string> mail-user-input;
+    in-out property <string> mail-password-input;
     in property <[CredRow]> credential-rows;
     in property <[BehRow]> behaviour-rows;
     in property <string> beh-note;
@@ -279,6 +293,7 @@ export component App inherits Window {
     callback pos-check();
     callback pos-action(string, string);
     callback priv-action(string, string);
+    callback mail-action(string);
     changed page => { page-changed(page); }
 
     changed rtl => { Theme.rtl = rtl; }
@@ -1286,6 +1301,75 @@ export component App inherits Window {
                                 Button { text: labels.priv-aliases-web; clicked => { root.priv-action("open", priv-aliases-url); } }
                             }
                             if priv-web-note != "": Muted { text: priv-web-note; font-size: 12px; }
+                        }
+                    }
+
+                    if connected && page == "mail": Card {
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 12px;
+                            Heading { text: labels.mail-title; font-size: 20px; }
+                            Muted { text: labels.mail-intro; }
+                            if mail-account != "": Text { text: mail-account; font-weight: 600; color: Theme.ink; horizontal-alignment: Theme.rtl ? right : left; }
+                            Text { text: mail-summary; color: mail-checking ? Theme.active : Theme.ink; wrap: word-wrap; horizontal-alignment: Theme.rtl ? right : left; accessible-role: text; accessible-label: mail-summary; }
+                            if mail-password-note != "": Muted { text: mail-password-note; }
+                            // Connecting, or entering the password again after a restart.
+                            if !mail-connected || mail-password-note != "": VerticalLayout {
+                                spacing: 8px;
+                                Muted { text: labels.mail-app-password; font-size: 12px; }
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    LineEdit { placeholder-text: labels.mail-host; accessible-label: labels.mail-host; text <=> root.mail-host-input; }
+                                    LineEdit { width: 90px; placeholder-text: labels.mail-port; accessible-label: labels.mail-port; text <=> root.mail-port-input; }
+                                }
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    LineEdit { placeholder-text: labels.mail-user; accessible-label: labels.mail-user; text <=> root.mail-user-input; }
+                                    LineEdit { placeholder-text: labels.mail-password; accessible-label: labels.mail-password; input-type: password; text <=> root.mail-password-input; }
+                                }
+                                HorizontalLayout {
+                                    alignment: Theme.rtl ? end : start;
+                                    Button {
+                                        text: labels.mail-connect;
+                                        primary: true;
+                                        enabled: !busy && !mail-checking && root.mail-host-input != "" && root.mail-user-input != "" && root.mail-password-input != "";
+                                        clicked => { root.mail-action("connect"); }
+                                    }
+                                }
+                            }
+                            if mail-connected: HorizontalLayout {
+                                spacing: 8px;
+                                alignment: Theme.rtl ? end : start;
+                                Button { text: labels.mail-check; enabled: !busy && !mail-checking; clicked => { root.mail-action("check"); } }
+                                Button { text: labels.mail-disconnect; enabled: !busy; clicked => { root.mail-action("disconnect"); } }
+                            }
+                            if mail-connected: Switch {
+                                text: mail-watch.label;
+                                checked: mail-watch.on;
+                                enabled: mail-watch.available && !busy;
+                                accessible-label: mail-watch.label;
+                                toggled => { root.mail-action(self.checked ? "watch-on" : "watch-off"); }
+                            }
+                        }
+                    }
+
+                    if connected && page == "mail" && mail-results.length > 0: Card {
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 8px;
+                            for row in mail-results: Rectangle {
+                                border-color: row.severity == "known_malicious" ? Theme.blocked : row.severity == "suspicious" ? Theme.attention : Theme.line;
+                                border-width: 1px;
+                                border-radius: 8px;
+                                accessible-role: groupbox;
+                                accessible-label: row.title + ": " + row.detail;
+                                VerticalLayout {
+                                    padding: 12px;
+                                    spacing: 4px;
+                                    Text { text: row.title; font-weight: 600; color: Theme.ink; wrap: word-wrap; horizontal-alignment: Theme.rtl ? right : left; }
+                                    Muted { text: row.detail; }
+                                }
+                            }
                         }
                     }
 

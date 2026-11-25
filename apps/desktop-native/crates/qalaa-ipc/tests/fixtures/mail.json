@@ -1,0 +1,43 @@
+{
+  "status": {
+    "account": {
+      "host": "imap.example.com",
+      "port": 993,
+      "user": "me@example.com"
+    },
+    "watch": true,
+    "checking": false,
+    "hasPassword": true,
+    "keychain": true,
+    "lastCheck": "2026-11-25T12:00:00.000Z",
+    "lastError": null,
+    "results": [
+      {
+        "uid": 41,
+        "from": "\"DHL Express\" <noreply@dhl-parcel.example>",
+        "subject": "Your parcel is waiting",
+        "date": "2026-11-25T09:00:00.000Z",
+        "risk": "suspicious",
+        "summary": "Warning signs",
+        "findings": [
+          {
+            "severity": "high",
+            "title": "The sender's name doesn't match its address",
+            "explanation": "Says DHL, but sends from dhl-parcel.example."
+          }
+        ],
+        "linksChecked": true
+      },
+      {
+        "uid": 42,
+        "from": "sara@example.com",
+        "subject": "Lunch?",
+        "date": "2026-11-25T10:00:00.000Z",
+        "risk": "no_known_threat",
+        "summary": "No known threat",
+        "findings": [],
+        "linksChecked": false
+      }
+    ]
+  }
+}

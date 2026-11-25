@@ -127,3 +127,32 @@ describe("Safe DNS service switch", () => {
     expect(JSON.parse(await readFile(join(dir, "s2.json"), "utf8")).adBlocking).toBe(false);
   });
 });
+
+describe("the Home switch", () => {
+  it("routes dnsAdBlocking to Safe DNS's own switch, not the app settings", async () => {
+    const { createHandlers } = await import("../src/core/handlers");
+    const { buildHome } = await import("../src/core/home");
+    const calls: unknown[] = [];
+    const input = {
+      now: new Date("2026-11-24T12:00:00Z"), platform: "linux" as const, watchEnabled: true, onAccessScan: false, ransomwareWatch: true,
+      networkWatch: false, cloudLookup: true, signatures: { count: 1, updatedAt: "2026-11-24T08:00:00Z", error: null },
+      lastScanAt: "2026-11-24T10:00:00Z", lastNetworkScanAt: null, lastBackupAt: null, lastBackupError: null, backupConfigured: true,
+      quarantineCount: 0, recentThreats: 0, ransomwareAlertAt: null, updateAvailable: null, silentUntil: null,
+      safeDns: { on: true, available: true }, dnsAdBlocking: { on: false, available: true },
+    };
+    expect(buildHome(input).toggles.find((t) => t.key === "dnsAdBlocking")).toEqual({ key: "dnsAdBlocking", on: false, available: true });
+    const handlers = createHandlers(
+      {
+        version: "t",
+        homeInput: async () => input,
+        updateToggles: async (c) => void calls.push(["settings", c]),
+        quickScan: async () => ({ scanned: 0, malicious: 0, suspicious: 0 }),
+        updateSignatures: async () => {},
+        safeDns: { setAdBlocking: async (on: boolean) => void calls.push(["adblock", on]) } as never,
+      },
+      () => {},
+    );
+    await handlers["settings.set"]!({ dnsAdBlocking: true });
+    expect(calls).toEqual([["adblock", true]]);
+  });
+});

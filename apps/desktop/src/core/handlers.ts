@@ -47,7 +47,7 @@ export interface CoreHost {
 
 export type Handler = (params: unknown) => Promise<unknown>;
 
-const TOGGLE_KEYS: HomeToggle["key"][] = ["watchEnabled", "onAccessScan", "ransomwareWatch", "networkWatch", "cloudLookup", "safeDns", "clipboardGuard", "credentialGuard"];
+const TOGGLE_KEYS: HomeToggle["key"][] = ["watchEnabled", "onAccessScan", "ransomwareWatch", "networkWatch", "cloudLookup", "safeDns", "dnsAdBlocking", "clipboardGuard", "credentialGuard"];
 
 /** Only the Home toggles can be changed over IPC, and only with booleans. */
 export function toggleChanges(params: unknown): Partial<Record<HomeToggle["key"], boolean>> {
@@ -84,10 +84,15 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
         if (changes[key] && !toggles.toggles.find((t) => t.key === key)?.available) throw new IpcError("unavailable", `"${key}" isn't available on this system.`);
       }
       // Safe DNS changes the system resolver (consent prompt), so it has its own path.
-      const { safeDns, ...rest } = changes;
+      const { safeDns, dnsAdBlocking, ...rest } = changes;
       if (safeDns !== undefined) {
         if (!host.safeDns) throw new IpcError("unavailable", "Safe DNS isn't running here.");
         await host.safeDns.setEnabled(safeDns);
+      }
+      // Ad and tracker lists live in Safe DNS's own state, not the app settings.
+      if (dnsAdBlocking !== undefined) {
+        if (!host.safeDns) throw new IpcError("unavailable", "Safe DNS isn't running here.");
+        await host.safeDns.setAdBlocking(dnsAdBlocking);
       }
       if (Object.keys(rest).length) await host.updateToggles(rest);
       return changed();

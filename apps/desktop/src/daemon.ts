@@ -141,6 +141,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
         newListeners: listeners.newCount(),
         newKeyboards: keyboards.newCount(),
         safeDns: { on: safeDns.isOn(), available: safeDns.isSupported() },
+        dnsAdBlocking: { on: safeDns.status().adBlocking.on, available: safeDns.isOn() && safeDns.status().adBlocking.available },
         clipboardGuard: { on: settings.clipboardGuard, available: clipboard.status().supported },
         credentialGuard: { on: settings.credentialGuard, available: credentials.isSupported(), pending: credentials.pendingCount() },
         behaviourPending: behaviour.pendingCount(),

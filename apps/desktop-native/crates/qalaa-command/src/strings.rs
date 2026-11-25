@@ -150,6 +150,7 @@ pub const EN: &[(&str, &str)] = &[
     ("clip.kind.high_entropy", "Something that looks like a password"),
     ("clip.kind.copied_from_qalaa", "A code copied from Qalaa"),
     ("toggle.safeDns", "Safe DNS: block malicious sites for every app"),
+    ("toggle.dnsAdBlocking", "Also block ads and trackers (EasyList, EasyPrivacy)"),
     ("action.review_keyboard", "A new keyboard was connected"),
     (
         "action.review_keyboard.detail",
@@ -367,6 +368,7 @@ pub const AR: &[(&str, &str)] = &[
     ("clip.kind.high_entropy", "شيء يشبه كلمة مرور"),
     ("clip.kind.copied_from_qalaa", "رمز نُسخ من قلعة"),
     ("toggle.safeDns", "DNS الآمن: احجب المواقع الخبيثة لكل التطبيقات"),
+    ("toggle.dnsAdBlocking", "احجب أيضًا الإعلانات وأدوات التتبع (EasyList وEasyPrivacy)"),
     ("action.review_keyboard", "وُصلت لوحة مفاتيح جديدة"),
     (
         "action.review_keyboard.detail",

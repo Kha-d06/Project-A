@@ -489,6 +489,20 @@ mod tests {
     }
 
     #[test]
+    fn safe_dns_ad_blocking_switch_in_both_languages() {
+        let mut model = fixture();
+        model
+            .toggles
+            .push(serde_json::from_value(serde_json::json!({"key": "dnsAdBlocking", "on": false, "available": true})).expect("toggle"));
+        let now = parse_iso(NOW).expect("now");
+        let en = home_view(&model, now, Lang::En);
+        let row = en.toggles.iter().find(|t| t.key == "dnsAdBlocking").expect("toggle row");
+        assert_eq!(row.label, "Also block ads and trackers (EasyList, EasyPrivacy)");
+        let ar = home_view(&model, now, Lang::Ar);
+        assert!(ar.toggles.iter().any(|t| t.label.starts_with("احجب أيضًا الإعلانات")));
+    }
+
+    #[test]
     fn parses_iso_times() {
         assert_eq!(parse_iso("1970-01-01T00:00:00Z"), Some(0));
         assert_eq!(parse_iso("2026-11-24T12:00:00.000Z"), Some(1_795_521_600));

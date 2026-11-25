@@ -152,6 +152,14 @@ See also [security-review.md](security-review.md) for the latest self-review.
 
 **Server side.** Uploaded Linux and macOS programs are parsed with LIEF (Apache-2.0) inside the same parser jail as every other parser (seccomp allowlist, Landlock, rlimits, or nsjail where configured): executable stacks, writable-and-executable segments, unusual loaders, libraries loaded from temporary folders, memory-only execution (`memfd_create` with `fexecve`/`execveat`), UPX packing and unsigned macOS programs. For Windows programs LIEF also checks that an Authenticode signature matches the file's contents; that shows the file wasn't changed after signing, not that the signer is trustworthy.
 
+## Behaviour rules (Wave 4.B, first slice)
+
+The background service checks newly started programs against process-creation rules adapted from SigmaHQ (Detection Rule License 1.1; each rule in `apps/desktop/src/core/data/behaviour-rules.json` keeps its original title and author): downloads piped into a shell, office apps starting shells (macOS), shell history being wiped, the firewall being switched off or flushed, Gatekeeper quarantine marks removed, fake AppleScript password prompts, setuid bits set, and programs running from temporary folders. The evaluator supports a stated subset of Sigma (four fields, `contains`/`startswith`/`endswith`/`re`/`all`, simple conditions) and refuses rules outside it. Every rule is tested against recorded matching and near-miss command lines, and three run as atomics in CI.
+
+- Linux: `/proc` is read every second. macOS: `ps` every 2 seconds, the user-space fallback while Apple's Endpoint Security entitlement is pending. Windows: not available until the admin service (ETW) exists, and the app says so.
+- Polling sees a program only if it is still running at the next look, so commands that finish faster are missed. The status shows this (`seesShortLived: false`).
+- Alerts keep the rule, the program and its parent, and a command line shortened to 300 characters with passwords, tokens and long random strings masked. One alert per rule and program per 10 minutes. The person can dismiss it or stop the program; Qalaa first checks the process still runs the same command.
+
 ## Known gaps
 
 - Admin and moderator actions are not yet protected by a second confirmation step.

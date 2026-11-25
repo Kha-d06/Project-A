@@ -22,6 +22,7 @@ import { CredentialGuardService, pollMs as credentialPollMs } from "./core/crede
 import { KeyboardService } from "./core/keyboard-service";
 import { ListenerService } from "./core/listener-service";
 import { ScanEngineService } from "./core/scan-engine-service";
+import { BehaviourService } from "./core/behaviour-service";
 import { findNativeScanner } from "./engine/native-scan";
 import { SafeDnsService } from "./core/safe-dns-service";
 import { SafePayService } from "./core/safepay-service";
@@ -54,7 +55,7 @@ async function mtime(file: string): Promise<string | null> {
   }
 }
 
-export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService; safePay: SafePayService; aliases: AliasService; brokers: BrokerService; scanEngine: ScanEngineService }> {
+export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService; safePay: SafePayService; aliases: AliasService; brokers: BrokerService; scanEngine: ScanEngineService; behaviour: BehaviourService }> {
   const settingsFile = join(dataDir, "settings.json");
   const historyFile = join(dataDir, "history.json");
   let settings = await loadSettings(settingsFile, defaultSettings(join(homedir(), "Downloads"), [], hostname().slice(0, 80) || "This computer"));
@@ -87,6 +88,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
   const aliases = new AliasService(() => loadAccount(join(dataDir, "account.json")), (text) => clipboard.copyPlain(text));
   const scanEngine = new ScanEngineService({ root: join(dataDir, "scan-bundle"), binary: await findNativeScanner(), baseUrl: () => `${settings.serverUrl.replace(/\/+$/, "")}/api/v1/updates/scan-bundle/` });
   await scanEngine.load();
+  const behaviour = new BehaviourService({ platform: process.platform, emit });
   const clamBinary = await findClam();
   const sevenZip = await findSevenZip();
 
@@ -95,6 +97,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     settings: () => settings,
     listeners,
     scanEngine,
+    behaviour,
     keyboards,
     safeDns,
     clipboard,
@@ -184,6 +187,13 @@ export async function runDaemon(env: NodeJS.ProcessEnv = process.env) {
   const checkListeners = () => void host.listeners.check().then((fresh) => (fresh.length ? handlers["home.get"]?.(undefined).then((m) => emit("home.changed", m)) : undefined)).catch(() => undefined);
   checkListeners();
   setInterval(checkListeners, 60_000).unref();
+  // Behaviour rules: new programs every second or two (the first look only records what runs).
+  const behaviourCap = host.behaviour.capability();
+  if (host.behaviour.isSupported()) {
+    const checkBehaviour = () => void host.behaviour.poll().then((found) => (found.length ? handlers["home.get"]?.(undefined).then((m) => emit("home.changed", m)) : undefined)).catch(() => undefined);
+    checkBehaviour();
+    setInterval(checkBehaviour, behaviourCap.intervalMs).unref();
+  }
   // qalaa-scan's signed rule bundle: a few minutes after start, then daily.
   const updateScanEngine = () => void host.scanEngine.update().catch(() => undefined);
   setTimeout(updateScanEngine, 3 * 60_000).unref();

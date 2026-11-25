@@ -5,6 +5,7 @@
  */
 import { type HomeInput, type HomeModel, type HomeToggle, buildHome } from "./home";
 import type { AliasService } from "./alias-service";
+import type { BehaviourService } from "./behaviour-service";
 import type { BrokerService } from "./broker-service";
 import type { ClipboardService } from "./clipboard-service";
 import type { CredentialGuardService } from "./credential-guard-service";
@@ -38,6 +39,8 @@ export interface CoreHost {
   aliases?: AliasService;
   /** The data-broker opt-out checklist. */
   brokers?: BrokerService;
+  /** Sigma-derived behaviour rules over newly started programs. */
+  behaviour?: BehaviourService;
   /** qalaa-scan, the native scanner, and its signed rule bundle. */
   scanEngine?: ScanEngineService;
 }
@@ -114,6 +117,17 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
     "aliases.create": async (params) => requireAliases(host).create(params),
     "safepay.get": async () => requireSafePay(host).status(),
     "safepay.launch": async (params) => requireSafePay(host).launch(params),
+    "behaviour.get": async () => requireBehaviour(host).status(),
+    "behaviour.dismiss": async (params) => {
+      const status = requireBehaviour(host).dismiss((params as { id?: unknown } | undefined)?.id);
+      await changed();
+      return status;
+    },
+    "behaviour.stop": async (params) => {
+      const status = await requireBehaviour(host).stop((params as { id?: unknown } | undefined)?.id);
+      await changed();
+      return status;
+    },
     "scanengine.get": async () => requireScanEngine(host).status(),
     "scanengine.update": async () => {
       const result = await requireScanEngine(host).update();
@@ -159,6 +173,11 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       return status;
     },
   };
+}
+
+function requireBehaviour(host: CoreHost): BehaviourService {
+  if (!host.behaviour) throw new IpcError("unavailable", "Behaviour rules aren't part of this app.");
+  return host.behaviour;
 }
 
 function requireScanEngine(host: CoreHost): ScanEngineService {

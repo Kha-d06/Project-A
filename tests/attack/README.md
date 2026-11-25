@@ -26,4 +26,8 @@ counted as passes.
 | T1555.001 Keychain dump | — | covered while the dump runs; a millisecond dump is a gap (15 s snapshots) | — |
 | T1571 New listener | covered | covered | covered |
 | T1200 BadUSB | fixture (`apps/desktop/test/attack-t1200.test.ts`) | fixture | fixture |
-| T1059.004, T1486, T1562.004, T1070.003 | gap (Wave 4.B / not built) | gap | gap |
+| T1059.004 Download piped to a shell | covered (programs running ≥ 1 s) | covered (≥ 2 s) | gap: needs ETW (admin service) |
+| T1562.004 Firewall switched off | covered (command line only, nothing changed) | covered | gap |
+| T1070.003 Shell history cleared | covered | covered | — |
+| T1059.004 A sub-second command | gap: polling; needs the netlink connector (root helper) | gap: needs Endpoint Security | gap |
+| T1486 Data encrypted for impact | gap: classic app's fanotify burst detector only | gap | gap |

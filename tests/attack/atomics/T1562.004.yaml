@@ -1,0 +1,25 @@
+attack_technique: T1562.004
+display_name: "Impair Defenses: Disable or Modify System Firewall"
+atomic_tests:
+  - name: A command that would switch the firewall off
+    auto_generated_guid: 6b2e1d4f-8e3c-4f9b-8d21-3c4d5e6f0001
+    description: The firewall command appears only on the command line (after the no-op ':'), so the runner's firewall is never touched.
+    supported_platforms: [linux, macos]
+    executor:
+      name: sh
+      command: |
+        sh -c ': ufw disable; sleep 6' &
+        echo $! > "$HOME/atomic.pid"
+      cleanup_command: |
+        kill "$(cat "$HOME/atomic.pid")" 2>/dev/null; rm -f "$HOME/atomic.pid"
+    qalaa:
+      expect:
+        event: alert
+        match: { kind: behaviour, rule: firewall_disabled, level: high }
+      within_seconds: 15
+
+  - name: Firewall changes on Windows
+    auto_generated_guid: 6b2e1d4f-8e3c-4f9b-8d21-3c4d5e6f0002
+    supported_platforms: [windows]
+    executor: { name: powershell, command: "$null" }
+    qalaa: { status: gap, note: "Needs ETW through the admin service (Wave 4.B, next slice)." }

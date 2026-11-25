@@ -1,0 +1,250 @@
+{
+  "version": "2026.11.25.1",
+  "license": "Rules marked with a SigmaHQ source are adapted from https://github.com/SigmaHQ/sigma under the Detection Rule License 1.1 (https://github.com/SigmaHQ/Detection-Rule-License); each keeps its original title and author.",
+  "rules": [
+    {
+      "id": "download_piped_to_shell",
+      "title": "A download is run straight in a shell",
+      "description": "A shell was started with a command that downloads a script and runs it without saving it first (curl/wget piped to sh). Attackers and some installers do this; nothing is checked before the script runs.",
+      "technique": "T1059.004",
+      "level": "medium",
+      "platforms": [
+        "linux",
+        "macos"
+      ],
+      "sigma": {
+        "title": "Linux Shell Pipe to Shell / Curl Usage piped to shell",
+        "author": "Florian Roth (Nextron Systems)",
+        "source": "SigmaHQ rules/linux/process_creation (adapted)"
+      },
+      "detection": {
+        "selection_curl": {
+          "CommandLine|contains": [
+            "curl ",
+            "wget "
+          ],
+          "CommandLine|re": "\\|\\s*(sudo\\s+)?(ba|z|da)?sh\\b"
+        },
+        "selection_b64": {
+          "CommandLine|contains": "base64 -d",
+          "CommandLine|re": "\\|\\s*(sudo\\s+)?(ba|z|da)?sh\\b"
+        },
+        "condition": "1 of selection_*"
+      },
+      "falsepositives": [
+        "Official one-line installers (Homebrew, rustup) run on purpose"
+      ]
+    },
+    {
+      "id": "office_spawns_shell",
+      "title": "An office app started a shell or script",
+      "description": "Word, Excel, PowerPoint or Outlook started a command shell or script interpreter. Documents with malicious macros do this; ordinary documents don't.",
+      "technique": "T1059.004",
+      "level": "high",
+      "platforms": [
+        "macos"
+      ],
+      "sigma": {
+        "title": "Suspicious Microsoft Office Child Process - MacOS",
+        "author": "Sohan G (D4rkCiph3r)",
+        "source": "SigmaHQ rules/macos/process_creation (adapted)"
+      },
+      "detection": {
+        "selection": {
+          "ParentImage|contains": [
+            "Microsoft Word",
+            "Microsoft Excel",
+            "Microsoft PowerPoint",
+            "Microsoft OneNote",
+            "Microsoft Outlook"
+          ],
+          "Image|endswith": [
+            "/bash",
+            "/sh",
+            "/zsh",
+            "/dash",
+            "/osascript",
+            "/python",
+            "/python3",
+            "/curl",
+            "/perl",
+            "/ruby"
+          ]
+        },
+        "condition": "selection"
+      }
+    },
+    {
+      "id": "clear_shell_history",
+      "title": "Shell history is being wiped",
+      "description": "A command clears or disables the shell's history file, which removes the record of what was typed. Intruders do this to cover their tracks.",
+      "technique": "T1070.003",
+      "level": "medium",
+      "platforms": [
+        "linux",
+        "macos"
+      ],
+      "sigma": {
+        "title": "History File Deletion / Clear Command History",
+        "author": "Patrick Bareiss; Ömer Günal",
+        "source": "SigmaHQ rules/linux/process_creation and auditd (adapted)"
+      },
+      "detection": {
+        "selection_clear": {
+          "CommandLine|re": "(^|[;&|\\s])history\\s+-c\\b"
+        },
+        "selection_remove": {
+          "CommandLine|re": "\\b(rm|shred|truncate)\\b.*\\.(bash|zsh|sh)_history"
+        },
+        "selection_disable": {
+          "CommandLine|re": "(unset\\s+HISTFILE|HISTFILE=/dev/null|HISTSIZE=0|ln\\s+-sf?\\s+/dev/null\\s+\\S*_history)"
+        },
+        "condition": "1 of selection_*"
+      }
+    },
+    {
+      "id": "firewall_disabled",
+      "title": "The firewall is being switched off or emptied",
+      "description": "A command turns off the firewall or deletes all of its rules, which opens the computer to the network. Malware and intruders do this before they connect out or listen.",
+      "technique": "T1562.004",
+      "level": "high",
+      "platforms": [
+        "linux",
+        "macos"
+      ],
+      "sigma": {
+        "title": "Disable Or Stop Services / Firewall Disabled via Command Line",
+        "author": "Qalaa, after SigmaHQ lnx_firewall_disable and macos_disable_security_tools",
+        "source": "SigmaHQ (adapted)"
+      },
+      "detection": {
+        "selection_ufw": {
+          "CommandLine|re": "\\bufw\\s+(disable|reset)\\b"
+        },
+        "selection_iptables": {
+          "CommandLine|re": "\\b(ip6?tables)\\s+(-F|--flush|-P\\s+INPUT\\s+ACCEPT)\\b"
+        },
+        "selection_nft": {
+          "CommandLine|re": "\\bnft\\s+flush\\s+ruleset\\b"
+        },
+        "selection_systemd": {
+          "CommandLine|re": "\\bsystemctl\\s+(stop|disable|mask)\\s+(firewalld|ufw|nftables|iptables)\\b"
+        },
+        "selection_macos": {
+          "CommandLine|re": "(socketfilterfw\\s+--setglobalstate\\s+off|\\bpfctl\\s+-d\\b)"
+        },
+        "condition": "1 of selection_*"
+      }
+    },
+    {
+      "id": "gatekeeper_bypass",
+      "title": "A download's quarantine mark is being removed",
+      "description": "The command removes the mark macOS puts on downloaded files, so Gatekeeper won't check the program before it runs. Malware installers ask people to do this.",
+      "technique": "T1553.001",
+      "level": "medium",
+      "platforms": [
+        "macos"
+      ],
+      "sigma": {
+        "title": "Gatekeeper Bypass via Xattr",
+        "author": "Daniil Yugoslavskiy, oscd.community",
+        "source": "SigmaHQ rules/macos/process_creation (adapted)"
+      },
+      "detection": {
+        "selection_delete": {
+          "Image|endswith": "/xattr",
+          "CommandLine|contains|all": [
+            "-d",
+            "com.apple.quarantine"
+          ]
+        },
+        "selection_clear": {
+          "Image|endswith": "/xattr",
+          "CommandLine|re": "\\s-(c|rc|cr)\\s"
+        },
+        "condition": "1 of selection_*"
+      }
+    },
+    {
+      "id": "osascript_password_prompt",
+      "title": "A script is showing a fake password prompt",
+      "description": "AppleScript is displaying a dialog that asks for a password with hidden input. Info-stealers (for example Atomic Stealer) use this to get the login password.",
+      "technique": "T1056.002",
+      "level": "high",
+      "platforms": [
+        "macos"
+      ],
+      "sigma": {
+        "title": "GUI Input Capture - macOS",
+        "author": "remotephone, oscd.community",
+        "source": "SigmaHQ rules/macos/process_creation (adapted)"
+      },
+      "detection": {
+        "selection": {
+          "Image|endswith": "/osascript",
+          "CommandLine|contains|all": [
+            "display dialog",
+            "hidden answer"
+          ]
+        },
+        "condition": "selection"
+      }
+    },
+    {
+      "id": "setuid_bit_set",
+      "title": "A program is being given owner privileges when run",
+      "description": "chmod sets the setuid or setgid bit, so the program runs with its owner's rights. Attackers use it to keep root access.",
+      "technique": "T1548.001",
+      "level": "medium",
+      "platforms": [
+        "linux",
+        "macos"
+      ],
+      "sigma": {
+        "title": "Setuid and Setgid",
+        "author": "Ömer Günal",
+        "source": "SigmaHQ rules/linux/process_creation (adapted)"
+      },
+      "detection": {
+        "selection": {
+          "Image|endswith": "/chmod",
+          "CommandLine|re": "\\s([ugo]*\\+[a-z]*s|[2467][0-7]{3})\\s"
+        },
+        "condition": "selection"
+      }
+    },
+    {
+      "id": "shell_from_temp",
+      "title": "A program is running from a temporary folder",
+      "description": "A program started from /tmp, /var/tmp or /dev/shm, folders anyone can write to. Downloaded malware often runs from there.",
+      "technique": "T1059.004",
+      "level": "low",
+      "platforms": [
+        "linux",
+        "macos"
+      ],
+      "sigma": {
+        "title": "Execution From Tmp Folder",
+        "author": "Qalaa, after SigmaHQ proc_creation_lnx_susp_execution_tmp_folder",
+        "source": "SigmaHQ (adapted)"
+      },
+      "detection": {
+        "selection": {
+          "Image|startswith": [
+            "/tmp/",
+            "/var/tmp/",
+            "/dev/shm/",
+            "/private/tmp/"
+          ]
+        },
+        "filter": {
+          "Image|re": "/(go-build|node-compile-cache|pip-|cargo-install|\\.mount_|snap-private-tmp)"
+        },
+        "condition": "selection and not filter"
+      },
+      "falsepositives": [
+        "Build tools and AppImages that unpack into /tmp"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+attack_technique: T1070.003
+display_name: "Indicator Removal: Clear Command History"
+atomic_tests:
+  - name: Shell history cleared
+    auto_generated_guid: 7c3f2e5a-9f4d-4a0c-9e32-4d5e6f7a0001
+    description: Clears only the history of a throwaway shell started for the test.
+    supported_platforms: [linux, macos]
+    executor:
+      name: sh
+      command: |
+        bash -c 'history -c; sleep 6' &
+        echo $! > "$HOME/atomic.pid"
+      cleanup_command: |
+        kill "$(cat "$HOME/atomic.pid")" 2>/dev/null; rm -f "$HOME/atomic.pid"
+    qalaa:
+      expect:
+        event: alert
+        match: { kind: behaviour, rule: clear_shell_history, technique: T1070.003 }
+      within_seconds: 15

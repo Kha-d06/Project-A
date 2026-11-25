@@ -1,4 +1,5 @@
 import re
+import time
 
 import pyotp
 import pytest
@@ -107,8 +108,10 @@ def test_two_factor_sign_in(client: TestClient, db: Session) -> None:
         f"{AUTH}/login/two-factor", json={"challenge": first["challenge"], "code": "123456"}
     )
     assert bad.status_code == 401
+    # The code that turned 2FA on has been used (see test_authenticator_codes_work_once).
+    next_code = totp.at(time.time() + 30)
     good = other.post(
-        f"{AUTH}/login/two-factor", json={"challenge": first["challenge"], "code": totp.now()}
+        f"{AUTH}/login/two-factor", json={"challenge": first["challenge"], "code": next_code}
     )
     assert good.status_code == 200
     assert other.get(f"{AUTH}/session").json()["user"]["email"] == "amira@example.com"
@@ -187,7 +190,46 @@ def test_disabling_two_factor_needs_password_and_code(client: TestClient) -> Non
     )
     assert wrong.status_code == 403
     ok = client.post(
-        "/api/v1/user/2fa/disable", json={"password": PASSWORD, "code": totp.now()}, headers=headers
+        "/api/v1/user/2fa/disable",
+        json={"password": PASSWORD, "code": totp.at(time.time() + 30)},
+        headers=headers,
     )
     assert ok.status_code == 204
     assert client.get("/api/v1/user/security").json()["two_factor_enabled"] is False
+    # Turning it straight back on with a new secret works: the old step is forgotten.
+    enable_two_factor(client, headers)
+
+
+def test_authenticator_codes_work_once(client: TestClient) -> None:
+    """OWASP MFA: a code (time step) is accepted once, even by racing sign-ins,
+    and never an older step after a newer one."""
+    headers = sign_up(client)
+    totp, _ = enable_two_factor(client, headers)  # uses the current step
+
+    def attempt(code: str) -> int:
+        session = TestClient(app)
+        challenge = session.post(
+            f"{AUTH}/login", json={"email": "amira@example.com", "password": PASSWORD}
+        ).json()["challenge"]
+        return session.post(
+            f"{AUTH}/login/two-factor", json={"challenge": challenge, "code": code}
+        ).status_code
+
+    upcoming = totp.at(time.time() + 30)
+    assert attempt(upcoming) == 200
+    assert attempt(upcoming) == 401  # the same code again
+    assert attempt(totp.now()) == 401  # an older step after a newer one
+
+
+def test_totp_step_is_claimed_atomically(db: Session) -> None:
+    """Two sign-ins checking the same code: only one UPDATE can claim the step."""
+    from app.api.account import _use_totp
+
+    user = User(email="race@example.com", password_hash="x")
+    db.add(user)
+    db.commit()
+    totp = pyotp.TOTP(pyotp.random_base32())
+    code = totp.now()
+    assert _use_totp(db, user, totp, code) is True
+    assert _use_totp(db, user, totp, code) is False
+    assert _use_totp(db, user, totp, "000000" if code != "000000" else "111111") is False

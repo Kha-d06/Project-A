@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import BigInteger, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, utcnow
@@ -23,6 +23,8 @@ class User(Base):
     # Authenticator-app secret, encrypted with a key derived from SENTINEL_SECRET_KEY.
     totp_secret_encrypted: Mapped[str | None] = mapped_column(String(255))
     totp_enabled_at: Mapped[datetime | None]
+    # The last authenticator time step accepted: each code works once (OWASP MFA).
+    totp_last_step: Mapped[int | None] = mapped_column(BigInteger)
     # Security-assessment (owned-site scanning) entitlement, granted by an admin.
     # Null means the feature is off for this account.
     assessment_enabled_at: Mapped[datetime | None]

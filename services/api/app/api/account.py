@@ -7,13 +7,15 @@ import io
 import secrets
 import time
 import uuid
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 import pyotp
 import zxingcpp
 from fastapi import APIRouter, BackgroundTasks, Request, Response
 from PIL import Image
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 
 from app.api.auth import LOGIN_IP_LIMIT, record_event, start_session
@@ -193,11 +195,43 @@ def _totp(user: User) -> pyotp.TOTP | None:
     return pyotp.TOTP(secret) if secret else None
 
 
+def _matching_step(totp: pyotp.TOTP, code: str, now: float | None = None) -> int | None:
+    """The time step `code` belongs to, allowing one step of clock drift either way."""
+    current = totp.timecode(datetime.fromtimestamp(now if now is not None else time.time(), UTC))
+    for step in (current - 1, current, current + 1):
+        if hmac.compare_digest(totp.generate_otp(step), code):
+            return step
+    return None
+
+
+def _use_totp(db: Session, user: User, totp: pyotp.TOTP, code: str) -> bool:
+    """Accepts a code only once: its step must be newer than the last one used.
+
+    The check and the update are one conditional UPDATE, so two sign-ins racing
+    with the same code can't both succeed.
+    """
+    step = _matching_step(totp, code)
+    if step is None:
+        return False
+    claimed = cast(
+        "CursorResult[Any]",
+        db.execute(
+            update(User)
+            .where(
+                User.id == user.id, or_(User.totp_last_step.is_(None), User.totp_last_step < step)
+            )
+            .values(totp_last_step=step)
+            .execution_options(synchronize_session="fetch"),
+        ),
+    )
+    return bool(claimed.rowcount == 1)
+
+
 def _check_second_factor(db: Session, user: User, code: str) -> bool:
     """An authenticator code (allowing one step of clock drift) or an unused backup code."""
     cleaned = code.replace(" ", "").replace("-", "")
     totp = _totp(user)
-    if totp and cleaned.isdigit() and len(cleaned) == 6 and totp.verify(cleaned, valid_window=1):
+    if totp and cleaned.isdigit() and len(cleaned) == 6 and _use_totp(db, user, totp, cleaned):
         return True
     backup = db.get(BackupCode, token_digest(cleaned.lower()))
     if backup and backup.user_id == user.id and backup.used_at is None:
@@ -222,6 +256,7 @@ def setup_two_factor(user: SessionUser, db: Db) -> TwoFactorSetup:
         raise ApiError(409, "already_enabled", "Two-step sign-in is already on.")
     secret = pyotp.random_base32()
     user.totp_secret_encrypted = encrypt(secret)
+    user.totp_last_step = None  # a new secret starts fresh
     db.commit()
     uri = pyotp.TOTP(secret).provisioning_uri(name=user.email, issuer_name=_ISSUER)
     return TwoFactorSetup(secret=secret, otpauth_uri=uri, qr_code=_qr_data_url(uri))
@@ -235,7 +270,7 @@ def enable_two_factor(
     totp = _totp(user)
     if user.totp_enabled_at or totp is None:
         raise ApiError(409, "not_set_up", "Start the setup again.")
-    if not totp.verify(body.code.replace(" ", ""), valid_window=1):
+    if not _use_totp(db, user, totp, body.code.replace(" ", "")):
         raise ApiError(
             400,
             "wrong_code",
@@ -262,6 +297,7 @@ def disable_two_factor(body: TwoFactorDisable, request: Request, user: SessionUs
         raise ApiError(403, "wrong_credentials", "The password or code is not correct.")
     user.totp_enabled_at = None
     user.totp_secret_encrypted = None
+    user.totp_last_step = None
     db.execute(delete(BackupCode).where(BackupCode.user_id == user.id))
     record_event(db, request, user, "two_factor_disabled")
     db.commit()

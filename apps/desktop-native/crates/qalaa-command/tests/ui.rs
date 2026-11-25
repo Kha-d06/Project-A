@@ -221,6 +221,44 @@ fn command_centre_interface() {
     qalaa_command::set_credentials(&app, &[], &mode);
     assert_eq!(labelled(&app, "No unexpected program has opened your credentials.").len(), 1);
 
+    // --- Data brokers: open, mark, and the request letter needs a name and email first.
+    let status: qalaa_ipc::BrokerStatus = serde_json::from_value(serde_json::json!({
+        "catalogVersion": "2026-11-25", "reviewed": null, "note": "", "done": 0, "recheckDue": 0,
+        "brokers": [{"id": "spokeo", "name": "Spokeo", "site": "spokeo.com", "optOutUrl": "https://www.spokeo.com/optout", "verification": "email_link", "removalDays": 3, "steps": [], "state": "todo", "at": null, "recheckDue": false, "expectedBy": null}]
+    }))
+    .expect("status");
+    let (rows, summary) = qalaa_command::view::brokers_view(&status, Lang::En);
+    qalaa_command::set_brokers(&app, &rows, &summary);
+    app.set_page("brokers".into());
+    let broker_calls = Rc::new(RefCell::new(Vec::<String>::new()));
+    {
+        let calls = Rc::clone(&broker_calls);
+        app.on_broker_open(move |url| calls.borrow_mut().push(format!("open {url}")));
+    }
+    {
+        let calls = Rc::clone(&broker_calls);
+        app.on_broker_mark(move |id, state| calls.borrow_mut().push(format!("{state} {id}")));
+    }
+    {
+        let calls = Rc::clone(&broker_calls);
+        app.on_broker_letter(move |id| calls.borrow_mut().push(format!("letter {id}")));
+    }
+    labelled(&app, "Open opt-out page: Spokeo")[0].invoke_accessible_default_action();
+    labelled(&app, "I asked: Spokeo")[0].invoke_accessible_default_action();
+    assert_eq!(labelled(&app, "Copy request letter: Spokeo")[0].accessible_enabled(), Some(false));
+    app.set_letter_name("Amira K".into());
+    app.set_letter_email("amira@example.com".into());
+    labelled(&app, "Copy request letter: Spokeo")[0].invoke_accessible_default_action();
+    assert_eq!(
+        *broker_calls.borrow(),
+        vec![
+            "open https://www.spokeo.com/optout".to_owned(),
+            "requested spokeo".to_owned(),
+            "letter spokeo".to_owned()
+        ]
+    );
+    assert_eq!(labelled(&app, "Remove yourself from data brokers  ·  0 / 1 done").len(), 1);
+
     // --- About carries the Slint credit the royalty-free licence requires.
     app.set_page("about".into());
     assert!(ElementHandle::find_by_element_type_name(&app, "AboutSlint").count() >= 1);

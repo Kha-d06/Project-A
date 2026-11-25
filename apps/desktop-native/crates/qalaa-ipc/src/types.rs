@@ -131,3 +131,32 @@ pub struct CredentialStatus {
     pub incidents: Vec<CredentialIncident>,
     pub trusted: Vec<String>,
 }
+
+/// One company in the data-broker opt-out checklist, with this person's progress.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrokerRow {
+    pub id: String,
+    pub name: String,
+    pub site: String,
+    pub opt_out_url: String,
+    pub verification: String,
+    pub removal_days: u32,
+    pub steps: Vec<String>,
+    /// "todo", "requested", "removed" or "not_listed".
+    pub state: String,
+    pub at: Option<String>,
+    pub recheck_due: bool,
+    pub expected_by: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrokerStatus {
+    pub catalog_version: String,
+    pub reviewed: Option<String>,
+    pub note: String,
+    pub brokers: Vec<BrokerRow>,
+    pub done: u32,
+    pub recheck_due: u32,
+}

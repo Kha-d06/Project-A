@@ -34,6 +34,8 @@ export interface HomeInput {
   clipboardGuard?: { on: boolean; available: boolean };
   /** Credential guardrails, where the host runs them; `pending` alerts await a decision. */
   credentialGuard?: { on: boolean; available: boolean; pending: number };
+  /** Data brokers whose opt-out is 90+ days old and should be checked again. */
+  brokersRecheckDue?: number;
 }
 
 export interface HomeCheck {
@@ -109,6 +111,7 @@ export function buildHome(input: HomeInput): HomeModel {
   if (checks[3]?.status === "attention" && input.recentThreats === 0) actions.push({ id: "quick_scan", priority: 2, command: { method: "scan.quick" } });
   if (!input.backupConfigured) actions.push({ id: "set_up_backup", priority: 2, command: { method: "view.open", params: { view: "backup" } } });
   if (checks[4]?.status === "unknown") actions.push({ id: "scan_network", priority: 3, command: { method: "view.open", params: { view: "network" } } });
+  if ((input.brokersRecheckDue ?? 0) > 0) actions.push({ id: "recheck_brokers", priority: 3, command: { method: "view.open", params: { view: "brokers" } } });
   if (input.updateAvailable) actions.push({ id: "install_update", priority: 2, command: { method: "view.open", params: { view: "updates" } } });
   actions.sort((a, b) => a.priority - b.priority);
 

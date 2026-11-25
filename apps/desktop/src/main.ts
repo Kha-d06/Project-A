@@ -74,6 +74,7 @@ import { ClipboardService, POLL_MS } from "./core/clipboard-service";
 import { CredentialGuardService, pollMs as credentialPollMs } from "./core/credential-guard-service";
 import { SafePayService } from "./core/safepay-service";
 import { AliasService } from "./core/alias-service";
+import { BrokerService } from "./core/broker-service";
 import { parseSafePayLink } from "./engine/safepay";
 import { KeyboardService } from "./core/keyboard-service";
 import { ListenerService } from "./core/listener-service";
@@ -1223,6 +1224,7 @@ let safeDnsService: SafeDnsService | null = null;
 let clipboardService: ClipboardService | null = null;
 let credentialService: CredentialGuardService | null = null;
 let safePayService: SafePayService | null = null;
+let brokerService: BrokerService | null = null;
 
 /** Opens a qalaa://safepay link; false when it isn't one Qalaa accepts. */
 function openSafePayLink(link: string): boolean {
@@ -1264,6 +1266,7 @@ const electronHost: CoreHost = {
       newKeyboards: keyboardService?.newCount() ?? 0,
       safeDns: safeDnsService ? { on: safeDnsService.isOn(), available: safeDnsService.isSupported() } : undefined,
       clipboardGuard: { on: settings.clipboardGuard, available: true },
+      brokersRecheckDue: brokerService?.recheckDueCount() ?? 0,
       credentialGuard: credentialService ? { on: settings.credentialGuard, available: credentialService.isSupported(), pending: credentialService.pendingCount() } : undefined,
     };
   },
@@ -1284,6 +1287,9 @@ const electronHost: CoreHost = {
   },
   get safePay() {
     return safePayService ?? undefined;
+  },
+  get brokers() {
+    return brokerService ?? undefined;
   },
   aliases: new AliasService(async () => account, async (text) => electronClipboard.writeText(text)),
   async updateToggles(changes) {
@@ -1349,6 +1355,8 @@ async function startCoreIpc() {
   if (credentialService.isSupported()) setInterval(() => void credentialService?.poll().catch(() => undefined), credentialPollMs(process.platform)).unref();
   safePayService = new SafePayService({ platform: process.platform, emit: coreEmit, safeDnsOn: () => safeDnsService?.isOn() ?? false });
   await safePayService.cleanup();
+  brokerService = new BrokerService(join(dataDir(), "brokers.json"), undefined, undefined, async (text) => electronClipboard.writeText(text));
+  await brokerService.load();
   if (pendingSafePayLink) {
     const link = pendingSafePayLink;
     pendingSafePayLink = null;

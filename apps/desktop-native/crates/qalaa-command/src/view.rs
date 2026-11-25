@@ -1,7 +1,7 @@
 //! Turns the service's Home model into rows for the interface. Plain Rust with
 //! no window, so it is tested directly.
 
-use qalaa_ipc::{CheckStatus, CredentialStatus, HomeModel, ListenerStatus, PostureState};
+use qalaa_ipc::{BrokerStatus, CheckStatus, CredentialStatus, HomeModel, ListenerStatus, PostureState};
 
 use crate::strings::{t, Lang};
 
@@ -191,6 +191,10 @@ pub fn palette_entries(view: Option<&HomeView>, lang: Lang) -> Vec<PaletteEntry>
             title: t(lang, "nav.credentials").into(),
         },
         PaletteEntry {
+            id: "page.brokers".into(),
+            title: t(lang, "nav.brokers").into(),
+        },
+        PaletteEntry {
             id: "page.about".into(),
             title: t(lang, "palette.about").into(),
         },
@@ -270,6 +274,59 @@ pub fn ports_view(status: &ListenerStatus, lang: Lang) -> Vec<PortView> {
 /// "k7x2…@relay.example.org copied. Mail to it reaches your inbox; …"
 pub fn alias_notice(address: &str, copied: bool, lang: Lang) -> String {
     format!("{address} {}", t(lang, if copied { "alias.copied" } else { "alias.made" }))
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BrokerView {
+    pub id: String,
+    pub title: String,
+    pub detail: String,
+    pub state: String,
+    pub url: String,
+    pub recheck: bool,
+}
+
+/// Re-checks first, then not started, then the rest, each in catalog order; plus "3 of 13 done".
+pub fn brokers_view(status: &BrokerStatus, lang: Lang) -> (Vec<BrokerView>, String) {
+    let mut rows: Vec<(u8, BrokerView)> = status
+        .brokers
+        .iter()
+        .map(|b| {
+            let state = t(lang, &format!("brokers.state.{}", b.state));
+            let mut detail = vec![b.site.clone(), state.to_owned()];
+            if b.recheck_due {
+                detail.push(t(lang, "brokers.recheck").to_owned());
+            } else if let Some(by) = b.expected_by.as_deref().and_then(|d| d.get(..10)) {
+                detail.push(format!("{} {by}", t(lang, "brokers.expected")));
+            } else if b.state == "todo" {
+                detail.push(format!("{} {}", b.removal_days, t(lang, "brokers.days")));
+            }
+            let order = if b.recheck_due {
+                0
+            } else if b.state == "todo" {
+                1
+            } else {
+                2
+            };
+            let view = BrokerView {
+                id: b.id.clone(),
+                title: b.name.clone(),
+                detail: detail.join(" · "),
+                state: b.state.clone(),
+                url: b.opt_out_url.clone(),
+                recheck: b.recheck_due,
+            };
+            (order, view)
+        })
+        .collect();
+    rows.sort_by_key(|(order, _)| *order);
+    let summary = format!("{} / {} {}", status.done, status.brokers.len(), t(lang, "brokers.progress"));
+    (rows.into_iter().map(|(_, v)| v).collect(), summary)
+}
+
+/// Only an https page is handed to the system browser.
+pub fn safe_to_open(url: &str) -> bool {
+    url.starts_with("https://") && !url.contains(char::is_whitespace) && url.len() < 2048
 }
 
 /// Pages that show what programs read your secrets are hidden from screenshots
@@ -445,6 +502,27 @@ mod tests {
         );
         assert!(alias_notice("a@b.org", false, Lang::Ar).starts_with("a@b.org جاهز"));
         assert!(palette_entries(None, Lang::En).iter().any(|e| e.id == "alias.new"));
+    }
+
+    #[test]
+    fn brokers_view_puts_rechecks_first() {
+        let status: BrokerStatus = serde_json::from_value(serde_json::json!({
+            "catalogVersion": "2026-11-25", "reviewed": null, "note": "", "done": 2, "recheckDue": 1,
+            "brokers": [
+                {"id": "a", "name": "Alpha", "site": "a.example", "optOutUrl": "https://a.example/out", "verification": "email_link", "removalDays": 3, "steps": [], "state": "removed", "at": "2026-01-01T00:00:00Z", "recheckDue": false, "expectedBy": null},
+                {"id": "b", "name": "Beta", "site": "b.example", "optOutUrl": "https://b.example/out", "verification": "email_link", "removalDays": 7, "steps": [], "state": "todo", "at": null, "recheckDue": false, "expectedBy": null},
+                {"id": "c", "name": "Gamma", "site": "c.example", "optOutUrl": "https://c.example/out", "verification": "form", "removalDays": 30, "steps": [], "state": "requested", "at": "2026-01-01T00:00:00Z", "recheckDue": true, "expectedBy": "2026-01-31T00:00:00Z"}
+            ]
+        }))
+        .expect("status");
+        let (rows, summary) = brokers_view(&status, Lang::En);
+        assert_eq!(rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), ["c", "b", "a"]);
+        assert_eq!(rows[0].detail, "c.example · Requested · Look again: 90 days have passed");
+        assert_eq!(rows[1].detail, "b.example · Not started · 7 days to remove");
+        assert_eq!(summary, "2 / 3 done");
+        assert!(safe_to_open("https://a.example/out"));
+        assert!(!safe_to_open("file:///etc/passwd") && !safe_to_open("https://a.example/x y"));
+        assert!(brokers_view(&status, Lang::Ar).0[1].detail.contains("لم يبدأ"));
     }
 
     #[test]

@@ -5,6 +5,7 @@
  */
 import { type HomeInput, type HomeModel, type HomeToggle, buildHome } from "./home";
 import type { AliasService } from "./alias-service";
+import type { BrokerService } from "./broker-service";
 import type { ClipboardService } from "./clipboard-service";
 import type { CredentialGuardService } from "./credential-guard-service";
 import type { KeyboardService } from "./keyboard-service";
@@ -34,6 +35,8 @@ export interface CoreHost {
   safePay?: SafePayService;
   /** Disposable email aliases through the linked account. */
   aliases?: AliasService;
+  /** The data-broker opt-out checklist. */
+  brokers?: BrokerService;
 }
 
 export type Handler = (params: unknown) => Promise<unknown>;
@@ -97,6 +100,13 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
     "clipboard.get": async () => requireClipboard(host).status(),
     "clipboard.copy_secret": async (params) => requireClipboard(host).copySecret((params as { text?: unknown } | undefined)?.text),
     "clipboard.clear_now": async () => requireClipboard(host).clearNow(),
+    "brokers.get": async () => requireBrokers(host).status(),
+    "brokers.mark": async (params) => {
+      const status = await requireBrokers(host).mark(params);
+      await changed();
+      return status;
+    },
+    "brokers.template": async (params) => requireBrokers(host).template(params),
     "aliases.list": async () => requireAliases(host).list(),
     "aliases.create": async (params) => requireAliases(host).create(params),
     "safepay.get": async () => requireSafePay(host).status(),
@@ -171,4 +181,9 @@ function requireSafePay(host: CoreHost): SafePayService {
 function requireAliases(host: CoreHost): AliasService {
   if (!host.aliases) throw new IpcError("unavailable", "Email aliases aren't available here.");
   return host.aliases;
+}
+
+function requireBrokers(host: CoreHost): BrokerService {
+  if (!host.brokers) throw new IpcError("unavailable", "The data-broker checklist isn't available here.");
+  return host.brokers;
 }

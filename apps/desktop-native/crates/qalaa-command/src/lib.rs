@@ -16,7 +16,7 @@ use std::rc::Rc;
 use slint::{ModelRc, SharedString, VecModel};
 
 use crate::strings::{t, Lang};
-use crate::view::{CredentialView, HomeView, PaletteEntry, PortView};
+use crate::view::{BrokerView, CredentialView, HomeView, PaletteEntry, PortView};
 
 pub fn labels(lang: Lang) -> Labels {
     let s = |key: &str| SharedString::from(t(lang, key));
@@ -58,6 +58,17 @@ pub fn labels(lang: Lang) -> Labels {
         cred_dismiss: s("cred.dismiss"),
         safepay: s("safepay.open"),
         safepay_hint: s("safepay.hint"),
+        brokers: s("nav.brokers"),
+        brokers_title: s("brokers.title"),
+        brokers_intro: s("brokers.intro"),
+        brokers_unreviewed: s("brokers.unreviewed"),
+        brokers_open: s("brokers.open"),
+        brokers_requested: s("brokers.requested"),
+        brokers_removed: s("brokers.removed"),
+        brokers_not_listed: s("brokers.not_listed"),
+        brokers_copy: s("brokers.copy"),
+        brokers_name: s("brokers.name"),
+        brokers_email: s("brokers.email"),
     }
 }
 
@@ -164,4 +175,20 @@ pub fn set_credentials(app: &App, rows: &[CredentialView], mode: &str) {
         .collect();
     app.set_credential_rows(ModelRc::from(Rc::new(VecModel::from(items))));
     app.set_cred_mode(mode.into());
+}
+
+pub fn set_brokers(app: &App, rows: &[BrokerView], summary: &str) {
+    let items: Vec<BrokerRow> = rows
+        .iter()
+        .map(|r| BrokerRow {
+            id: r.id.clone().into(),
+            title: r.title.clone().into(),
+            detail: r.detail.clone().into(),
+            state: r.state.clone().into(),
+            url: r.url.clone().into(),
+            recheck: r.recheck,
+        })
+        .collect();
+    app.set_broker_rows(ModelRc::from(Rc::new(VecModel::from(items))));
+    app.set_broker_summary(summary.into());
 }

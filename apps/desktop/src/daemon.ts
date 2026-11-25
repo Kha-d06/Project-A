@@ -15,6 +15,7 @@ import { join } from "node:path";
 
 import { type CoreHost, type Emit, createHandlers } from "./core/handlers";
 import { AliasService } from "./core/alias-service";
+import { BrokerService } from "./core/broker-service";
 import { ClipboardService, POLL_MS } from "./core/clipboard-service";
 import { loadAccount } from "./engine/account";
 import { CredentialGuardService, pollMs as credentialPollMs } from "./core/credential-guard-service";
@@ -51,7 +52,7 @@ async function mtime(file: string): Promise<string | null> {
   }
 }
 
-export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService; safePay: SafePayService; aliases: AliasService }> {
+export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService; safePay: SafePayService; aliases: AliasService; brokers: BrokerService }> {
   const settingsFile = join(dataDir, "settings.json");
   const historyFile = join(dataDir, "history.json");
   let settings = await loadSettings(settingsFile, defaultSettings(join(homedir(), "Downloads"), [], hostname().slice(0, 80) || "This computer"));
@@ -79,6 +80,8 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
   const safePay = new SafePayService({ platform: process.platform, emit, safeDnsOn: () => safeDns.isOn() });
   await safePay.cleanup();
   // Uses the account the classic app linked (account.json in the same data folder).
+  const brokers = new BrokerService(join(dataDir, "brokers.json"), undefined, undefined, (text) => clipboard.copyPlain(text));
+  await brokers.load();
   const aliases = new AliasService(() => loadAccount(join(dataDir, "account.json")), (text) => clipboard.copyPlain(text));
   const clamBinary = await findClam();
   const sevenZip = await findSevenZip();
@@ -93,6 +96,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     credentials,
     safePay,
     aliases,
+    brokers,
     async homeInput(): Promise<HomeInput> {
       const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       return {
@@ -119,6 +123,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
         safeDns: { on: safeDns.isOn(), available: safeDns.isSupported() },
         clipboardGuard: { on: settings.clipboardGuard, available: clipboard.status().supported },
         credentialGuard: { on: settings.credentialGuard, available: credentials.isSupported(), pending: credentials.pendingCount() },
+        brokersRecheckDue: brokers.recheckDueCount(),
       };
     },
     async updateToggles(changes) {

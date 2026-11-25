@@ -154,6 +154,12 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       if (!host.safeDns) throw new IpcError("unavailable", "Safe DNS isn't running here.");
       return host.safeDns.status();
     },
+    "safedns.adblock": async (params) => {
+      if (!host.safeDns) throw new IpcError("unavailable", "Safe DNS isn't running here.");
+      const on = (params as { on?: unknown } | undefined)?.on;
+      if (typeof on !== "boolean") throw new IpcError("bad_params", "Expected on: true or false.");
+      return host.safeDns.setAdBlocking(on);
+    },
     "keyboards.get": async () => requireKeyboards(host).status(),
     "keyboards.trust_all": async () => {
       const status = await requireKeyboards(host).trustAll();

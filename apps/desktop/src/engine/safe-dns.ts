@@ -81,6 +81,8 @@ export interface SafeDnsDeps {
   onBlocked?: (name: string) => void;
   /** Extra names allowed to resolve to private addresses (the person's list). */
   rebindAllow?: () => ReadonlySet<string>;
+  /** Ad and tracker lists (qalaa-dns); null means no opinion and the name is allowed. */
+  filter?: (name: string) => Promise<{ blocked: boolean; rule: string | null } | null>;
 }
 
 export interface SafeDnsStats {
@@ -93,6 +95,8 @@ export interface SafeDnsStats {
   cnameBlocked: number;
   /** Refused because a public name pointed at a private address. */
   rebindBlocked: number;
+  /** Refused by the ad and tracker lists (the name itself or a CNAME). */
+  listBlocked: number;
 }
 
 export async function dohQuery(url: string, query: Uint8Array): Promise<Uint8Array> {
@@ -128,7 +132,7 @@ export function udpQuery(server: string, query: Uint8Array, port = 53): Promise<
 }
 
 export class SafeDnsProxy {
-  readonly stats: SafeDnsStats = { queries: 0, blocked: 0, viaDoh: 0, viaFallback: 0, failed: 0, cnameBlocked: 0, rebindBlocked: 0 };
+  readonly stats: SafeDnsStats = { queries: 0, blocked: 0, viaDoh: 0, viaFallback: 0, failed: 0, cnameBlocked: 0, rebindBlocked: 0, listBlocked: 0 };
   private socket: Socket | null = null;
   private readonly doh: NonNullable<SafeDnsDeps["doh"]>;
   private readonly udp: NonNullable<SafeDnsDeps["udp"]>;
@@ -148,11 +152,17 @@ export class SafeDnsProxy {
       this.deps.onBlocked?.(question.name);
       return replyWithCode(query, question, 3);
     }
+    if (!CAPTIVE_CHECKS.includes(question.name) && (await this.listed(question.name))) {
+      this.stats.blocked += 1;
+      this.stats.listBlocked += 1;
+      this.deps.onBlocked?.(question.name);
+      return replyWithCode(query, question, 3);
+    }
     if (!CAPTIVE_CHECKS.includes(question.name)) {
       try {
         const answer = await this.doh(this.deps.upstream, withId(query, 0));
         this.stats.viaDoh += 1;
-        return this.inspect(query, question, withId(answer, question.id), true);
+        return await this.inspect(query, question, withId(answer, question.id), true);
       } catch {
         // DoH unreachable: most often a login page that blocks everything else.
       }
@@ -166,7 +176,7 @@ export class SafeDnsProxy {
         const answer = await this.udp(server, query);
         if (responseCode(answer) !== 2) {
           this.stats.viaFallback += 1;
-          return this.inspect(query, question, answer, false);
+          return await this.inspect(query, question, answer, false);
         }
       } catch {
         // try the next one
@@ -177,11 +187,30 @@ export class SafeDnsProxy {
   }
 
   /** CNAME uncloaking on every answer; the rebinding guard on DoH answers only. */
-  private inspect(query: Uint8Array, question: Question, answer: Uint8Array, fromDoh: boolean): Uint8Array {
+  private async listed(name: string): Promise<boolean> {
+    if (!this.deps.filter) return false;
+    try {
+      return (await this.deps.filter(name))?.blocked === true;
+    } catch {
+      return false; // the filter never stops a lookup
+    }
+  }
+
+  private async inspect(query: Uint8Array, question: Question, answer: Uint8Array, fromDoh: boolean): Promise<Uint8Array> {
     const parsed = parseAnswers(answer);
     if (!parsed) return answer; // unreadable: passed through as before
     const list = this.deps.blocklist();
-    const cloaked = parsed.cnames.find((name) => isListed(name, list));
+    let cloaked = parsed.cnames.find((name) => isListed(name, list));
+    if (!cloaked) {
+      // A tracker behind a first-party name (CNAME cloaking) is checked against the ad and tracker lists too.
+      for (const name of parsed.cnames.slice(0, 8)) {
+        if (await this.listed(name)) {
+          cloaked = name;
+          this.stats.listBlocked += 1;
+          break;
+        }
+      }
+    }
     if (cloaked) {
       this.stats.blocked += 1;
       this.stats.cnameBlocked += 1;

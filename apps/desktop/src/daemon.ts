@@ -22,6 +22,7 @@ import { CredentialGuardService, pollMs as credentialPollMs } from "./core/crede
 import { KeyboardService } from "./core/keyboard-service";
 import { ListenerService } from "./core/listener-service";
 import { ScanEngineService } from "./core/scan-engine-service";
+import { findDnsFilter } from "./engine/dns-filter";
 import { BehaviourService } from "./core/behaviour-service";
 import { ConnectorServer, installHelperCommand, uninstallHelperCommand } from "./engine/proc-connector";
 import { runElevated } from "./core/listener-service";
@@ -75,7 +76,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
   await listeners.load();
   const keyboards = new KeyboardService(join(dataDir, "keyboards.json"), () => listKeyboards(), emit);
   await keyboards.load();
-  const safeDns = new SafeDnsService(join(dataDir, "safe-dns.json"), () => settings.serverUrl, { platform: process.platform });
+  const safeDns = new SafeDnsService(join(dataDir, "safe-dns.json"), () => settings.serverUrl, { platform: process.platform, filterBinary: await findDnsFilter(), listsDir: join(dataDir, "dns-lists") });
   await safeDns.load();
   const clipboard = new ClipboardService(systemClipboard(), emit);
   clipboard.configure({ enabled: settings.clipboardGuard, ttlSeconds: settings.clipboardTtl });

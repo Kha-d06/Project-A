@@ -8,6 +8,7 @@ import { readFile, stat } from "node:fs/promises";
 
 import { describeSwitch, parseNetworkServices, parseResolvConf, parseScutilDns, parseWindowsServers, proxyPort, switchCommand } from "../engine/dns-system";
 import type { ElevatedCommand } from "../engine/listeners";
+import { DnsFilterProcess, FILTER_LISTS, availableLists, refreshLists } from "../engine/dns-filter";
 import { SafeDnsProxy, type SafeDnsStats, UPSTREAMS, type UpstreamId } from "../engine/safe-dns";
 import { runElevated } from "./listener-service";
 import { IpcError } from "./protocol";
@@ -20,9 +21,11 @@ export interface SafeDnsState {
   fallback: string[];
   blocklist: string[];
   blocklistAt: string | null;
+  /** Ad and tracker lists (EasyList, EasyPrivacy) through qalaa-dns. */
+  adBlocking?: boolean;
 }
 
-const EMPTY: SafeDnsState = { enabled: false, upstream: "quad9", fallback: [], blocklist: [], blocklistAt: null };
+const EMPTY: SafeDnsState = { enabled: false, upstream: "quad9", fallback: [], blocklist: [], blocklistAt: null, adBlocking: false };
 const REFRESH_MS = 6 * 60 * 60 * 1000;
 
 export interface SafeDnsDepsHost {
@@ -35,6 +38,11 @@ export interface SafeDnsDepsHost {
   available?: () => Promise<boolean>;
   /** For tests: where the proxy listens. */
   port?: number;
+  /** The qalaa-dns helper, when installed, and where its lists are kept. */
+  filterBinary?: string | null;
+  listsDir?: string;
+  refreshLists?: typeof refreshLists;
+  filterProcess?: (binary: string, lists: string[]) => DnsFilterProcess;
   proxy?: (deps: ConstructorParameters<typeof SafeDnsProxy>[0]) => SafeDnsProxy;
 }
 
@@ -66,6 +74,8 @@ export class SafeDnsService {
   private readonly macServices: () => Promise<string[]>;
   private readonly available: () => Promise<boolean>;
   private supported = false;
+  private filter: DnsFilterProcess | null = null;
+  private filterNote: string | null = null;
 
   constructor(
     private readonly file: string,
@@ -111,7 +121,9 @@ export class SafeDnsService {
       blocklist: () => this.blockset,
       upstream: UPSTREAMS[this.state.upstream].url,
       fallback: () => this.state.fallback,
+      filter: (name: string) => (this.filter?.running() ? this.filter.check(name) : Promise.resolve(null)),
     };
+    if (this.state.adBlocking) await this.startFilter().catch(() => undefined);
     const proxy = this.deps.proxy ? this.deps.proxy(deps) : new SafeDnsProxy(deps);
     await proxy.start(this.deps.port ?? proxyPort(this.deps.platform));
     this.proxy = proxy;
@@ -162,7 +174,55 @@ export class SafeDnsService {
     return { change: describeSwitch(this.deps.platform, on, upstream) };
   }
 
-  status(): { enabled: boolean; supported: boolean; running: boolean; upstream: string; domains: number; stats: SafeDnsStats | null; fallback: string[] } {
+  /** Downloads the lists if needed and (re)starts the helper; a failure is reported, never fatal. */
+  private async startFilter(): Promise<void> {
+    const binary = this.deps.filterBinary;
+    const dir = this.deps.listsDir;
+    if (!binary || !dir) {
+      this.filterNote = "The ad and tracker filter (qalaa-dns) isn't installed with this app.";
+      return;
+    }
+    const results = await (this.deps.refreshLists ?? refreshLists)(dir);
+    const lists = await availableLists(dir);
+    if (!lists.length) {
+      this.filterNote = `The lists couldn't be downloaded (${results.map((r) => r.error).filter(Boolean).join("; ") || "no list"}). Safe DNS still blocks threats.`;
+      return;
+    }
+    this.filter?.stop();
+    const proc = this.deps.filterProcess ? this.deps.filterProcess(binary, lists) : new DnsFilterProcess(binary, lists);
+    await proc.start();
+    this.filter = proc;
+    this.filterNote = results.some((r) => r.error) ? "Some lists couldn't be updated; the last copies are in use." : null;
+  }
+
+  /** Turns ad and tracker blocking on or off (works while Safe DNS is on). */
+  async setAdBlocking(on: boolean): Promise<ReturnType<SafeDnsService["status"]>> {
+    this.state = { ...this.state, adBlocking: on };
+    await this.save();
+    if (on) {
+      try {
+        await this.startFilter();
+      } catch (error) {
+        this.filterNote = `The filter couldn't start: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    } else {
+      this.filter?.stop();
+      this.filter = null;
+      this.filterNote = null;
+    }
+    return this.status();
+  }
+
+  status(): {
+    enabled: boolean;
+    supported: boolean;
+    running: boolean;
+    upstream: string;
+    domains: number;
+    stats: SafeDnsStats | null;
+    fallback: string[];
+    adBlocking: { on: boolean; available: boolean; running: boolean; rules: number; note: string | null; lists: { id: string; title: string; licence: string; homepage: string }[] };
+  } {
     return {
       enabled: this.state.enabled,
       supported: this.supported,
@@ -171,10 +231,20 @@ export class SafeDnsService {
       domains: this.blockset.size,
       stats: this.proxy?.stats ?? null,
       fallback: this.state.fallback,
+      adBlocking: {
+        on: this.state.adBlocking === true,
+        available: Boolean(this.deps.filterBinary),
+        running: this.filter?.running() ?? false,
+        rules: this.filter?.rules ?? 0,
+        note: this.filterNote,
+        lists: FILTER_LISTS.map(({ id, title, licence, homepage }) => ({ id, title, licence, homepage })),
+      },
     };
   }
 
   async stop(): Promise<void> {
+    this.filter?.stop();
+    this.filter = null;
     await this.proxy?.stop();
     this.proxy = null;
   }

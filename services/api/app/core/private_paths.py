@@ -7,7 +7,7 @@ with what was looked up, so those lines are dropped.
 
 import logging
 
-PRIVATE_PREFIXES = ("/api/v1/intelligence/hash-prefix/", "/api/v1/email/")
+PRIVATE_PREFIXES = ("/api/v1/intelligence/hash-prefix/", "/api/v1/email/", "/api/v1/relay/")
 
 
 class PrivatePathFilter(logging.Filter):

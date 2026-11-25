@@ -5,6 +5,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 from app.api import (
     account,
     admin,
+    aliases,
     api_keys,
     assess,
     auth,
@@ -108,6 +109,7 @@ def create_app() -> FastAPI:
         identity.router,
         network.router,
         mail.router,
+        aliases.router,
     ):
         app.include_router(router, prefix=API_PREFIX)
     return app

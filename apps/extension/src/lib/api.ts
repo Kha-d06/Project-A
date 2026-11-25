@@ -239,6 +239,23 @@ export async function link(serverUrl: string, code: string): Promise<AccountLink
   return (await response.json()) as AccountLink;
 }
 
+export interface EmailAlias {
+  id: string;
+  address: string;
+  label: string | null;
+  paused: boolean;
+}
+
+/** A new disposable address on the server's relay, labelled with the site it's for. */
+export async function createAlias(serverUrl: string, label: string): Promise<EmailAlias> {
+  const response = await authorized(serverUrl, "/extension/aliases", {
+    method: "POST",
+    body: JSON.stringify({ label: label.slice(0, 120) }),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as EmailAlias;
+}
+
 export async function unlink(serverUrl: string): Promise<AccountLink> {
   const response = await authorized(serverUrl, "/extension/unlink", { method: "POST" });
   if (!response.ok) throw await readError(response);

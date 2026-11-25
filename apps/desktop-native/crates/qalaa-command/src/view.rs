@@ -175,6 +175,10 @@ pub fn palette_entries(view: Option<&HomeView>, lang: Lang) -> Vec<PaletteEntry>
             title: t(lang, "safepay.open").into(),
         },
         PaletteEntry {
+            id: "alias.new".into(),
+            title: t(lang, "alias.new").into(),
+        },
+        PaletteEntry {
             id: "page.home".into(),
             title: t(lang, "palette.home").into(),
         },
@@ -261,6 +265,11 @@ pub fn ports_view(status: &ListenerStatus, lang: Lang) -> Vec<PortView> {
     rows.sort_by_key(|r| (!r.fresh, !r.exposed, r.port));
     rows.dedup_by(|a, b| a.key == b.key);
     rows
+}
+
+/// "k7x2…@relay.example.org copied. Mail to it reaches your inbox; …"
+pub fn alias_notice(address: &str, copied: bool, lang: Lang) -> String {
+    format!("{address} {}", t(lang, if copied { "alias.copied" } else { "alias.made" }))
 }
 
 /// Pages that show what programs read your secrets are hidden from screenshots
@@ -426,6 +435,16 @@ mod tests {
             ..status
         };
         assert!(credentials_view(&unknown, now, Lang::En).1.contains("Windows"));
+    }
+
+    #[test]
+    fn alias_notice_in_both_languages() {
+        assert_eq!(
+            alias_notice("k7x2mq9p4h@relay.example.org", true, Lang::En),
+            "k7x2mq9p4h@relay.example.org copied. Mail to it reaches your inbox; pause or delete it from your account."
+        );
+        assert!(alias_notice("a@b.org", false, Lang::Ar).starts_with("a@b.org جاهز"));
+        assert!(palette_entries(None, Lang::En).iter().any(|e| e.id == "alias.new"));
     }
 
     #[test]

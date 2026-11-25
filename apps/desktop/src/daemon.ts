@@ -14,7 +14,9 @@ import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 
 import { type CoreHost, type Emit, createHandlers } from "./core/handlers";
+import { AliasService } from "./core/alias-service";
 import { ClipboardService, POLL_MS } from "./core/clipboard-service";
+import { loadAccount } from "./engine/account";
 import { CredentialGuardService, pollMs as credentialPollMs } from "./core/credential-guard-service";
 import { KeyboardService } from "./core/keyboard-service";
 import { ListenerService } from "./core/listener-service";
@@ -49,7 +51,7 @@ async function mtime(file: string): Promise<string | null> {
   }
 }
 
-export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService; safePay: SafePayService }> {
+export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService; safePay: SafePayService; aliases: AliasService }> {
   const settingsFile = join(dataDir, "settings.json");
   const historyFile = join(dataDir, "history.json");
   let settings = await loadSettings(settingsFile, defaultSettings(join(homedir(), "Downloads"), [], hostname().slice(0, 80) || "This computer"));
@@ -76,6 +78,8 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
   credentials.configure({ enabled: settings.credentialGuard });
   const safePay = new SafePayService({ platform: process.platform, emit, safeDnsOn: () => safeDns.isOn() });
   await safePay.cleanup();
+  // Uses the account the classic app linked (account.json in the same data folder).
+  const aliases = new AliasService(() => loadAccount(join(dataDir, "account.json")), (text) => clipboard.copyPlain(text));
   const clamBinary = await findClam();
   const sevenZip = await findSevenZip();
 
@@ -88,6 +92,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     clipboard,
     credentials,
     safePay,
+    aliases,
     async homeInput(): Promise<HomeInput> {
       const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       return {

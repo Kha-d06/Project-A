@@ -124,6 +124,8 @@ lookup tool, where a person deliberately pastes one fingerprint.
   - Limits: the noise is injected at commit, so on a page that loads almost instantly, its first inline script can run before the noise is in place and read real values. The e2e test reports how often that happens. Patched functions report themselves as native code to `Function.prototype.toString`, but a determined script may still notice them.
   - Each site can be excluded from the toolbar popup.
 
+- **Email aliases.** A random (10 characters from a look-alike-free alphabet) or chosen address on the operator's relay domain, or on the person's own DNS-verified domain, forwards to the account's verified email. Forwarding is done by the operator's own Postfix (`infrastructure/alias-relay`), which asks `/relay/aliases/resolve` (bearer relay token, compared in constant time, request logs filtered) for one recipient at a time. Qalaa sees addresses and counts, never messages. Paused aliases are refused, and deleted ones become tombstones: refused forever, never issued again, label wiped. Aliases can be created from the website, from the extension's popup (never from a page's content script) and from the desktop app through the linked device. Limits: 200 per person and 30 created per hour.
+
 ## API keys and metrics
 
 - **API keys.** Personal keys are 256-bit random values prefixed `snt_`, shown once and stored only as SHA-256 digests. They are revocable and limited to ten per account. Keys authenticate scanning, history and lookups only. Account changes, key management, extension linking and all staff functions require a website session with its CSRF token, so a leaked key cannot take over or escalate an account. Disabling an account stops its keys working immediately.

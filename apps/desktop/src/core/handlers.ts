@@ -4,6 +4,7 @@
  * supplies the state; the logic lives here once.
  */
 import { type HomeInput, type HomeModel, type HomeToggle, buildHome } from "./home";
+import type { AliasService } from "./alias-service";
 import type { ClipboardService } from "./clipboard-service";
 import type { CredentialGuardService } from "./credential-guard-service";
 import type { KeyboardService } from "./keyboard-service";
@@ -31,6 +32,8 @@ export interface CoreHost {
   credentials?: CredentialGuardService;
   /** SafePay clean browser sessions, where the host runs them. */
   safePay?: SafePayService;
+  /** Disposable email aliases through the linked account. */
+  aliases?: AliasService;
 }
 
 export type Handler = (params: unknown) => Promise<unknown>;
@@ -94,6 +97,8 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
     "clipboard.get": async () => requireClipboard(host).status(),
     "clipboard.copy_secret": async (params) => requireClipboard(host).copySecret((params as { text?: unknown } | undefined)?.text),
     "clipboard.clear_now": async () => requireClipboard(host).clearNow(),
+    "aliases.list": async () => requireAliases(host).list(),
+    "aliases.create": async (params) => requireAliases(host).create(params),
     "safepay.get": async () => requireSafePay(host).status(),
     "safepay.launch": async (params) => requireSafePay(host).launch(params),
     "credentials.get": async () => requireCredentials(host).status(),
@@ -161,4 +166,9 @@ function requireCredentials(host: CoreHost): CredentialGuardService {
 function requireSafePay(host: CoreHost): SafePayService {
   if (!host.safePay) throw new IpcError("unavailable", "SafePay isn't running here.");
   return host.safePay;
+}
+
+function requireAliases(host: CoreHost): AliasService {
+  if (!host.aliases) throw new IpcError("unavailable", "Email aliases aren't available here.");
+  return host.aliases;
 }

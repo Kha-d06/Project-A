@@ -7,7 +7,7 @@ use std::thread;
 
 use qalaa_command::strings::{t, Lang};
 use qalaa_command::view::{
-    clipboard_text, content_protected, credentials_view, filter_palette, home_view, palette_entries, ports_view, PaletteEntry,
+    alias_notice, clipboard_text, content_protected, credentials_view, filter_palette, home_view, palette_entries, ports_view, PaletteEntry,
 };
 use qalaa_command::{apply_home, now_secs, set_credentials, set_language, set_offline, set_palette, set_ports, App};
 use qalaa_ipc::{Client, CredentialStatus, HomeModel, IpcError, ListenerStatus, Message, Stream};
@@ -127,6 +127,34 @@ fn credentials(app: &App, state: &Arc<State>, method: String, params: Option<ser
                             *h = Some(model);
                         }
                     }
+                }
+                Err(message) => app.set_notice(message.into()),
+            }
+        });
+    });
+}
+
+/// Asks the service for a new email alias, copied to the clipboard; says so in the notice bar.
+fn new_alias(app: &App, state: &Arc<State>) {
+    let weak = app.as_weak();
+    let state = Arc::clone(state);
+    app.set_busy(true);
+    thread::spawn(move || {
+        let result = (|| {
+            let mut guard = state.client.lock().map_err(|_| "lock".to_owned())?;
+            let client = guard.as_mut().ok_or_else(|| "not connected".to_owned())?;
+            client
+                .call_raw("aliases.create", Some(json!({ "copy": true })))
+                .map_err(|e| e.to_string())
+        })();
+        let lang = state.lang;
+        let _ = weak.upgrade_in_event_loop(move |app| {
+            app.set_busy(false);
+            match result {
+                Ok(alias) => {
+                    let address = alias.get("address").and_then(serde_json::Value::as_str).unwrap_or_default();
+                    let copied = alias.get("copied").and_then(serde_json::Value::as_bool).unwrap_or(false);
+                    app.set_notice(alias_notice(address, copied, lang).into());
                 }
                 Err(message) => app.set_notice(message.into()),
             }
@@ -295,6 +323,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 "page.ports" => app.set_page("ports".into()),
                 "page.credentials" => app.set_page("credentials".into()),
                 "safepay" => call(&app, &state, "safepay.launch", None),
+                "alias.new" => new_alias(&app, &state),
                 other => {
                     if let Some(key) = other.strip_prefix("toggle.") {
                         let on = state

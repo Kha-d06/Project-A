@@ -73,6 +73,7 @@ import { type CoreHost, type Emit, createHandlers } from "./core/handlers";
 import { ClipboardService, POLL_MS } from "./core/clipboard-service";
 import { CredentialGuardService, pollMs as credentialPollMs } from "./core/credential-guard-service";
 import { SafePayService } from "./core/safepay-service";
+import { AliasService } from "./core/alias-service";
 import { parseSafePayLink } from "./engine/safepay";
 import { KeyboardService } from "./core/keyboard-service";
 import { ListenerService } from "./core/listener-service";
@@ -1284,6 +1285,7 @@ const electronHost: CoreHost = {
   get safePay() {
     return safePayService ?? undefined;
   },
+  aliases: new AliasService(async () => account, async (text) => electronClipboard.writeText(text)),
   async updateToggles(changes) {
     const { onAccessScan, ...rest } = changes;
     settings = { ...settings, ...rest };

@@ -143,3 +143,23 @@ export async function reportResult(account: LinkedAccount, id: string, report: C
 export async function unlinkSelf(account: LinkedAccount, fetcher: typeof fetch = fetch): Promise<void> {
   await call(account.server, "/devices/self", { method: "DELETE", token: account.token }, fetcher).catch(() => undefined);
 }
+
+export interface EmailAlias {
+  id: string;
+  address: string;
+  label: string | null;
+  paused: boolean;
+  forwarded_count: number;
+  blocked_count: number;
+}
+
+/** A new disposable address that forwards to the account's inbox (no paid relay). */
+export async function createAlias(account: LinkedAccount, label: string | null, fetcher: typeof fetch = fetch): Promise<EmailAlias> {
+  const response = await call(account.server, "/devices/aliases", { method: "POST", body: JSON.stringify(label ? { label: label.slice(0, 120) } : {}), token: account.token }, fetcher);
+  return (await response.json()) as EmailAlias;
+}
+
+export async function listAliases(account: LinkedAccount, fetcher: typeof fetch = fetch): Promise<{ aliases: EmailAlias[]; domains: string[]; forwards_to: string | null }> {
+  const response = await call(account.server, "/devices/aliases", { token: account.token }, fetcher);
+  return (await response.json()) as { aliases: EmailAlias[]; domains: string[]; forwards_to: string | null };
+}

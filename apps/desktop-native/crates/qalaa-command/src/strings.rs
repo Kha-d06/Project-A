@@ -36,6 +36,9 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
 }
 
 pub const EN: &[(&str, &str)] = &[
+    ("alias.new", "New email alias (copied to the clipboard)"),
+    ("alias.copied", "copied. Mail to it reaches your inbox; pause or delete it from your account."),
+    ("alias.made", "is ready. Mail to it reaches your inbox."),
     ("safepay.open", "Open SafePay"),
     (
         "safepay.hint",
@@ -194,6 +197,9 @@ pub const EN: &[(&str, &str)] = &[
 ];
 
 pub const AR: &[(&str, &str)] = &[
+    ("alias.new", "عنوان بريد بديل جديد (يُنسخ إلى الحافظة)"),
+    ("alias.copied", "نُسخ. يصل البريد المرسل إليه إلى صندوقك؛ أوقفه أو احذفه من حسابك."),
+    ("alias.made", "جاهز. يصل البريد المرسل إليه إلى صندوقك."),
     ("safepay.open", "افتح الدفع الآمن"),
     (
         "safepay.hint",

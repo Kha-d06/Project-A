@@ -78,7 +78,27 @@ function renderPage(status: Status) {
     }
     section.append(actions);
     if (status.settings.fingerprintNoise) section.append(noiseRow(host, status.settings.fingerprintBypass));
+    if (status.account?.linked) section.append(aliasRow(url));
   }
+}
+
+/** One click: a fresh disposable address for this site, copied to the clipboard. */
+function aliasRow(url: string) {
+  const p = t().popup;
+  const note = el("p", { class: "faint", role: "status" });
+  const button = el("button", { class: "button secondary", type: "button" }, p.aliasNew);
+  button.addEventListener("click", async () => {
+    button.setAttribute("disabled", "");
+    try {
+      const alias = await ask<{ address: string }>({ type: "new-alias", url });
+      await navigator.clipboard.writeText(alias.address).catch(() => undefined);
+      note.textContent = p.aliasCopied(alias.address);
+    } catch (error) {
+      note.textContent = error instanceof Error ? error.message : String(error);
+      button.removeAttribute("disabled");
+    }
+  });
+  return el("div", { class: "stack alias" }, button, note);
 }
 
 /** Fingerprint noise for this site: on, or skipped because the person turned it off here. */

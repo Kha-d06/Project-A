@@ -96,6 +96,13 @@ export class ClipboardService {
     return this.status();
   }
 
+  /** Puts ordinary (non-secret) text on the clipboard, with no countdown. */
+  async copyPlain(text: string): Promise<void> {
+    if (!this.io) throw new IpcError("unavailable", "The clipboard can't be reached on this system.");
+    await this.io.write(text);
+    this.lastSeen = digest(text);
+  }
+
   async clearNow(): Promise<ClipboardStatus> {
     if (this.armed) await this.expire("now");
     return this.status();

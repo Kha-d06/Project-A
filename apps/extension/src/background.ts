@@ -688,6 +688,14 @@ async function handle(request: Request, sender: chrome.runtime.MessageSender): P
       await applyFamilyList(account);
       return account;
     }
+    case "new-alias": {
+      // Only the toolbar popup may create aliases: never a script running in a page.
+      if (!fromPopup(sender)) throw new Error("Not allowed.");
+      // Labelled with the site's host only, so the account shows what each alias is for.
+      const host = checkableUrl(request.url)?.hostname;
+      if (!host) throw new Error(t().popup.aliasNoSite);
+      return api.createAlias(settings.serverUrl, host);
+    }
     case "unlink": {
       const account = await api.unlink(settings.serverUrl);
       await chrome.storage.local.set({ [ACCOUNT_KEY]: account });

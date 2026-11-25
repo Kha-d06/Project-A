@@ -26,7 +26,8 @@ export type Request =
   | { type: "vault-lock" }
   | { type: "vault-fill"; tabId: number; url: string; itemId: string }
   | { type: "vault-secret"; url: string; itemId: string }
-  | { type: "vault-totp"; url: string; itemId: string };
+  | { type: "vault-totp"; url: string; itemId: string }
+  | { type: "new-alias"; url: string };
 
 export interface VaultLogin {
   id: string;

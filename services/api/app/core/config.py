@@ -123,6 +123,13 @@ class Settings(BaseSettings):
     # Scan-by-email: the mail provider's inbound webhook (Mailgun, Postmark, SES via
     # SNS, Cloudflare Email Workers…) posts the raw message with this bearer token.
     inbound_email_token: str | None = None
+    # Disposable email aliases: domains this server's mail relay receives for
+    # and the token the relay uses to ask
+    # where an alias goes (a JSON list in the environment, like cors_origins).
+    # Users can also use their own DNS-verified domains.
+    alias_domains: list[str] = Field(default_factory=list)
+    alias_relay_token: str | None = None
+    alias_limit_per_user: int = 200
     inbound_email_address: str | None = None
 
     # MobSF (Mobile Security Framework) for deeper APK static analysis. Optional.

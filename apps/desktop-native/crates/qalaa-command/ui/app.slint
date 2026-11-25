@@ -55,6 +55,8 @@ export struct Labels {
     priv-aliases-web: string,
     mail: string, mail-title: string, mail-intro: string, mail-app-password: string, mail-host: string, mail-port: string,
     mail-user: string, mail-password: string, mail-connect: string, mail-check: string, mail-disconnect: string,
+    browsing: string, brw-title: string, brw-intro: string, brw-history: string, brw-days: string, brw-check-history: string,
+    brw-clear: string, brw-extensions: string, brw-check-extensions: string,
 }
 
 component Card inherits Rectangle {
@@ -126,6 +128,7 @@ component NavRail inherits VerticalLayout {
     Button { text: labels.posture; checkable: true; checked: page == "posture"; clicked => { page = "posture"; } }
     Button { text: labels.privacy; checkable: true; checked: page == "privacy"; clicked => { page = "privacy"; } }
     Button { text: labels.mail; checkable: true; checked: page == "mail"; clicked => { page = "mail"; } }
+    Button { text: labels.browsing; checkable: true; checked: page == "browsing"; clicked => { page = "browsing"; } }
     Button { text: labels.network; checkable: true; checked: page == "network"; clicked => { page = "network"; } }
     Button { text: labels.vpn; checkable: true; checked: page == "vpn"; clicked => { page = "vpn"; } }
     Button { text: labels.ports; checkable: true; checked: page == "ports"; clicked => { page = "ports"; } }
@@ -226,6 +229,14 @@ export component App inherits Window {
     in-out property <string> mail-port-input: "993";
     in-out property <string> mail-user-input;
     in-out property <string> mail-password-input;
+    in property <bool> brw-linked: false;
+    in property <string> brw-history-summary;
+    in property <[DeepRow]> brw-matches;
+    in property <[string]> brw-unreadable;
+    in property <string> brw-ext-summary;
+    in property <[FindingRow]> brw-ext-rows;
+    in property <bool> brw-checking: false;
+    in-out property <string> brw-days-input: "30";
     in property <[CredRow]> credential-rows;
     in property <[BehRow]> behaviour-rows;
     in property <string> beh-note;
@@ -294,6 +305,7 @@ export component App inherits Window {
     callback pos-action(string, string);
     callback priv-action(string, string);
     callback mail-action(string);
+    callback brw-action(string);
     changed page => { page-changed(page); }
 
     changed rtl => { Theme.rtl = rtl; }
@@ -1367,6 +1379,63 @@ export component App inherits Window {
                                     padding: 12px;
                                     spacing: 4px;
                                     Text { text: row.title; font-weight: 600; color: Theme.ink; wrap: word-wrap; horizontal-alignment: Theme.rtl ? right : left; }
+                                    Muted { text: row.detail; }
+                                }
+                            }
+                        }
+                    }
+
+                    if connected && page == "browsing": Card {
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 12px;
+                            Heading { text: labels.brw-title; font-size: 20px; }
+                            Muted { text: labels.brw-intro; }
+                            Heading { text: labels.brw-history; }
+                            Text { text: brw-history-summary; color: brw-matches.length > 0 ? Theme.blocked : Theme.ink; wrap: word-wrap; horizontal-alignment: Theme.rtl ? right : left; accessible-role: text; accessible-label: brw-history-summary; }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                LineEdit { width: 140px; placeholder-text: labels.brw-days; accessible-label: labels.brw-days; text <=> root.brw-days-input; }
+                                Button { text: labels.brw-check-history; primary: true; enabled: brw-linked && !busy && !brw-checking; clicked => { root.brw-action("history"); } }
+                                if brw-matches.length > 0: Button { text: labels.brw-clear; enabled: !busy; clicked => { root.brw-action("clear"); } }
+                            }
+                            for row in brw-matches: Rectangle {
+                                border-color: Theme.blocked;
+                                border-width: 1px;
+                                border-radius: 8px;
+                                accessible-role: groupbox;
+                                accessible-label: row.title + ": " + row.detail;
+                                VerticalLayout {
+                                    padding: 12px;
+                                    spacing: 4px;
+                                    Text { text: row.title; font-weight: 600; color: Theme.blocked; horizontal-alignment: Theme.rtl ? right : left; }
+                                    Muted { text: row.detail; }
+                                }
+                            }
+                            for line in brw-unreadable: Muted { text: line; font-size: 12px; }
+                        }
+                    }
+
+                    if connected && page == "browsing": Card {
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 10px;
+                            Heading { text: labels.brw-extensions; }
+                            Text { text: brw-ext-summary; color: Theme.ink; wrap: word-wrap; horizontal-alignment: Theme.rtl ? right : left; accessible-role: text; accessible-label: brw-ext-summary; }
+                            HorizontalLayout {
+                                alignment: Theme.rtl ? end : start;
+                                Button { text: labels.brw-check-extensions; enabled: !busy && !brw-checking; clicked => { root.brw-action("extensions"); } }
+                            }
+                            for row in brw-ext-rows: Rectangle {
+                                border-color: row.severity == "high" ? Theme.blocked : row.severity == "medium" ? Theme.attention : Theme.line;
+                                border-width: 1px;
+                                border-radius: 8px;
+                                accessible-role: groupbox;
+                                accessible-label: row.title + ": " + row.detail;
+                                VerticalLayout {
+                                    padding: 12px;
+                                    spacing: 4px;
+                                    Text { text: row.title; font-weight: 600; color: Theme.ink; horizontal-alignment: Theme.rtl ? right : left; }
                                     Muted { text: row.detail; }
                                 }
                             }

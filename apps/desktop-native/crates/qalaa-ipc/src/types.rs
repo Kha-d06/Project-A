@@ -841,3 +841,64 @@ pub struct MailStatus {
     pub last_error: Option<String>,
     pub results: Vec<MailResult>,
 }
+
+/// The browsing check (`browsing.get`). Mirrors core/browsing-service.ts.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HistoryBrowser {
+    pub browser: String,
+    pub profile: String,
+    pub visits: u32,
+    /// Why this profile couldn't be read (a locked file, say).
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryMatch {
+    pub browser: String,
+    pub profile: String,
+    pub url: String,
+    pub host: String,
+    pub visited_at: Option<String>,
+    /// "url" when the exact page is listed, "domain" when its domain is.
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryReport {
+    pub checked_at: String,
+    pub days: u32,
+    pub browsers: Vec<HistoryBrowser>,
+    pub matches: Vec<HistoryMatch>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserExtension {
+    pub browser: String,
+    pub profile: String,
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub from_store: bool,
+    pub enabled: bool,
+    /// "high", "medium" or "low".
+    pub risk: String,
+    pub reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtensionsReport {
+    pub items: Vec<BrowserExtension>,
+    pub checked_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BrowsingStatus {
+    pub linked: bool,
+    pub history: Option<HistoryReport>,
+    pub extensions: Option<ExtensionsReport>,
+    pub checking: bool,
+}

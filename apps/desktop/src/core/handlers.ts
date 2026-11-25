@@ -19,6 +19,7 @@ import type { NetworkService } from "./network-service";
 import type { PostureService } from "./posture-service";
 import type { PrivacyService } from "./privacy-service";
 import type { MailService } from "./mail-service";
+import type { BrowsingService } from "./browsing-service";
 import type { VpnService } from "./vpn-service";
 import type { ProtectionService } from "./protection-service";
 import type { ScanService } from "./scan-service";
@@ -67,6 +68,8 @@ export interface CoreHost {
   privacy?: PrivacyService;
   /** The local IMAP inbox check. */
   mail?: MailService;
+  /** Browser history against the dangerous-sites list, and browser extensions. */
+  browsing?: BrowsingService;
 }
 
 export type Handler = (params: unknown) => Promise<unknown>;
@@ -129,6 +132,10 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       await changed();
       return totals;
     },
+    "browsing.get": async () => requireBrowsing(host).status(),
+    "browsing.history": async (params) => requireBrowsing(host).checkHistory(params),
+    "browsing.extensions": async () => requireBrowsing(host).checkExtensions(),
+    "browsing.clear": async () => requireBrowsing(host).clearHistory(),
     "mail.get": async () => requireMail(host).status(),
     "mail.connect": async (params) => requireMail(host).connect(params),
     "mail.disconnect": async () => requireMail(host).disconnect(),
@@ -297,6 +304,11 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       return status;
     },
   };
+}
+
+function requireBrowsing(host: CoreHost): BrowsingService {
+  if (!host.browsing) throw new IpcError("unavailable", "The browsing check needs the background service.");
+  return host.browsing;
 }
 
 function requireMail(host: CoreHost): MailService {

@@ -17,8 +17,8 @@ use slint::{ModelRc, SharedString, VecModel};
 
 use crate::strings::{t, Lang};
 use crate::view::{
-    BehaviourView, BrokerView, CredentialView, HomeView, MailPageView, NetworkPageView, PaletteEntry, PortView, PosturePageView,
-    PrivacyPageView, ProtectionPageView, QuarantineView, SandboxView, ScanPageView, VpnPageView,
+    BehaviourView, BrokerView, BrowsingPageView, CredentialView, HomeView, MailPageView, NetworkPageView, PaletteEntry, PortView,
+    PosturePageView, PrivacyPageView, ProtectionPageView, QuarantineView, SandboxView, ScanPageView, VpnPageView,
 };
 
 pub fn labels(lang: Lang) -> Labels {
@@ -194,6 +194,15 @@ pub fn labels(lang: Lang) -> Labels {
         mail_connect: s("mail.connect"),
         mail_check: s("mail.check"),
         mail_disconnect: s("mail.disconnect"),
+        browsing: s("nav.browsing"),
+        brw_title: s("brw.title"),
+        brw_intro: s("brw.intro"),
+        brw_history: s("brw.history"),
+        brw_days: s("brw.days"),
+        brw_check_history: s("brw.check_history"),
+        brw_clear: s("brw.clear"),
+        brw_extensions: s("brw.extensions"),
+        brw_check_extensions: s("brw.check_extensions"),
     }
 }
 
@@ -582,4 +591,24 @@ pub fn set_mail(app: &App, view: &MailPageView) {
         })
         .collect();
     app.set_mail_results(ModelRc::from(Rc::new(VecModel::from(results))));
+}
+
+pub fn set_browsing(app: &App, view: &BrowsingPageView) {
+    app.set_brw_linked(view.linked);
+    app.set_brw_checking(view.checking);
+    app.set_brw_history_summary(view.history_summary.clone().into());
+    app.set_brw_matches(ModelRc::from(Rc::new(VecModel::from(pairs(&view.matches)))));
+    let unreadable: Vec<SharedString> = view.unreadable.iter().map(|u| u.clone().into()).collect();
+    app.set_brw_unreadable(ModelRc::from(Rc::new(VecModel::from(unreadable))));
+    app.set_brw_ext_summary(view.extensions_summary.clone().into());
+    let rows: Vec<FindingRow> = view
+        .extensions
+        .iter()
+        .map(|(title, detail, risk)| FindingRow {
+            title: title.clone().into(),
+            detail: detail.clone().into(),
+            severity: risk.clone().into(),
+        })
+        .collect();
+    app.set_brw_ext_rows(ModelRc::from(Rc::new(VecModel::from(rows))));
 }

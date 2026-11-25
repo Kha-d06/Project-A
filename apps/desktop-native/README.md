@@ -6,7 +6,8 @@ page shows the "Made with Slint" credit it requires).
 
 ```
 crates/qalaa-ipc       client for qalaa-ipc, the local protocol to the background service
-crates/qalaa-command   the command centre window: Home, Scan, Quarantine, Protection, Home network, VPN,
+crates/qalaa-command   the command centre window: Home, Scan, Quarantine, Protection, Security posture, Privacy,
+                       Email, Browsing check, Home network, VPN,
                        Ports, Credentials, Behaviour, Brokers, About (the rest of the classic views are being ported)
 crates/qalaa-guardian-pet   Qalaa Guardian, the optional desktop mascot with quick actions
 ```

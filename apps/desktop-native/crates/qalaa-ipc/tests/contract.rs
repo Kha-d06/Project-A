@@ -202,3 +202,13 @@ fn decodes_the_mail_fixture_written_by_the_typescript_tests() {
     assert_eq!(status.results[1].links_checked, Some(false));
     assert_eq!(serde_json::to_value(&status).expect("encodes"), json["status"]);
 }
+
+#[test]
+fn decodes_the_browsing_fixture_written_by_the_typescript_tests() {
+    use qalaa_ipc::BrowsingStatus;
+    let json: serde_json::Value = serde_json::from_str(include_str!("fixtures/browsing.json")).expect("json");
+    let status: BrowsingStatus = serde_json::from_value(json["status"].clone()).expect("status decodes");
+    assert_eq!(status.history.as_ref().map(|h| h.matches.len()), Some(1));
+    assert_eq!(status.extensions.as_ref().map(|e| e.items[0].risk.as_str()), Some("high"));
+    assert_eq!(serde_json::to_value(&status).expect("encodes"), json["status"]);
+}

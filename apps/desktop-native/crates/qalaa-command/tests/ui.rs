@@ -686,6 +686,36 @@ fn command_centre_interface() {
         ]
     );
 
+    // --- Browsing check: history matches and extensions.
+    let brw_json: serde_json::Value =
+        serde_json::from_str(include_str!("../../qalaa-ipc/tests/fixtures/browsing.json")).expect("browsing fixture");
+    let brw_status: qalaa_ipc::BrowsingStatus = serde_json::from_value(brw_json["status"].clone()).expect("browsing status");
+    let brw_now = qalaa_command::view::parse_iso("2026-11-25T13:00:00Z").expect("time");
+    qalaa_command::set_browsing(&app, &qalaa_command::view::browsing_view(&brw_status, brw_now, Lang::En));
+    app.set_page("browsing".into());
+    let brw_calls = Rc::new(RefCell::new(Vec::<String>::new()));
+    {
+        let calls = Rc::clone(&brw_calls);
+        app.on_brw_action(move |action| calls.borrow_mut().push(action.to_string()));
+    }
+    assert!(!labelled(&app, "1 visit(s) to a dangerous site in the last 30 days. Checked 1 hour ago.").is_empty());
+    labelled(&app, "Check history")[0].invoke_accessible_default_action();
+    labelled(&app, "Forget these results")[0].invoke_accessible_default_action();
+    labelled(&app, "Check extensions")[0].invoke_accessible_default_action();
+    assert_eq!(
+        *brw_calls.borrow(),
+        vec!["history".to_owned(), "clear".to_owned(), "extensions".to_owned()]
+    );
+    // Not linked: the history check can't run, and the button says so by being off.
+    let unlinked = qalaa_ipc::BrowsingStatus {
+        linked: false,
+        history: None,
+        extensions: None,
+        checking: false,
+    };
+    qalaa_command::set_browsing(&app, &qalaa_command::view::browsing_view(&unlinked, brw_now, Lang::En));
+    assert_eq!(labelled(&app, "Check history")[0].accessible_enabled(), Some(false));
+
     // --- About carries the Slint credit the royalty-free licence requires.
     app.set_page("about".into());
     assert!(ElementHandle::find_by_element_type_name(&app, "AboutSlint").count() >= 1);

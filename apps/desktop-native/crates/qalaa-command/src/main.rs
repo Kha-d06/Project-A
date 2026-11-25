@@ -7,19 +7,19 @@ use std::thread;
 
 use qalaa_command::strings::{t, Lang};
 use qalaa_command::view::{
-    alias_notice, brokers_view, clipboard_text, content_protected, credential_text, credentials_view, deep_view, filter_palette, home_view,
-    inspector_text, mail_view, network_progress_text, network_view, palette_entries, ports_view, posture_view, privacy_view, progress_text,
-    protection_view, quarantine_view, scan_view, system_view, vpn_view, PaletteEntry,
+    alias_notice, brokers_view, browsing_view, clipboard_text, content_protected, credential_text, credentials_view, deep_view,
+    filter_palette, home_view, inspector_text, mail_view, network_progress_text, network_view, palette_entries, ports_view, posture_view,
+    privacy_view, progress_text, protection_view, quarantine_view, scan_view, system_view, vpn_view, PaletteEntry,
 };
 use qalaa_command::{
-    apply_home, now_secs, set_behaviour, set_brokers, set_credentials, set_deep, set_language, set_mail, set_network, set_offline,
-    set_palette, set_ports, set_posture, set_privacy, set_protection, set_protection_system, set_quarantine, set_sandbox, set_scan,
-    set_vpn, App,
+    apply_home, now_secs, set_behaviour, set_brokers, set_browsing, set_credentials, set_deep, set_language, set_mail, set_network,
+    set_offline, set_palette, set_ports, set_posture, set_privacy, set_protection, set_protection_system, set_quarantine, set_sandbox,
+    set_scan, set_vpn, App,
 };
 use qalaa_ipc::{
-    BehaviourStatus, BrokerStatus, Client, CredentialChecks, CredentialStatus, DeepCheck, HomeModel, IpcError, ListenerStatus, MailStatus,
-    Message, NetworkStatus, PostureStatus, PrivacyStatus, ProtectionStatus, QuarantineItem, QuarantineList, SandboxList, SandboxRun,
-    ScanDetails, ScanStatus, Stream, SystemChecks, VpnStatus,
+    BehaviourStatus, BrokerStatus, BrowsingStatus, Client, CredentialChecks, CredentialStatus, DeepCheck, HomeModel, IpcError,
+    ListenerStatus, MailStatus, Message, NetworkStatus, PostureStatus, PrivacyStatus, ProtectionStatus, QuarantineItem, QuarantineList,
+    SandboxList, SandboxRun, ScanDetails, ScanStatus, Stream, SystemChecks, VpnStatus,
 };
 use serde_json::json;
 use slint::winit_030::WinitWindowAccessor;
@@ -293,6 +293,36 @@ fn mail(app: &App, state: &Arc<State>, method: &'static str, params: Option<serd
             set_mail(app, &mail_view(&status, now_secs(), lang));
         },
     );
+}
+
+/// Calls a browsing.* method. Reading history and extensions takes a moment: own connection.
+fn browsing(app: &App, state: &Arc<State>, method: &'static str, params: Option<serde_json::Value>) {
+    if method == "browsing.get" || method == "browsing.clear" {
+        on_client(
+            app,
+            state,
+            move |c| c.call::<BrowsingStatus>(method, params),
+            |app, lang, status| {
+                set_browsing(app, &browsing_view(&status, now_secs(), lang));
+            },
+        );
+        return;
+    }
+    let weak = app.as_weak();
+    let lang = state.lang;
+    app.set_brw_checking(true);
+    thread::spawn(move || {
+        let result = connect()
+            .and_then(|mut c| c.call::<BrowsingStatus>(method, params))
+            .map_err(|e| e.to_string());
+        let _ = weak.upgrade_in_event_loop(move |app| {
+            app.set_brw_checking(false);
+            match result {
+                Ok(status) => set_browsing(&app, &browsing_view(&status, now_secs(), lang)),
+                Err(message) => app.set_notice(message.into()),
+            }
+        });
+    });
 }
 
 fn quarantine_page(app: &App, state: &Arc<State>) {
@@ -815,6 +845,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 "page.posture" => app.set_page("posture".into()),
                 "page.privacy" => app.set_page("privacy".into()),
                 "page.mail" => app.set_page("mail".into()),
+                "page.browsing" => app.set_page("browsing".into()),
                 "page.about" => app.set_page("about".into()),
                 "page.ports" => app.set_page("ports".into()),
                 "page.credentials" => app.set_page("credentials".into()),
@@ -892,6 +923,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 "vpn" => vpn(&app, &state, "vpn.get", None),
                 "privacy" => privacy(&app, &state, "privacy.get", None),
                 "mail" => mail(&app, &state, "mail.get", None),
+                "browsing" => browsing(&app, &state, "browsing.get", None),
                 // Shows what's known at once, then runs a fresh check.
                 "posture" => {
                     posture(&app, &state, "posture.get", None);
@@ -1422,6 +1454,23 @@ fn main() -> Result<(), slint::PlatformError> {
                 "disconnect" => mail(&app, &state, "mail.disconnect", None),
                 "watch-on" => mail(&app, &state, "mail.watch", Some(json!({ "on": true }))),
                 "watch-off" => mail(&app, &state, "mail.watch", Some(json!({ "on": false }))),
+                _ => {}
+            }
+        });
+    }
+
+    // --- Browsing check -----------------------------------------------------------------
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_brw_action(move |action| {
+            let Some(app) = weak.upgrade() else { return };
+            match action.as_str() {
+                "history" => {
+                    let days: u32 = app.get_brw_days_input().trim().parse().unwrap_or(30);
+                    browsing(&app, &state, "browsing.history", Some(json!({ "days": days })));
+                }
+                "extensions" => browsing(&app, &state, "browsing.extensions", None),
+                "clear" => browsing(&app, &state, "browsing.clear", None),
                 _ => {}
             }
         });

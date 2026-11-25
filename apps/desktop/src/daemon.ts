@@ -26,6 +26,7 @@ import { NetworkService } from "./core/network-service";
 import { PostureService } from "./core/posture-service";
 import { PrivacyService } from "./core/privacy-service";
 import { MailService } from "./core/mail-service";
+import { BrowsingService } from "./core/browsing-service";
 import { systemKeychain } from "./core/keychain";
 import { VpnService } from "./core/vpn-service";
 import { ProtectionService, onAccessIdentity } from "./core/protection-service";
@@ -63,6 +64,8 @@ import { posture } from "./engine/posture";
 import { cameraAndMicrophoneUse, firewallStatus, newUses, startupItems } from "./engine/security";
 import * as privacyBlock from "./engine/privacy-block";
 import * as mail from "./engine/mail";
+import { checkHistory } from "./engine/history";
+import { browserExtensions } from "./engine/tools";
 import { execFile } from "node:child_process";
 import { canSwitchOff, switchOffStartup, switchOnStartup, type DisabledStartup } from "./engine/tools";
 import * as vpn from "./engine/vpn";
@@ -85,7 +88,7 @@ async function mtime(file: string): Promise<string | null> {
   }
 }
 
-export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService; safePay: SafePayService; aliases: AliasService; brokers: BrokerService; scanEngine: ScanEngineService; behaviour: BehaviourService; protection: ProtectionService; network: NetworkService; vpn: VpnService; posture: PostureService; integrity: IntegrityMonitor; privacy: PrivacyService; mail: MailService }> {
+export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService; safePay: SafePayService; aliases: AliasService; brokers: BrokerService; scanEngine: ScanEngineService; behaviour: BehaviourService; protection: ProtectionService; network: NetworkService; vpn: VpnService; posture: PostureService; integrity: IntegrityMonitor; privacy: PrivacyService; mail: MailService; browsing: BrowsingService }> {
   const settingsFile = join(dataDir, "settings.json");
   const historyFile = join(dataDir, "history.json");
   let settings = await loadSettings(settingsFile, defaultSettings(join(homedir(), "Downloads"), [], hostname().slice(0, 80) || "This computer"));
@@ -301,6 +304,20 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     emit,
   });
   await mailService.load();
+  const browsing = new BrowsingService({
+    account: () => loadAccount(join(dataDir, "account.json")),
+    async blocklist(account) {
+      const response = await fetch(`${account.server.replace(/\/$/, "")}/api/v1/devices/blocklist`, {
+        headers: { Accept: "application/json", Authorization: `Bearer ${account.token}` },
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) throw new Error(`the server answered ${response.status}`);
+      return (await response.json()) as { hosts: string[]; urls: string[] };
+    },
+    checkHistory: (list, days) => checkHistory(list, days),
+    extensions: () => browserExtensions(),
+    emit,
+  });
   const vpnService = new VpnService({
     platform: process.platform,
     tunnelFile: join(dataDir, `${vpn.CONNECTION_NAME}.conf`),
@@ -356,6 +373,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     integrity,
     privacy,
     mail: mailService,
+    browsing,
     async homeInput(): Promise<HomeInput> {
       const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       return {

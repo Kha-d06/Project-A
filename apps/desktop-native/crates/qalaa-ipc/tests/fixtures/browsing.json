@@ -1,0 +1,53 @@
+{
+  "status": {
+    "linked": true,
+    "history": {
+      "checkedAt": "2026-11-25T12:00:00.000Z",
+      "days": 30,
+      "browsers": [
+        {
+          "browser": "Firefox",
+          "profile": "default-release",
+          "visits": 1200,
+          "error": null
+        },
+        {
+          "browser": "Chrome",
+          "profile": "Default",
+          "visits": 0,
+          "error": "The history file is locked while Chrome is open"
+        }
+      ],
+      "matches": [
+        {
+          "browser": "Firefox",
+          "profile": "default-release",
+          "url": "https://bad.example/login",
+          "host": "bad.example",
+          "visitedAt": "2026-11-24T20:00:00.000Z",
+          "reason": "domain"
+        }
+      ]
+    },
+    "extensions": {
+      "items": [
+        {
+          "browser": "Chrome",
+          "profile": "Default",
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "name": "Coupon Finder",
+          "version": "3.2",
+          "fromStore": false,
+          "enabled": true,
+          "risk": "high",
+          "reasons": [
+            "can read and change every site you visit",
+            "wasn't installed from the store"
+          ]
+        }
+      ],
+      "checkedAt": "2026-11-25T12:00:00.000Z"
+    },
+    "checking": false
+  }
+}

@@ -2,9 +2,9 @@
 //! no window, so it is tested directly.
 
 use qalaa_ipc::{
-    BehaviourStatus, BrokerStatus, CheckStatus, CredentialChecks, CredentialStatus, DeepCheck, HomeModel, ListenerStatus, MailStatus,
-    NetworkStatus, PostureState, PostureStatus, PrivacyStatus, ProtectionStatus, QuarantineItem, SandboxRun, ScanDetails, ScanStatus,
-    SystemChecks, VpnStatus,
+    BehaviourStatus, BrokerStatus, BrowsingStatus, CheckStatus, CredentialChecks, CredentialStatus, DeepCheck, HomeModel, ListenerStatus,
+    MailStatus, NetworkStatus, PostureState, PostureStatus, PrivacyStatus, ProtectionStatus, QuarantineItem, SandboxRun, ScanDetails,
+    ScanStatus, SystemChecks, VpnStatus,
 };
 
 use crate::strings::{t, Lang};
@@ -217,6 +217,10 @@ pub fn palette_entries(view: Option<&HomeView>, lang: Lang) -> Vec<PaletteEntry>
         PaletteEntry {
             id: "page.mail".into(),
             title: t(lang, "nav.mail").into(),
+        },
+        PaletteEntry {
+            id: "page.browsing".into(),
+            title: t(lang, "nav.browsing").into(),
         },
         PaletteEntry {
             id: "page.ports".into(),
@@ -1490,9 +1494,153 @@ pub fn mail_view(status: &MailStatus, now: i64, lang: Lang) -> MailPageView {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct BrowsingPageView {
+    pub linked: bool,
+    pub history_summary: String,
+    /// (title, detail) for each dangerous site visited.
+    pub matches: Vec<(String, String)>,
+    /// Profiles that couldn't be read, and why.
+    pub unreadable: Vec<String>,
+    pub extensions_summary: String,
+    /// (title, detail, risk), most worrying first.
+    pub extensions: Vec<(String, String, String)>,
+    pub checking: bool,
+}
+
+pub fn browsing_view(status: &BrowsingStatus, now: i64, lang: Lang) -> BrowsingPageView {
+    let (history_summary, matches, unreadable) = match &status.history {
+        None => (
+            t(lang, if status.linked { "brw.history_never" } else { "brw.history_link" }).to_owned(),
+            vec![],
+            vec![],
+        ),
+        Some(h) => {
+            let visits: u32 = h.browsers.iter().map(|b| b.visits).sum();
+            let summary = if h.matches.is_empty() {
+                fill(
+                    lang,
+                    "brw.history_clear",
+                    &[
+                        ("n", visits.to_string()),
+                        ("days", h.days.to_string()),
+                        ("when", relative(Some(&h.checked_at), now, lang)),
+                    ],
+                )
+            } else {
+                fill(
+                    lang,
+                    "brw.history_found",
+                    &[
+                        ("n", h.matches.len().to_string()),
+                        ("days", h.days.to_string()),
+                        ("when", relative(Some(&h.checked_at), now, lang)),
+                    ],
+                )
+            };
+            let matches = h
+                .matches
+                .iter()
+                .map(|m| {
+                    let why = t(lang, if m.reason == "url" { "brw.reason_url" } else { "brw.reason_domain" });
+                    (
+                        m.host.clone(),
+                        format!(
+                            "{} · {} {} · {why} · {}",
+                            m.url,
+                            m.browser,
+                            m.profile,
+                            relative(m.visited_at.as_deref(), now, lang)
+                        ),
+                    )
+                })
+                .collect();
+            let unreadable = h
+                .browsers
+                .iter()
+                .filter_map(|b| b.error.as_ref().map(|e| format!("{} {}: {e}", b.browser, b.profile)))
+                .collect();
+            (summary, matches, unreadable)
+        }
+    };
+    let rank = |r: &str| match r {
+        "high" => 0,
+        "medium" => 1,
+        _ => 2,
+    };
+    let (extensions_summary, mut extensions) = match &status.extensions {
+        None => (t(lang, "brw.ext_never").to_owned(), vec![]),
+        Some(e) => {
+            let flagged = e.items.iter().filter(|x| x.risk != "low").count();
+            let summary = fill(
+                lang,
+                "brw.ext_summary",
+                &[
+                    ("n", e.items.len().to_string()),
+                    ("flagged", flagged.to_string()),
+                    ("when", relative(Some(&e.checked_at), now, lang)),
+                ],
+            );
+            let rows = e
+                .items
+                .iter()
+                .map(|x| {
+                    let risk = match t(lang, &format!("brw.risk.{}", x.risk)) {
+                        "?" => x.risk.clone(),
+                        s => s.to_owned(),
+                    };
+                    let mut detail = vec![format!("{} {}", x.browser, x.profile), risk];
+                    if !x.enabled {
+                        detail.push(t(lang, "brw.disabled").to_owned());
+                    }
+                    detail.extend(x.reasons.iter().cloned());
+                    (format!("{} {}", x.name, x.version), detail.join(" · "), x.risk.clone())
+                })
+                .collect();
+            (summary, rows)
+        }
+    };
+    extensions.sort_by_key(|x: &(String, String, String)| rank(&x.2));
+    BrowsingPageView {
+        linked: status.linked,
+        history_summary,
+        matches,
+        unreadable,
+        extensions_summary,
+        extensions,
+        checking: status.checking,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn browsing_page_lists_dangerous_visits_and_risky_extensions() {
+        let json: serde_json::Value = serde_json::from_str(include_str!("../../qalaa-ipc/tests/fixtures/browsing.json")).expect("fixture");
+        let status: qalaa_ipc::BrowsingStatus = serde_json::from_value(json["status"].clone()).expect("status");
+        let now = parse_iso("2026-11-25T13:00:00Z").expect("time");
+        let view = browsing_view(&status, now, Lang::En);
+        assert_eq!(
+            view.history_summary,
+            "1 visit(s) to a dangerous site in the last 30 days. Checked 1 hour ago."
+        );
+        assert_eq!(view.matches[0].0, "bad.example");
+        assert!(view.matches[0].1.contains("its domain is on the list"));
+        assert_eq!(view.unreadable, ["Chrome Default: The history file is locked while Chrome is open"]);
+        assert_eq!(view.extensions_summary, "1 extension(s), 1 worth a look. Checked 1 hour ago.");
+        assert!(view.extensions[0].1.contains("wasn't installed from the store"));
+        let empty = qalaa_ipc::BrowsingStatus {
+            linked: false,
+            history: None,
+            extensions: None,
+            checking: false,
+        };
+        assert!(browsing_view(&empty, now, Lang::En)
+            .history_summary
+            .starts_with("Link this computer"));
+    }
 
     #[test]
     fn mail_page_lists_warning_signs_first_and_never_says_safe() {

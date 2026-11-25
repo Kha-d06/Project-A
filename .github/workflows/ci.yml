@@ -68,6 +68,56 @@ jobs:
           QALAA_TEST_NSJAIL: "1"
         run: pytest -q tests/test_sandbox.py
 
+  # Atomic Red Team style regression tests: each atomic does what an attacker
+  # would (read SSH keys, browser stores, open a listener) and the real
+  # background service must report it over qalaa-ipc. Linux runs in a container
+  # with no network at all; Windows and macOS on fresh GitHub-hosted runners.
+  attack-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Runner unit tests
+        run: pip install pyyaml pytest && cd tests/attack && pytest -q -p no:cacheprovider test_runner.py
+      - name: Build the background service
+        working-directory: apps/desktop
+        run: npm ci && npm run build
+      - name: Atomics in a --network none container
+        run: |
+          docker build -t qalaa-atomics tests/attack
+          mkdir -p "$RUNNER_TEMP/atomics" && chmod 777 "$RUNNER_TEMP/atomics"
+          docker run --rm --network none -v "$PWD:/repo:ro" -v "$RUNNER_TEMP/atomics:/out" \
+            -e GITHUB_STEP_SUMMARY=/out/summary.md qalaa-atomics python3 tests/attack/run_atomics.py
+      - name: Summary
+        if: always()
+        run: cat "$RUNNER_TEMP/atomics/summary.md" >> "$GITHUB_STEP_SUMMARY" || true
+
+  attack-desktop-os:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install pyyaml
+      - name: Build the background service
+        working-directory: apps/desktop
+        run: npm ci && npm run build
+      - name: Atomics on a fresh runner
+        run: python tests/attack/run_atomics.py
+
   web:
     runs-on: ubuntu-latest
     defaults:

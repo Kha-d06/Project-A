@@ -1,0 +1,36 @@
+attack_technique: T1552.001
+display_name: "Unsecured Credentials: Credentials In Files"
+atomic_tests:
+  - name: A script reads a project's .env file
+    auto_generated_guid: 2f0d7a10-6c55-4b8b-9d40-5e3f1c2a0001
+    supported_platforms: [linux, macos]
+    executor:
+      name: sh
+      command: |
+        mkdir -p "$HOME/project" && echo "API_KEY=abcdefgh123" > "$HOME/project/.env"
+        python3 -c "import time,os; f=open(os.path.expanduser('~/project/.env')); time.sleep(60)" &
+        echo $! > "$HOME/atomic.pid"
+      cleanup_command: |
+        kill "$(cat "$HOME/atomic.pid")" 2>/dev/null; rm -rf "$HOME/atomic.pid" "$HOME/project"
+    qalaa:
+      expect:
+        event: alert
+        match: { kind: credential, credential: env_file }
+      within_seconds: 45
+
+  - name: A script reads cloud credentials
+    auto_generated_guid: 2f0d7a10-6c55-4b8b-9d40-5e3f1c2a0002
+    supported_platforms: [linux, macos]
+    executor:
+      name: sh
+      command: |
+        mkdir -p "$HOME/.aws" && printf '[default]\naws_secret_access_key=x\n' > "$HOME/.aws/credentials"
+        python3 -c "import time,os; f=open(os.path.expanduser('~/.aws/credentials')); time.sleep(60)" &
+        echo $! > "$HOME/atomic.pid"
+      cleanup_command: |
+        kill "$(cat "$HOME/atomic.pid")" 2>/dev/null; rm -rf "$HOME/atomic.pid" "$HOME/.aws"
+    qalaa:
+      expect:
+        event: alert
+        match: { kind: credential, credential: cloud_credentials }
+      within_seconds: 45

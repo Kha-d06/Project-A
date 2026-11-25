@@ -1,0 +1,21 @@
+attack_technique: T1571
+display_name: "Non-Standard Port (a new program accepting connections)"
+atomic_tests:
+  - name: A program starts listening on all interfaces
+    auto_generated_guid: 77e0f1a2-5b3c-4d6e-8f90-1a2b3c4d0001
+    supported_platforms: [linux, macos, windows]
+    executor:
+      name: python
+      command: |
+        import socket, time
+        s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(("0.0.0.0", #{port})); s.listen(1); time.sleep(#{hold})
+    input_arguments:
+      port: { description: Port to open, type: integer, default: 48731 }
+      hold: { description: Seconds to keep listening, type: integer, default: 30 }
+    qalaa:
+      before: { method: listeners.check }
+      trigger: { method: listeners.check, after_seconds: 3 }
+      expect:
+        event: alert
+        match: { kind: listener, port: 48731 }
+      within_seconds: 15

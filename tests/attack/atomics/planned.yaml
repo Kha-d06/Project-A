@@ -1,0 +1,30 @@
+# Techniques mapped in the benchmark that Qalaa doesn't detect yet. The runner
+# reports them as gaps (never as passes) so the coverage map stays honest.
+attack_technique: PLANNED
+display_name: Not covered yet
+atomic_tests:
+  - name: "T1059.004 Unix shell from an unexpected parent (curl | sh, office app -> shell)"
+    auto_generated_guid: 00000000-0000-4000-8000-000000000001
+    supported_platforms: [linux, macos, windows]
+    executor: { name: sh, command: "true" }
+    qalaa: { status: gap, note: "Sigma-derived process_creation rules (Wave 4.B)." }
+  - name: "T1486 Data encrypted for impact"
+    auto_generated_guid: 00000000-0000-4000-8000-000000000002
+    supported_platforms: [linux]
+    executor: { name: sh, command: "true" }
+    qalaa: { status: gap, note: "Detected by the classic app's fanotify burst detector, not by the headless service yet." }
+  - name: "T1562.004 Firewall rules changed or disabled"
+    auto_generated_guid: 00000000-0000-4000-8000-000000000003
+    supported_platforms: [linux, macos, windows]
+    executor: { name: sh, command: "true" }
+    qalaa: { status: gap, note: "No firewall-integrity check exists yet." }
+  - name: "T1070.003 Clear command history"
+    auto_generated_guid: 00000000-0000-4000-8000-000000000004
+    supported_platforms: [linux, macos]
+    executor: { name: sh, command: "true" }
+    qalaa: { status: gap, note: "Planned behaviour rule (Wave 4.B)." }
+  - name: "T1200 Hardware additions (BadUSB)"
+    auto_generated_guid: 00000000-0000-4000-8000-000000000005
+    supported_platforms: [linux, macos, windows]
+    executor: { name: sh, command: "true" }
+    qalaa: { status: fixture, note: "Can't plug a device in CI: covered by recorded-device tests in apps/desktop/test/attack-t1200.test.ts." }

@@ -1,0 +1,10 @@
++-o AppleUserHIDDevice  <class IOHIDDevice>
+    {
+      "Product" = "Apple Internal Keyboard / Trackpad"
+      "Transport" = "SPI"
+      "PrimaryUsagePage" = 1
+      "PrimaryUsage" = 6
+      "VendorID" = 1452
+      "ProductID" = 832
+      "LocationID" = 1
+    }

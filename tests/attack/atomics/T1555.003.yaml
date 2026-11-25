@@ -1,0 +1,32 @@
+attack_technique: T1555.003
+display_name: "Credentials from Password Stores: Credentials from Web Browsers"
+atomic_tests:
+  - name: One program reads Chrome's key and its saved passwords (stealer pattern)
+    auto_generated_guid: 9c3e1b77-0d2a-4a6e-8f11-7a2c4d5e0001
+    supported_platforms: [linux]
+    executor:
+      name: sh
+      command: |
+        d="$HOME/.config/google-chrome"; mkdir -p "$d/Default" && echo '{}' > "$d/Local State" && echo x > "$d/Default/Login Data"
+        python3 -c "import time,os; d=os.path.expanduser('~/.config/google-chrome'); a=open(d+'/Local State'); b=open(d+'/Default/Login Data'); time.sleep(60)" &
+        echo $! > "$HOME/atomic.pid"
+      cleanup_command: |
+        kill "$(cat "$HOME/atomic.pid")" 2>/dev/null; rm -rf "$HOME/atomic.pid" "$HOME/.config/google-chrome"
+    qalaa:
+      expect:
+        event: alert
+        match: { kind: credential, severity: high, pattern: browser_key_and_secrets }
+      within_seconds: 45
+
+  - name: Browser passwords on Windows
+    auto_generated_guid: 9c3e1b77-0d2a-4a6e-8f11-7a2c4d5e0002
+    supported_platforms: [windows]
+    executor:
+      name: powershell
+      command: |
+        $d = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default"; New-Item -ItemType Directory -Force $d | Out-Null; Set-Content "$d\Login Data" x
+        Get-Content "$d\Login Data" | Out-Null
+      cleanup_command: Remove-Item -Recurse -Force "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Login Data" -ErrorAction SilentlyContinue
+    qalaa:
+      status: gap
+      note: Credential guardrails don't run on Windows yet (needs ETW Kernel-File, Wave 4.B).

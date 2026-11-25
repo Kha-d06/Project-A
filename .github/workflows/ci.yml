@@ -142,6 +142,8 @@ jobs:
           npx playwright install --with-deps chromium
           SENTINEL_TEST_BUILD=1 SENTINEL_SERVER=http://localhost:8787 npm run build
           node test/e2e-assistant.mjs
+      - name: Browser test of fingerprint noise
+        run: node test/e2e-fingerprint.mjs
 
   desktop:
     runs-on: ubuntu-latest

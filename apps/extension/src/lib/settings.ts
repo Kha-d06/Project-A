@@ -36,6 +36,9 @@ export interface Settings {
   keepLocalAlerts: boolean;
   /** On banking and payment sites, offer to reopen the page in Qalaa Desktop's SafePay. */
   safePayOffer: boolean;
+  /** Fingerprint noise (needs page access, off by default) and the sites it skips. */
+  fingerprintNoise: boolean;
+  fingerprintBypass: string[];
   allowlist: string[];
   blocklist: string[];
 }
@@ -63,6 +66,8 @@ export const DEFAULT_SETTINGS: Settings = {
   screenTimeBlocked: null,
   keepLocalAlerts: true,
   safePayOffer: true,
+  fingerprintNoise: false,
+  fingerprintBypass: [],
   allowlist: [],
   blocklist: [],
 };

@@ -77,7 +77,23 @@ function renderPage(status: Status) {
       actions.prepend(open);
     }
     section.append(actions);
+    if (status.settings.fingerprintNoise) section.append(noiseRow(host, status.settings.fingerprintBypass));
   }
+}
+
+/** Fingerprint noise for this site: on, or skipped because the person turned it off here. */
+function noiseRow(host: string, bypass: string[]) {
+  const p = t().popup;
+  const off = bypass.some((d) => host === d || host.endsWith(`.${d}`));
+  const button = el("button", { class: "button secondary", type: "button" }, off ? p.noiseTurnOn : p.noiseTurnOff);
+  button.addEventListener("click", async () => {
+    const next = off ? bypass.filter((d) => host !== d && !host.endsWith(`.${d}`)) : [...bypass, host];
+    await ask({ type: "settings", changes: { fingerprintBypass: next } });
+    // The change applies from the next page load.
+    if (activeTab?.id !== undefined) await chrome.tabs.reload(activeTab.id);
+    await refresh();
+  });
+  return el("div", { class: "row noise" }, el("span", { class: "faint" }, off ? p.noiseOff : p.noiseOn), button);
 }
 
 function renderSetup(status: Status) {

@@ -1,3 +1,4 @@
+import { installNoise, isBypassed, originSeed } from "./lib/fingerprint";
 import { isBankingHost, safePayLink } from "./lib/safepay";
 import * as api from "./lib/api";
 import { clearAlerts, listAlerts, recordAlert } from "./lib/alerts";
@@ -17,7 +18,7 @@ import { fillLoginForm, loginsFor, refusal } from "./lib/autofill";
 import { parseOtpauth, secondsRemaining, totpCode } from "../../web/src/lib/totp";
 import type { Request, Response, Status, VaultStatus } from "./lib/messages";
 import { allowForSession, assessDownload, assessUrl, isAllowedForSession } from "./lib/protection";
-import { SEARCH_ORIGINS, loadSettings, saveSettings, type Settings } from "./lib/settings";
+import { DEFAULT_SETTINGS, SEARCH_ORIGINS, loadSettings, saveSettings, type Settings, normalizeHostEntry } from "./lib/settings";
 import type { CheckResult, ProtectionState, Verdict } from "./lib/types";
 import { detectTrackers, siteOf } from "./lib/trackers";
 import {
@@ -327,6 +328,66 @@ chrome.downloads.onCreated.addListener((item) => {
   })();
 });
 
+// --- Fingerprint noise -------------------------------------------------------------
+
+const NOISE_SECRET = "fingerprint-secret";
+const seeds = new Map<string, Promise<number>>();
+const readySeeds = new Map<string, number>();
+/** Kept in memory so the injection at commit doesn't wait on storage. */
+let noise: { on: boolean; bypass: string[] } = { on: false, bypass: [] };
+
+function updateNoise(settings: Settings) {
+  noise = { on: settings.fingerprintNoise && !settings.paused, bypass: settings.fingerprintBypass };
+}
+void loadSettings().then(updateNoise);
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.settings?.newValue) updateNoise({ ...DEFAULT_SETTINGS, ...(changes.settings.newValue as Partial<Settings>) });
+});
+
+/** A secret for this browser session only (session storage is cleared on restart). */
+async function noiseSecret(): Promise<Uint8Array> {
+  const stored = (await chrome.storage.session.get(NOISE_SECRET))[NOISE_SECRET] as number[] | undefined;
+  if (stored?.length === 32) return new Uint8Array(stored);
+  const fresh = crypto.getRandomValues(new Uint8Array(32));
+  await chrome.storage.session.set({ [NOISE_SECRET]: [...fresh] });
+  return fresh;
+}
+
+function seedFor(origin: string): Promise<number> {
+  let seed = seeds.get(origin);
+  if (!seed) {
+    seed = noiseSecret().then((secret) => originSeed(secret, origin));
+    seeds.set(origin, seed);
+    void seed.then((value) => readySeeds.set(origin, value));
+  }
+  return seed;
+}
+
+function noiseTarget(url: string): { origin: string } | null {
+  if (!noise.on || !chrome.scripting || !/^https?:/.test(url)) return null;
+  const { origin, hostname } = new URL(url);
+  return isBypassed(hostname, noise.bypass) ? null : { origin };
+}
+
+// The seed is worked out while the request is in flight, so it's ready at commit.
+chrome.webNavigation.onBeforeNavigate.addListener(({ url }) => {
+  const target = noiseTarget(url);
+  if (target) void seedFor(target.origin);
+});
+
+// Injected as each document starts, into every frame, with the site's seed as an argument.
+chrome.webNavigation.onCommitted.addListener(({ tabId, frameId, url }) => {
+  const target = noiseTarget(url);
+  if (!target) return;
+  const inject = (seed: number) =>
+    chrome.scripting
+      .executeScript({ target: { tabId, frameIds: [frameId] }, world: "MAIN", injectImmediately: true, func: installNoise, args: [seed] })
+      .catch(() => undefined); // pages the browser doesn't let extensions touch
+  const ready = readySeeds.get(target.origin);
+  if (ready !== undefined) void inject(ready);
+  else void seedFor(target.origin).then(inject);
+});
+
 // --- SafePay offer -----------------------------------------------------------------
 
 const SAFEPAY_OFFERED = "safepay-offered";
@@ -630,6 +691,10 @@ async function handle(request: Request, sender: chrome.runtime.MessageSender): P
       // Family rules come from the account, never from a page or the popup.
       const { safeSearch: _s, lockProtection: _l, familyBlocklist: _b, familyGroups: _g, screenTime: _t, screenTimeBlocked: _tb, ...changes } = request.changes;
       if (settings.lockProtection && changes.paused) delete changes.paused;
+      if (changes.fingerprintBypass !== undefined) {
+        const hosts = Array.isArray(changes.fingerprintBypass) ? changes.fingerprintBypass : [];
+        changes.fingerprintBypass = [...new Set(hosts.map((h) => (typeof h === "string" ? normalizeHostEntry(h) : null)).filter((h): h is string => h !== null))].slice(0, 500);
+      }
       request.changes = changes;
       const next = await saveSettings(request.changes);
       if (request.changes.serverUrl && request.changes.serverUrl !== settings.serverUrl) {

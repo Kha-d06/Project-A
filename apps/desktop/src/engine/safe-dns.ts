@@ -10,12 +10,23 @@
  *   names, and any query when DoH can't be reached (a hotel or café login page),
  *   go to the network's own DNS servers, captured when Safe DNS was turned on.
  *
+ * - CNAME uncloaking: an answer whose CNAME chain reaches a listed domain is
+ *   refused too, so a tracker or malware host can't hide behind a harmless
+ *   first name.
+ * - Rebinding guard: a public name that DNS-over-HTTPS answers with a private,
+ *   loopback or link-local address is refused, so a web page can't turn its own
+ *   name into a way into your router or local services. Answers from the
+ *   network's own DNS are left alone (company networks legitimately answer
+ *   intranet names with private addresses), as are local names, names that do
+ *   this on purpose (plex.direct, nip.io, sslip.io and the like) and any the
+ *   person allows.
+ *
  * The proxy listens on loopback only. Turning it on and off at the system level
  * is in dns-system.ts.
  */
 import { type Socket, createSocket } from "node:dgram";
 
-import { type Question, parseQuery, replyWithCode, responseCode, withId } from "./dns-wire";
+import { type Question, isPrivateAddress, parseAnswers, parseQuery, replyWithCode, responseCode, withId } from "./dns-wire";
 
 export const UPSTREAMS = {
   quad9: { name: "Quad9 (blocks malware domains)", url: "https://dns.quad9.net/dns-query" },
@@ -40,6 +51,15 @@ export const CAPTIVE_CHECKS = [
 
 const TIMEOUT_MS = 3_000;
 
+/** Names that resolve to private addresses by design. */
+export const REBIND_OK = ["plex.direct", "nip.io", "sslip.io", "localtest.me", "lvh.me", "local", "lan", "home.arpa", "internal", "localhost", "home", "corp"];
+
+/** Local or allowed names may resolve to private addresses. */
+export function rebindAllowed(name: string, allowed: ReadonlySet<string>): boolean {
+  if (!name.includes(".")) return true; // single-label names are local
+  return isListed(name, new Set(REBIND_OK)) || isListed(name, allowed);
+}
+
 /** True when `name` or any parent domain is listed. */
 export function isListed(name: string, list: ReadonlySet<string>): boolean {
   let candidate = name.toLowerCase().replace(/\.$/, "");
@@ -59,6 +79,8 @@ export interface SafeDnsDeps {
   doh?: (url: string, query: Uint8Array) => Promise<Uint8Array>;
   udp?: (server: string, query: Uint8Array) => Promise<Uint8Array>;
   onBlocked?: (name: string) => void;
+  /** Extra names allowed to resolve to private addresses (the person's list). */
+  rebindAllow?: () => ReadonlySet<string>;
 }
 
 export interface SafeDnsStats {
@@ -67,6 +89,10 @@ export interface SafeDnsStats {
   viaDoh: number;
   viaFallback: number;
   failed: number;
+  /** Refused because a CNAME in the answer was listed. */
+  cnameBlocked: number;
+  /** Refused because a public name pointed at a private address. */
+  rebindBlocked: number;
 }
 
 export async function dohQuery(url: string, query: Uint8Array): Promise<Uint8Array> {
@@ -102,7 +128,7 @@ export function udpQuery(server: string, query: Uint8Array, port = 53): Promise<
 }
 
 export class SafeDnsProxy {
-  readonly stats: SafeDnsStats = { queries: 0, blocked: 0, viaDoh: 0, viaFallback: 0, failed: 0 };
+  readonly stats: SafeDnsStats = { queries: 0, blocked: 0, viaDoh: 0, viaFallback: 0, failed: 0, cnameBlocked: 0, rebindBlocked: 0 };
   private socket: Socket | null = null;
   private readonly doh: NonNullable<SafeDnsDeps["doh"]>;
   private readonly udp: NonNullable<SafeDnsDeps["udp"]>;
@@ -126,7 +152,7 @@ export class SafeDnsProxy {
       try {
         const answer = await this.doh(this.deps.upstream, withId(query, 0));
         this.stats.viaDoh += 1;
-        return withId(answer, question.id);
+        return this.inspect(query, question, withId(answer, question.id), true);
       } catch {
         // DoH unreachable: most often a login page that blocks everything else.
       }
@@ -140,7 +166,7 @@ export class SafeDnsProxy {
         const answer = await this.udp(server, query);
         if (responseCode(answer) !== 2) {
           this.stats.viaFallback += 1;
-          return answer;
+          return this.inspect(query, question, answer, false);
         }
       } catch {
         // try the next one
@@ -148,6 +174,25 @@ export class SafeDnsProxy {
     }
     this.stats.failed += 1;
     return replyWithCode(query, question, 2);
+  }
+
+  /** CNAME uncloaking on every answer; the rebinding guard on DoH answers only. */
+  private inspect(query: Uint8Array, question: Question, answer: Uint8Array, fromDoh: boolean): Uint8Array {
+    const parsed = parseAnswers(answer);
+    if (!parsed) return answer; // unreadable: passed through as before
+    const list = this.deps.blocklist();
+    const cloaked = parsed.cnames.find((name) => isListed(name, list));
+    if (cloaked) {
+      this.stats.blocked += 1;
+      this.stats.cnameBlocked += 1;
+      this.deps.onBlocked?.(`${question.name} → ${cloaked}`);
+      return replyWithCode(query, question, 3);
+    }
+    if (fromDoh && parsed.addresses.some(isPrivateAddress) && !rebindAllowed(question.name, this.deps.rebindAllow?.() ?? new Set())) {
+      this.stats.rebindBlocked += 1;
+      return replyWithCode(query, question, 3);
+    }
+    return answer;
   }
 
   /** Listens on loopback only. Resolves with the port actually bound. */

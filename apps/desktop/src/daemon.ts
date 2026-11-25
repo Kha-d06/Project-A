@@ -22,6 +22,7 @@ import { CredentialGuardService, pollMs as credentialPollMs } from "./core/crede
 import { KeyboardService } from "./core/keyboard-service";
 import { ListenerService } from "./core/listener-service";
 import { ScanEngineService } from "./core/scan-engine-service";
+import { SandboxService } from "./core/sandbox-service";
 import { findDnsFilter } from "./engine/dns-filter";
 import { BehaviourService } from "./core/behaviour-service";
 import { ConnectorServer, installHelperCommand, uninstallHelperCommand } from "./engine/proc-connector";
@@ -110,6 +111,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     listeners,
     scanEngine,
     behaviour,
+    sandbox: new SandboxService({ server: () => settings.serverUrl }),
     keyboards,
     safeDns,
     clipboard,

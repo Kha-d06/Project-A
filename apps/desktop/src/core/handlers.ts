@@ -13,6 +13,7 @@ import type { KeyboardService } from "./keyboard-service";
 import type { ListenerService } from "./listener-service";
 import type { SafeDnsService } from "./safe-dns-service";
 import type { SafePayService } from "./safepay-service";
+import type { SandboxService } from "./sandbox-service";
 import type { ScanEngineService } from "./scan-engine-service";
 import { IpcError } from "./protocol";
 
@@ -41,6 +42,8 @@ export interface CoreHost {
   brokers?: BrokerService;
   /** Sigma-derived behaviour rules over newly started programs. */
   behaviour?: BehaviourService;
+  /** Sending a chosen file to the server's gVisor sandbox. */
+  sandbox?: SandboxService;
   /** qalaa-scan, the native scanner, and its signed rule bundle. */
   scanEngine?: ScanEngineService;
 }
@@ -138,6 +141,8 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       if (typeof install !== "boolean") throw new IpcError("bad_params", "Expected install: true or false.");
       return requireBehaviour(host).helper(install);
     },
+    "sandbox.submit": async (params) => requireSandbox(host).submit((params as { path?: unknown } | undefined)?.path),
+    "sandbox.list": async () => ({ runs: await requireSandbox(host).list() }),
     "scanengine.get": async () => requireScanEngine(host).status(),
     "scanengine.update": async () => {
       const result = await requireScanEngine(host).update();
@@ -194,6 +199,11 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
 function requireBehaviour(host: CoreHost): BehaviourService {
   if (!host.behaviour) throw new IpcError("unavailable", "Behaviour rules aren't part of this app.");
   return host.behaviour;
+}
+
+function requireSandbox(host: CoreHost): SandboxService {
+  if (!host.sandbox) throw new IpcError("unavailable", "Sending files to the sandbox isn't part of this app.");
+  return host.sandbox;
 }
 
 function requireScanEngine(host: CoreHost): ScanEngineService {

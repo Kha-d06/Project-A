@@ -38,7 +38,9 @@ from app.analyzers.types import Check, FindingData, Outcome
 logger = logging.getLogger(__name__)
 SOURCE = "Qalaa sandbox run (gVisor)"
 SINK = Path(__file__).with_name("sink.py")
-TRACED = "execve,execveat,openat,connect,unlinkat,unlink,ptrace,chmod,fchmodat"
+TRACED = (
+    "execve,execveat,openat,connect,unlinkat,unlink,ptrace,chmod,fchmodat,clone,clone3,fork,vfork"
+)
 
 INTERPRETERS: dict[str, list[str]] = {
     "elf": [],
@@ -46,6 +48,11 @@ INTERPRETERS: dict[str, list[str]] = {
     "python": ["/usr/bin/python3"],
     "perl": ["/usr/bin/perl"],
 }
+
+
+SANDBOX_OVERHEAD_MB = 192
+# Addresses inside the sandbox itself (the fake DNS and web servers), not outside connections.
+_LOCAL = ("127.", "::1", "0.0.0.0")  # noqa: S104 - a prefix filter, not a bind
 
 
 @dataclass(frozen=True)
@@ -64,6 +71,8 @@ class Trace:
     deleted: list[str] = field(default_factory=list)
     ptrace_self: bool = False
     chmod_exec: list[str] = field(default_factory=list)
+    # Process starts refused by the sandbox's process limit (EAGAIN).
+    process_limit_hits: int = 0
 
 
 @dataclass
@@ -103,6 +112,7 @@ def oci_config(kind: str, limits: DetonationLimits, rootfs: str, bundle: Path) -
         "-S",
         "/qalaa/sink.py",
         str(limits.seconds),
+        str(limits.memory_mb),
         *INTERPRETERS[kind],
         "/sample/run",
     ]
@@ -119,6 +129,8 @@ def oci_config(kind: str, limits: DetonationLimits, rootfs: str, bundle: Path) -
             "rlimits": [
                 {"type": "RLIMIT_NOFILE", "hard": 256, "soft": 256},
                 {"type": "RLIMIT_CORE", "hard": 0, "soft": 0},
+                # The process cap the sample sees, enforced by gVisor inside the sandbox.
+                {"type": "RLIMIT_NPROC", "hard": limits.pids, "soft": limits.pids},
             ],
         },
         "root": {"path": rootfs, "readonly": True},
@@ -165,8 +177,12 @@ def oci_config(kind: str, limits: DetonationLimits, rootfs: str, bundle: Path) -
         "linux": {
             "namespaces": [{"type": t} for t in ("pid", "network", "ipc", "uts", "mount")],
             "resources": {
-                "memory": {"limit": limits.memory_mb * 1024 * 1024},
-                "pids": {"limit": limits.pids},
+                # The sample's own cap is RLIMIT_AS (set by the sink); this outer cap
+                # leaves room for gVisor and the sink so the run can still report.
+                "memory": {"limit": (limits.memory_mb + SANDBOX_OVERHEAD_MB) * 1024 * 1024},
+                # The host-side cap is looser: gVisor itself needs host threads for the
+                # sample's threads, and must stay up to report what the sample did.
+                "pids": {"limit": limits.pids * 4 + 64},
                 "cpu": {"quota": 100000, "period": 100000},
             },
         },
@@ -250,6 +266,8 @@ def parse_strace(text: str, limit: int = 300) -> Trace:
                 trace.deleted.append(path.group(1))
         elif call == "ptrace" and "PTRACE_TRACEME" in args:
             trace.ptrace_self = True
+        elif call in ("clone", "clone3", "fork", "vfork") and int(ret) < 0 and "errno=11" in line:
+            trace.process_limit_hits += 1
         elif call in ("chmod", "fchmodat") and re.search(r"0o[0-7]*[1357]\b", args):
             path = _PATH_ARG.search(args)
             if path:
@@ -384,11 +402,7 @@ def findings_for(result: DetonationResult) -> list[FindingData]:
             )
         )
     direct = sorted(
-        {
-            f"{c['addr']}:{c['port']}"
-            for c in t.connects
-            if not str(c["addr"]).startswith(("127.", "::1", "0.0.0.0"))  # noqa: S104 - a filter, not a bind
-        }
+        {f"{c['addr']}:{c['port']}" for c in t.connects if not str(c["addr"]).startswith(_LOCAL)}
     )[:20]
     if direct:
         out.append(
@@ -451,6 +465,18 @@ def findings_for(result: DetonationResult) -> list[FindingData]:
                 SOURCE,
             )
         )
+    if t.process_limit_hits:
+        out.append(
+            FindingData(
+                "medium",
+                "capability",
+                "Tries to start a flood of processes",
+                "It kept starting new processes until the sandbox's process limit refused them, "
+                "the pattern of a fork bomb or of malware spreading its work across many copies.",
+                SOURCE,
+                {"refused": t.process_limit_hits},
+            )
+        )
     dropped = sorted({p for p in t.chmod_exec if p.startswith("/tmp/")})[:10]
     if dropped:
         out.append(
@@ -464,6 +490,42 @@ def findings_for(result: DetonationResult) -> list[FindingData]:
             )
         )
     return out
+
+
+def indicators(result: DetonationResult) -> dict[str, Any]:
+    """What the run saw, for the report: counts plus the names and addresses it tried to reach."""
+    t, events = result.trace, result.sink.get("events", [])
+    status = result.sink.get("status", {})
+    return {
+        "seconds": result.sink.get("seconds"),
+        "timed_out": bool(status.get("timed_out")),
+        "exit": status.get("exit"),
+        "programs_started": len(t.executed),
+        "programs": sorted(
+            {
+                _name(e["path"])
+                for e in t.executed[1:]
+                if e["path"] and not e["path"].endswith("/sample/run")
+            }
+        )[:20],
+        "files_written": len(t.writes),
+        "dns_lookups": sorted(
+            {str(e["name"]) for e in events if e.get("kind") == "dns" and e.get("name")}
+        )[:20],
+        "web_requests": [
+            f"{e.get('method')} {e.get('host')}{e.get('path')}"[:300]
+            for e in events
+            if e.get("kind") == "http"
+        ][:20],
+        "direct_connections": sorted(
+            {
+                f"{c['addr']}:{c['port']}"
+                for c in t.connects
+                if not str(c["addr"]).startswith(_LOCAL)
+            }
+        )[:20],  # noqa: S104 - a filter, not a bind
+        "process_limit_hits": t.process_limit_hits,
+    }
 
 
 def merge_detonation(outcome: Outcome, result: DetonationResult, limits: DetonationLimits) -> None:
@@ -486,13 +548,7 @@ def merge_detonation(outcome: Outcome, result: DetonationResult, limits: Detonat
         else f"ran for {result.sink.get('seconds', '?')} s"
     )
     outcome.findings += findings_for(result)
-    outcome.details["detonation"] = {
-        "programs_started": len(result.trace.executed),
-        "files_written": len(result.trace.writes),
-        "network_events": len(result.sink.get("events", [])),
-        "exit": status.get("exit"),
-        "timed_out": bool(status.get("timed_out")),
-    }
+    outcome.details["detonation"] = indicators(result)
     outcome.checks.append(
         Check(
             "detonation",

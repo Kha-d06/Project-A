@@ -10,6 +10,7 @@ export struct ToggleRow { key: string, label: string, hint: string, on: bool, av
 export struct PaletteItem { id: string, title: string }
 export struct BrokerRow { id: string, title: string, detail: string, state: string, url: string, recheck: bool }
 export struct CredRow { id: string, title: string, detail: string, state: string }
+export struct SandboxRow { title: string, detail: string, url: string }
 export struct BehRow { id: string, title: string, detail: string, state: string }
 export struct PortRow { key: string, port: int, title: string, detail: string, fresh: bool, blocked: bool, exposed: bool }
 export struct Labels {
@@ -21,6 +22,7 @@ export struct Labels {
     credentials: string, cred-title: string, cred-intro: string, cred-none: string, cred-suspend: string,
     cred-resume: string, cred-terminate: string, cred-allow: string, cred-dismiss: string,
     behaviour: string, beh-title: string, beh-intro: string, beh-none: string, beh-stop: string, beh-dismiss: string, beh-helper: string,
+    sbx-title: string, sbx-intro: string, sbx-path: string, sbx-send: string, sbx-refresh: string, sbx-open: string,
     safepay: string, safepay-hint: string,
     brokers: string, brokers-title: string, brokers-intro: string, brokers-unreviewed: string, brokers-open: string,
     brokers-requested: string, brokers-removed: string, brokers-not-listed: string, brokers-copy: string,
@@ -105,6 +107,8 @@ export component App inherits Window {
     in property <[BehRow]> behaviour-rows;
     in property <string> beh-note;
     in property <bool> beh-can-install: false;
+    in property <[SandboxRow]> sandbox-rows;
+    in-out property <string> sandbox-path;
     in property <[BrokerRow]> broker-rows;
     in property <string> broker-summary;
     in-out property <string> letter-name;
@@ -131,6 +135,9 @@ export component App inherits Window {
     callback cred-action(string, string);
     callback beh-action(string, string);
     callback beh-helper();
+    callback sandbox-send(string);
+    callback sandbox-refresh();
+    callback sandbox-open(string);
     callback safepay();
     callback broker-open(string);
     callback broker-mark(string, string);
@@ -488,6 +495,54 @@ export component App inherits Window {
                                             accessible-label: labels.beh-dismiss + ": " + row.title;
                                             enabled: !busy;
                                             clicked => { root.beh-action(row.id, "dismiss"); }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if connected && page == "behaviour": Card {
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 12px;
+                            Heading { text: labels.sbx-title; font-size: 18px; }
+                            Muted { text: labels.sbx-intro; }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                LineEdit {
+                                    placeholder-text: labels.sbx-path;
+                                    accessible-label: labels.sbx-path;
+                                    text <=> root.sandbox-path;
+                                }
+                                Button {
+                                    text: labels.sbx-send;
+                                    enabled: !busy && root.sandbox-path != "";
+                                    clicked => { root.sandbox-send(root.sandbox-path); }
+                                }
+                                Button {
+                                    text: labels.sbx-refresh;
+                                    enabled: !busy;
+                                    clicked => { root.sandbox-refresh(); }
+                                }
+                            }
+                            for row in sandbox-rows: Rectangle {
+                                border-color: Theme.line;
+                                border-width: 1px;
+                                border-radius: 8px;
+                                accessible-role: groupbox;
+                                accessible-label: row.title;
+                                VerticalLayout {
+                                    padding: 12px;
+                                    spacing: 6px;
+                                    Text { text: row.title; font-weight: 600; color: Theme.ink; horizontal-alignment: Theme.rtl ? right : left; }
+                                    Muted { text: row.detail; }
+                                    HorizontalLayout {
+                                        alignment: Theme.rtl ? end : start;
+                                        Button {
+                                            text: labels.sbx-open;
+                                            accessible-label: labels.sbx-open + ": " + row.title;
+                                            clicked => { root.sandbox-open(row.url); }
                                         }
                                     }
                                 }

@@ -73,6 +73,28 @@ describe("ScanReport", () => {
     expect(screen.queryByText(/\bsafe\b/i)).not.toBeInTheDocument();
   });
 
+  it("shows what a sandbox run tried to reach", async () => {
+    const details = {
+      detonation: {
+        seconds: 2.5, timed_out: false, programs: ["curl"], dns_lookups: ["c2.bad.test"],
+        web_requests: ["GET c2.bad.test/gate.php"], direct_connections: ["203.0.113.7:4444"], process_limit_hits: 0,
+      },
+    };
+    serve([jsonResponse(makeScan({ scan_type: "file", details }))]);
+    renderReport();
+    expect(await screen.findByRole("heading", { name: "Sandbox run" })).toBeInTheDocument();
+    for (const text of ["c2.bad.test", "GET c2.bad.test/gate.php", "203.0.113.7:4444", "curl", "Ran for 2.5 s"]) {
+      expect(screen.getByText(text)).toBeInTheDocument();
+    }
+  });
+
+  it("says a quiet sandbox run isn't proof, and shows no panel without one", async () => {
+    serve([jsonResponse(makeScan({ scan_type: "file", details: { detonation: { seconds: 1, timed_out: true } } }))]);
+    renderReport();
+    expect(await screen.findByText("Stopped at the time limit")).toBeInTheDocument();
+    expect(screen.getByText(/A quiet run isn't proof/)).toBeInTheDocument();
+  });
+
   it("lists unavailable checks on an inconclusive result", async () => {
     serve([
       jsonResponse(

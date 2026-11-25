@@ -186,6 +186,18 @@ export const en = {
     errors: { slowDown: "Please slow down", couldNotStart: "The scan could not start", generic: "Something went wrong." },
   },
   report: {
+    sandbox: {
+      title: "Sandbox run",
+      description: "What the file tried to do while it ran in an isolated sandbox with no internet. Stand-ins answered its lookups and web requests, so nothing was reached.",
+      ran: (seconds: string) => `Ran for ${seconds} s`,
+      stopped: "Stopped at the time limit",
+      programs: "Programs it started",
+      lookups: "Names it looked up",
+      requests: "Web requests it made",
+      direct: "Addresses it connected to directly",
+      refused: (n: number) => `${n} process starts refused by the sandbox's limit`,
+      quiet: "It didn't try to reach anything or start other programs. A quiet run isn't proof: malware can wait, or check for a real network first.",
+    },
     submitted: (type: string, date: string) => `${type} scan · submitted ${date}`,
     download: "Download report",
     delete: "Delete",

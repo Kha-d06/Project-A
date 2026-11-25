@@ -1,7 +1,7 @@
 //! Turns the service's Home model into rows for the interface. Plain Rust with
 //! no window, so it is tested directly.
 
-use qalaa_ipc::{BehaviourStatus, BrokerStatus, CheckStatus, CredentialStatus, HomeModel, ListenerStatus, PostureState};
+use qalaa_ipc::{BehaviourStatus, BrokerStatus, CheckStatus, CredentialStatus, HomeModel, ListenerStatus, PostureState, SandboxRun};
 
 use crate::strings::{t, Lang};
 
@@ -445,6 +445,53 @@ pub fn behaviour_can_install_helper(status: &BehaviourStatus) -> bool {
     status.capability.source == "proc_poll"
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct SandboxView {
+    pub title: String,
+    pub detail: String,
+    pub url: String,
+}
+
+/// Rows for sandbox runs: file and status, then what it tried to reach, or why there was no run.
+pub fn sandbox_view(runs: &[SandboxRun], lang: Lang) -> Vec<SandboxView> {
+    runs.iter()
+        .map(|r| {
+            let status = match t(lang, &format!("sbx.status.{}", r.status)) {
+                "?" => r.status.as_str(),
+                s => s,
+            };
+            let mut parts: Vec<String> = Vec::new();
+            if let Some(note) = &r.note {
+                parts.push(note.clone());
+            } else if r.status == "completed" {
+                if r.timed_out {
+                    parts.push(t(lang, "sbx.stopped").to_owned());
+                } else if let Some(s) = r.seconds {
+                    parts.push(format!("{} {s} s", t(lang, "sbx.ran")));
+                }
+                for (key, items) in [
+                    ("sbx.lookups", &r.dns_lookups),
+                    ("sbx.requests", &r.web_requests),
+                    ("sbx.direct", &r.direct_connections),
+                    ("sbx.programs", &r.programs),
+                ] {
+                    if !items.is_empty() {
+                        parts.push(format!("{}: {}", t(lang, key), items.join(", ")));
+                    }
+                }
+                if r.dns_lookups.is_empty() && r.web_requests.is_empty() && r.direct_connections.is_empty() && r.programs.is_empty() {
+                    parts.push(t(lang, "sbx.quiet").to_owned());
+                }
+            }
+            SandboxView {
+                title: format!("{}  · {status}", r.file),
+                detail: parts.join(" · "),
+                url: r.report_url.clone(),
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -500,6 +547,25 @@ mod tests {
         assert_eq!(row.label, "Also block ads and trackers (EasyList, EasyPrivacy)");
         let ar = home_view(&model, now, Lang::Ar);
         assert!(ar.toggles.iter().any(|t| t.label.starts_with("احجب أيضًا الإعلانات")));
+    }
+
+    #[test]
+    fn sandbox_rows_show_indicators_or_the_reason() {
+        let runs: Vec<SandboxRun> = serde_json::from_value(serde_json::json!([
+            {"id": "a", "file": "install.sh", "reportUrl": "https://q.example/scans/a", "status": "completed", "risk": "suspicious", "note": null, "timedOut": false, "seconds": 2.5, "dnsLookups": ["c2.bad.test"], "webRequests": [], "directConnections": ["203.0.113.7:4444"], "programs": ["curl"], "submittedAt": "2026-11-25T10:00:00Z"},
+            {"id": "b", "file": "setup.exe", "reportUrl": "https://q.example/scans/b", "status": "completed", "risk": null, "note": "Only Linux programs and scripts can be run in the sandbox.", "timedOut": false, "seconds": null, "dnsLookups": [], "webRequests": [], "directConnections": [], "programs": [], "submittedAt": "2026-11-25T10:00:00Z"},
+            {"id": "c", "file": "quiet.sh", "reportUrl": "https://q.example/scans/c", "status": "running", "risk": null, "note": null, "timedOut": false, "seconds": null, "dnsLookups": [], "webRequests": [], "directConnections": [], "programs": [], "submittedAt": "2026-11-25T10:00:00Z"}
+        ]))
+        .expect("runs");
+        let rows = sandbox_view(&runs, Lang::En);
+        assert_eq!(rows[0].title, "install.sh  · Done");
+        assert_eq!(
+            rows[0].detail,
+            "ran for 2.5 s · looked up: c2.bad.test · connected to: 203.0.113.7:4444 · started: curl"
+        );
+        assert!(rows[1].detail.contains("Only Linux"));
+        assert_eq!(rows[2].title, "quiet.sh  · Running");
+        assert!(sandbox_view(&runs, Lang::Ar)[0].title.contains("انتهى"));
     }
 
     #[test]

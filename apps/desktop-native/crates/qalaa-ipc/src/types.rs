@@ -202,3 +202,29 @@ pub struct BehaviourStatus {
     pub rules_version: String,
     pub incidents: Vec<BehaviourIncident>,
 }
+
+/// A file sent to the server's gVisor sandbox, and what it tried to do there.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SandboxRun {
+    pub id: String,
+    pub file: String,
+    pub report_url: String,
+    /// "queued", "running", "completed" or "failed".
+    pub status: String,
+    pub risk: Option<String>,
+    /// Why there was no sandbox run (no sandbox on the server, a Windows program…).
+    pub note: Option<String>,
+    pub timed_out: bool,
+    pub seconds: Option<f64>,
+    pub dns_lookups: Vec<String>,
+    pub web_requests: Vec<String>,
+    pub direct_connections: Vec<String>,
+    pub programs: Vec<String>,
+    pub submitted_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SandboxList {
+    pub runs: Vec<SandboxRun>,
+}

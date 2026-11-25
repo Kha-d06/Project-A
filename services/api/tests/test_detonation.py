@@ -46,7 +46,9 @@ def test_the_sandbox_has_no_network_a_read_only_root_and_limits(tmp_path: Path) 
     assert config["process"]["noNewPrivileges"] is True
     assert {"type": "network"} in config["linux"]["namespaces"]
     res = config["linux"]["resources"]
-    assert res["memory"]["limit"] == 128 * 1024 * 1024 and res["pids"]["limit"] == 32
+    assert res["memory"]["limit"] == (128 + detonation.SANDBOX_OVERHEAD_MB) * 1024 * 1024
+    assert res["pids"]["limit"] > 32
+    assert "128" in config["process"]["args"], "the sample's own memory cap is passed to the sink"
     mounts = {m["destination"]: m for m in config["mounts"]}
     assert "ro" in mounts["/sample"]["options"] and "ro" in mounts["/qalaa"]["options"]
     assert "size=16m" in mounts["/tmp"]["options"]
@@ -224,3 +226,128 @@ def test_a_real_run_in_gvisor(tmp_path: Path) -> None:
     assert "c2.example-bad.test" in names
     if shutil.which("curl"):
         assert "Downloads more code from the internet" in titles
+
+
+def test_refused_process_starts_are_counted() -> None:
+    line = "I1125 16:54:48.477765       1 strace.go:606] [  33:  33] sh X clone(0x1200011, 0x0, 0x0, 0x7f, 0x0) = -1 errno=11 (resource temporarily unavailable) (3µs)"
+    trace = detonation.parse_strace("\n".join([line] * 3))
+    assert trace.process_limit_hits == 3
+    result = DetonationResult(True, None, trace, {"status": {"exit": 0}, "events": []})
+    assert [f.title for f in detonation.findings_for(result)] == [
+        "Tries to start a flood of processes"
+    ]
+
+
+def test_the_process_cap_is_inside_the_sandbox(tmp_path: Path) -> None:
+    import json
+
+    sample = tmp_path / "s.sh"
+    sample.write_text("true")
+    config = json.loads(
+        (
+            detonation.prepare_bundle(tmp_path / "w", sample, "sh", DetonationLimits(pids=40), "/")
+            / "config.json"
+        ).read_text()
+    )
+    nproc = next(r for r in config["process"]["rlimits"] if r["type"] == "RLIMIT_NPROC")
+    assert nproc["hard"] == 40
+    # The host cgroup cap is looser, so gVisor itself stays up to report what happened.
+    assert config["linux"]["resources"]["pids"]["limit"] > 40
+
+
+def real(script: str, tmp_path: Path, kind: str = "sh", **limits: int) -> DetonationResult:
+    sample = tmp_path / "sample"
+    sample.write_text(script)
+    return detonation.run_detonation(
+        sample,
+        kind,
+        str(RUNSC),
+        "/",
+        DetonationLimits(**limits),
+        os.environ.get("QALAA_TEST_RUNSC_PLATFORM", "systrap"),
+    )
+
+
+needs_runsc = pytest.mark.skipif(
+    not RUNSC or os.geteuid() != 0, reason="set QALAA_TEST_RUNSC=/path/to/runsc and run as root"
+)
+
+
+@needs_runsc
+def test_a_sample_that_never_ends_is_stopped_at_the_time_limit(tmp_path: Path) -> None:
+    import time
+
+    started = time.monotonic()
+    result = real("#!/bin/sh\nsleep 300 &\nsleep 300\n", tmp_path, seconds=5)
+    assert result.ok, result.reason
+    assert result.sink["status"]["timed_out"] is True
+    assert time.monotonic() - started < 30, "the run, children included, ends soon after the limit"
+
+
+@needs_runsc
+def test_memory_is_capped(tmp_path: Path) -> None:
+    script = "b=[]\ntry:\n    for _ in range(64):\n        b.append(bytearray(32 << 20))\n    print('ALLOCATED')\nexcept MemoryError:\n    print('refused')\n"
+    result = real(script, tmp_path, kind="python", seconds=15, memory_mb=128)
+    assert result.ok, result.reason
+    assert result.sink["status"]["exit"] != 0 or result.sink["status"].get("stdout_bytes", 0) < len(
+        "ALLOCATED"
+    )
+
+
+@needs_runsc
+def test_a_fork_flood_is_refused_inside_the_sandbox(tmp_path: Path) -> None:
+    result = real(
+        "#!/bin/sh\nfor i in $(seq 1 150); do (sleep 30 &) 2>/dev/null; done\n",
+        tmp_path,
+        seconds=8,
+        pids=32,
+    )
+    assert result.ok, result.reason
+    assert result.trace.process_limit_hits > 0
+    assert "Tries to start a flood of processes" in {
+        f.title for f in detonation.findings_for(result)
+    }
+
+
+@needs_runsc
+def test_no_network_and_a_read_only_system(tmp_path: Path) -> None:
+    script = (
+        "#!/bin/sh\n"
+        "echo x > /etc/qalaa-test\n"
+        "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); raise SystemExit(0 if s.connect_ex(('1.1.1.1', 443)) else 9)\"\n"
+    )
+    result = real(script, tmp_path, seconds=15)
+    assert result.ok, result.reason
+    assert "Read-only file system" in result.sink["status"]["stderr_tail"]
+    assert result.sink["status"]["exit"] == 0, "connecting out failed: there is no network"
+    assert any(c["addr"] == "1.1.1.1" and not c["ok"] for c in result.trace.connects)
+
+
+def test_the_report_lists_what_the_run_tried_to_reach() -> None:
+    trace = Trace(
+        executed=[
+            {"path": "/bin/sh", "argv": [], "ok": True, "by": "python3"},
+            {"path": "/usr/bin/curl", "argv": [], "ok": True, "by": "sh"},
+        ],
+        connects=[
+            {"addr": "127.0.0.1", "port": 53, "ok": True, "by": "curl"},
+            {"addr": "203.0.113.7", "port": 4444, "ok": False, "by": "x"},
+        ],
+    )
+    sink = {
+        "status": {"exit": 0},
+        "seconds": 2.5,
+        "events": [
+            {"kind": "dns", "name": "c2.bad.test"},
+            {"kind": "http", "method": "GET", "host": "c2.bad.test", "path": "/gate.php"},
+        ],
+    }
+    outcome = Outcome()
+    detonation.merge_detonation(
+        outcome, DetonationResult(True, None, trace, sink), DetonationLimits()
+    )
+    d = outcome.details["detonation"]
+    assert d["dns_lookups"] == ["c2.bad.test"]
+    assert d["web_requests"] == ["GET c2.bad.test/gate.php"]
+    assert d["direct_connections"] == ["203.0.113.7:4444"]
+    assert d["programs"] == ["curl"] and d["seconds"] == 2.5 and d["timed_out"] is False

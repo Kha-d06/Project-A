@@ -11,9 +11,11 @@ use qalaa_command::view::{
     ports_view, PaletteEntry,
 };
 use qalaa_command::{
-    apply_home, now_secs, set_behaviour, set_brokers, set_credentials, set_language, set_offline, set_palette, set_ports, App,
+    apply_home, now_secs, set_behaviour, set_brokers, set_credentials, set_language, set_offline, set_palette, set_ports, set_sandbox, App,
 };
-use qalaa_ipc::{BehaviourStatus, BrokerStatus, Client, CredentialStatus, HomeModel, IpcError, ListenerStatus, Message, Stream};
+use qalaa_ipc::{
+    BehaviourStatus, BrokerStatus, Client, CredentialStatus, HomeModel, IpcError, ListenerStatus, Message, SandboxList, SandboxRun, Stream,
+};
 use serde_json::json;
 use slint::winit_030::WinitWindowAccessor;
 use slint::ComponentHandle;
@@ -121,6 +123,36 @@ fn behaviour(app: &App, state: &Arc<State>, method: String, params: Option<serde
                 Ok(status) => {
                     let (rows, note) = qalaa_command::view::behaviour_view(&status, now_secs(), lang);
                     set_behaviour(&app, &rows, &note, qalaa_command::view::behaviour_can_install_helper(&status));
+                    app.set_notice("".into());
+                }
+                Err(message) => app.set_notice(message.into()),
+            }
+        });
+    });
+}
+
+/// Sends a file to the server's sandbox, or refreshes the runs, off the interface thread.
+fn sandbox(app: &App, state: &Arc<State>, path: Option<String>) {
+    let weak = app.as_weak();
+    let state = Arc::clone(state);
+    app.set_busy(true);
+    thread::spawn(move || {
+        let result = (|| {
+            let mut guard = state.client.lock().map_err(|_| "lock".to_owned())?;
+            let client = guard.as_mut().ok_or_else(|| "not connected".to_owned())?;
+            if let Some(path) = path {
+                client
+                    .call::<SandboxRun>("sandbox.submit", Some(json!({ "path": path })))
+                    .map_err(|e| e.to_string())?;
+            }
+            client.call::<SandboxList>("sandbox.list", None).map_err(|e| e.to_string())
+        })();
+        let lang = state.lang;
+        let _ = weak.upgrade_in_event_loop(move |app| {
+            app.set_busy(false);
+            match result {
+                Ok(list) => {
+                    set_sandbox(&app, &qalaa_command::view::sandbox_view(&list.runs, lang));
                     app.set_notice("".into());
                 }
                 Err(message) => app.set_notice(message.into()),
@@ -488,7 +520,10 @@ fn main() -> Result<(), slint::PlatformError> {
             match page.as_str() {
                 "ports" => ports(&app, &state, "listeners.check", None),
                 "credentials" => credentials(&app, &state, "credentials.get".into(), None),
-                "behaviour" => behaviour(&app, &state, "behaviour.get".into(), None),
+                "behaviour" => {
+                    behaviour(&app, &state, "behaviour.get".into(), None);
+                    sandbox(&app, &state, None);
+                }
                 "brokers" => brokers(&app, &state, "brokers.get", None),
                 _ => {}
             }
@@ -549,6 +584,24 @@ fn main() -> Result<(), slint::PlatformError> {
     }
 
     app.on_broker_open(|url| open_in_browser(url.as_str()));
+    app.on_sandbox_open(|url| open_in_browser(url.as_str()));
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_sandbox_send(move |path| {
+            if let Some(app) = weak.upgrade() {
+                sandbox(&app, &state, Some(path.trim().to_owned()));
+                app.set_sandbox_path("".into());
+            }
+        });
+    }
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_sandbox_refresh(move || {
+            if let Some(app) = weak.upgrade() {
+                sandbox(&app, &state, None);
+            }
+        });
+    }
     {
         let (weak, state) = (app.as_weak(), Arc::clone(&state));
         app.on_broker_mark(move |id, broker_state| {

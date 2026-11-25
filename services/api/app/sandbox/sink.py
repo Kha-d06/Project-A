@@ -12,8 +12,11 @@ Standard library only: it runs on the sandbox's own read-only Python.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import resource
+import signal
 import socket
 import struct
 import subprocess
@@ -154,29 +157,46 @@ def start_sinks() -> None:
 
 def main(argv: list[str]) -> int:
     seconds = float(argv[0])
-    command = argv[1:]
+    memory_mb = int(argv[1])
+    command = argv[2:]
     start_sinks()
     started = time.monotonic()
     env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": "/tmp/home", "LANG": "C.UTF-8"}
     os.makedirs("/tmp/home", exist_ok=True)
     status: dict[str, object]
     try:
-        proc = subprocess.run(
+        # Its own process group, so everything it starts is stopped with it at the time limit.
+        proc = subprocess.Popen(
             command,
             env=env,
             cwd="/tmp",
             stdin=subprocess.DEVNULL,
-            capture_output=True,
-            timeout=seconds,
-            check=False,
-        )  # noqa: S603
-        status = {
-            "exit": proc.returncode,
-            "stdout_bytes": len(proc.stdout),
-            "stderr_tail": proc.stderr[-300:].decode("utf-8", "replace"),
-        }
-    except subprocess.TimeoutExpired:
-        status = {"exit": None, "timed_out": True}
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+            # The sample's own memory cap: an allocation past it fails with ENOMEM
+            # instead of the whole sandbox being killed (preexec runs in the child).
+            preexec_fn=lambda: resource.setrlimit(
+                resource.RLIMIT_AS, (memory_mb << 20, memory_mb << 20)
+            ),  # noqa: PLW1509
+        )
+        try:
+            out, err = proc.communicate(timeout=seconds)
+            status = {
+                "exit": proc.returncode,
+                "stdout_bytes": len(out),
+                "stderr_tail": err[-300:].decode("utf-8", "replace"),
+            }
+        except subprocess.TimeoutExpired:
+            status = {"exit": None, "timed_out": True}
+        finally:
+            with contextlib.suppress(OSError):  # already gone
+                os.killpg(proc.pid, signal.SIGKILL)
+            # Children that left the group can still hold the pipes; don't wait on them.
+            for stream in (proc.stdout, proc.stderr):
+                if stream:
+                    stream.close()
+            proc.wait()
     except OSError as exc:
         status = {"exit": None, "error": str(exc)}
     time.sleep(0.2)  # let the last request be recorded

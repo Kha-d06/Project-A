@@ -270,6 +270,30 @@ fn command_centre_interface() {
     .is_empty());
     assert_eq!(labelled(&app, "No new program has matched a behaviour rule.").len(), 1);
 
+    // --- Sandbox runs on the Behaviour page: send a path, open a report.
+    app.set_page("behaviour".into());
+    let runs: Vec<qalaa_ipc::SandboxRun> = serde_json::from_value(serde_json::json!([
+        {"id": "a", "file": "install.sh", "reportUrl": "https://q.example/scans/a", "status": "completed", "risk": "suspicious", "note": null, "timedOut": false, "seconds": 2.5, "dnsLookups": ["c2.bad.test"], "webRequests": [], "directConnections": [], "programs": [], "submittedAt": "2026-11-25T10:00:00Z"}
+    ]))
+    .expect("runs");
+    qalaa_command::set_sandbox(&app, &qalaa_command::view::sandbox_view(&runs, Lang::En));
+    let sent = Rc::new(RefCell::new(Vec::<String>::new()));
+    {
+        let sent = Rc::clone(&sent);
+        app.on_sandbox_send(move |p| sent.borrow_mut().push(format!("send {p}")));
+    }
+    {
+        let sent = Rc::clone(&sent);
+        app.on_sandbox_open(move |u| sent.borrow_mut().push(format!("open {u}")));
+    }
+    app.set_sandbox_path("/home/a/install.sh".into());
+    labelled(&app, "Send to the sandbox")[0].invoke_accessible_default_action();
+    labelled(&app, "Open report: install.sh  · Done")[0].invoke_accessible_default_action();
+    assert_eq!(
+        *sent.borrow(),
+        vec!["send /home/a/install.sh".to_owned(), "open https://q.example/scans/a".to_owned()]
+    );
+
     // --- Data brokers: open, mark, and the request letter needs a name and email first.
     let status: qalaa_ipc::BrokerStatus = serde_json::from_value(serde_json::json!({
         "catalogVersion": "2026-11-25", "reviewed": null, "note": "", "done": 0, "recheckDue": 0,

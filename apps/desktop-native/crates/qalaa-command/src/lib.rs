@@ -16,7 +16,7 @@ use std::rc::Rc;
 use slint::{ModelRc, SharedString, VecModel};
 
 use crate::strings::{t, Lang};
-use crate::view::{BehaviourView, BrokerView, CredentialView, HomeView, PaletteEntry, PortView};
+use crate::view::{BehaviourView, BrokerView, CredentialView, HomeView, PaletteEntry, PortView, SandboxView};
 
 pub fn labels(lang: Lang) -> Labels {
     let s = |key: &str| SharedString::from(t(lang, key));
@@ -63,6 +63,12 @@ pub fn labels(lang: Lang) -> Labels {
         beh_stop: s("beh.stop"),
         beh_dismiss: s("beh.dismiss"),
         beh_helper: s("beh.helper"),
+        sbx_title: s("sbx.title"),
+        sbx_intro: s("sbx.intro"),
+        sbx_path: s("sbx.path"),
+        sbx_send: s("sbx.send"),
+        sbx_refresh: s("sbx.refresh"),
+        sbx_open: s("sbx.open"),
         safepay: s("safepay.open"),
         safepay_hint: s("safepay.hint"),
         brokers: s("nav.brokers"),
@@ -197,6 +203,18 @@ pub fn set_behaviour(app: &App, rows: &[BehaviourView], note: &str, can_install_
         .collect();
     app.set_behaviour_rows(ModelRc::from(Rc::new(VecModel::from(items))));
     app.set_beh_note(note.into());
+}
+
+pub fn set_sandbox(app: &App, rows: &[SandboxView]) {
+    let items: Vec<SandboxRow> = rows
+        .iter()
+        .map(|r| SandboxRow {
+            title: r.title.clone().into(),
+            detail: r.detail.clone().into(),
+            url: r.url.clone().into(),
+        })
+        .collect();
+    app.set_sandbox_rows(ModelRc::from(Rc::new(VecModel::from(items))));
 }
 
 pub fn set_brokers(app: &App, rows: &[BrokerView], summary: &str) {

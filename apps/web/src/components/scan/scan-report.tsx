@@ -106,6 +106,53 @@ function ReportActions({ scan, backHref }: { scan: Scan; backHref: string }) {
   );
 }
 
+interface SandboxDetails {
+  seconds?: number | null;
+  timed_out?: boolean;
+  programs?: string[];
+  dns_lookups?: string[];
+  web_requests?: string[];
+  direct_connections?: string[];
+  process_limit_hits?: number;
+}
+
+/** The gVisor run, when the person asked for one: what the file tried to reach and start. */
+function SandboxRun({ scan }: { scan: Scan }) {
+  const { t } = useI18n();
+  const d = scan.details.detonation as SandboxDetails | undefined;
+  if (!d || typeof d !== "object") return null;
+  const s = t.report.sandbox;
+  const groups: [string, string[]][] = [
+    [s.lookups, d.dns_lookups ?? []],
+    [s.requests, d.web_requests ?? []],
+    [s.direct, d.direct_connections ?? []],
+    [s.programs, d.programs ?? []],
+  ];
+  const quiet = groups.every(([, items]) => items.length === 0) && !d.process_limit_hits;
+  return (
+    <Panel>
+      <PanelHeader title={s.title} description={s.description} />
+      <div className="space-y-4 px-5 py-4 text-sm">
+        <p className="text-ink-muted">{d.timed_out ? s.stopped : s.ran(String(d.seconds ?? "?"))}</p>
+        {groups.map(([label, items]) =>
+          items.length ? (
+            <div key={label}>
+              <p className="font-medium text-ink">{label}</p>
+              <ul className="mt-1 space-y-1 font-mono text-xs break-all text-ink" dir="ltr">
+                {items.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null,
+        )}
+        {!!d.process_limit_hits && <p className="text-ink">{s.refused(d.process_limit_hits)}</p>}
+        {quiet && <p className="text-ink-muted">{s.quiet}</p>}
+      </div>
+    </Panel>
+  );
+}
+
 function ReportBody({ scan, backHref, newScanHref }: { scan: Scan; backHref: string; newScanHref: string }) {
   const { t, locale } = useI18n();
   const finished = !isActive(scan.status);
@@ -175,6 +222,8 @@ function ReportBody({ scan, backHref, newScanHref }: { scan: Scan; backHref: str
               )}
             </div>
           </div>
+
+          <SandboxRun scan={scan} />
 
           <AiExplanation scan={scan} />
 

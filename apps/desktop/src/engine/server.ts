@@ -42,9 +42,10 @@ export async function lookupHash(server: string, sha256: string, fetcher: typeof
   return body.candidates.find((candidate) => candidate.sha256.toLowerCase() === full)?.source ?? null;
 }
 
-export async function uploadForFullScan(server: string, path: string, fetcher: typeof fetch = fetch): Promise<string> {
+export async function uploadForFullScan(server: string, path: string, fetcher: typeof fetch = fetch, options: { runInSandbox?: boolean } = {}): Promise<string> {
   const form = new FormData();
   form.append("file", new Blob([await readFile(path)]), basename(path));
+  if (options.runInSandbox) form.append("run_in_sandbox", "true");
   const response = await fetcher(endpoint(server, "/scans/file"), { method: "POST", body: form, signal: AbortSignal.timeout(120_000) });
   if (response.status === 413) throw new Error("The file is larger than the server accepts (25 MB).");
   if (!response.ok) throw new Error(`The server answered ${response.status}`);

@@ -106,12 +106,49 @@ function excerpt(text, match) {
   return `${start ? "…" : ""}${text.slice(start, end).replace(/\s+/g, " ").trim()}${end < text.length ? "…" : ""}`;
 }
 
-/** Compiles the rule pack's patterns once. Bad patterns are skipped, never thrown. */
+/**
+ * Refuses pattern shapes that can backtrack catastrophically on a long message:
+ * an unboundedly repeated group that itself contains an unbounded repeat
+ * ("(a+)+", "(\\w+\\.)*"), backreferences, and very long patterns. The server's
+ * own patterns are tested to pass (test/fixtures/server-patterns.json).
+ */
+export function safePatternSource(source) {
+  if (typeof source !== "string" || source.length > 500) return false;
+  if (/\\[1-9]|\\k</.test(source)) return false;
+  const groups = []; // for each open group: does it contain an unbounded repeat?
+  let inClass = false;
+  for (let i = 0; i < source.length; i++) {
+    const c = source[i];
+    if (c === "\\") {
+      i++;
+      continue;
+    }
+    if (inClass) {
+      if (c === "]") inClass = false;
+      continue;
+    }
+    if (c === "[") inClass = true;
+    else if (c === "(") groups.push(false);
+    else if (c === "+" || c === "*" || (c === "{" && /^\{\d+,\}/.test(source.slice(i)))) {
+      if (groups.length) groups[groups.length - 1] = true;
+    } else if (c === ")") {
+      const unboundedInside = groups.pop() ?? false;
+      const next = source.slice(i + 1);
+      const repeatedUnbounded = /^(?:[+*]|\{\d+,\})/.test(next);
+      if (unboundedInside && repeatedUnbounded) return false;
+      if (unboundedInside && groups.length) groups[groups.length - 1] = true;
+    }
+  }
+  return true;
+}
+
+/** Compiles the rule pack's patterns once. Bad or unsafe patterns are skipped, never thrown. */
 export function compilePack(pack) {
   if (!pack) return null;
   const rules = (pack.rules || []).map((rule) => ({
     ...rule,
     compiled: rule.patterns.flatMap((source) => {
+      if (!safePatternSource(source)) return [];
       try {
         return [new RegExp(source, "iu")];
       } catch {

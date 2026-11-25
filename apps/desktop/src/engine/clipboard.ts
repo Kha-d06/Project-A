@@ -30,18 +30,35 @@ export function entropy(text: string): number {
   return bits;
 }
 
-const PATTERNS: [SecretKind, RegExp][] = [
+export const PATTERNS: [SecretKind, RegExp][] = [
   ["private_key", /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/],
   ["cloud_key", /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b|\bAIza[0-9A-Za-z_-]{35}\b/],
   ["api_token", /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}\b|\bgithub_pat_[A-Za-z0-9_]{40,}\b|\bxox[abposr]-[A-Za-z0-9-]{10,}\b|\bsk-(?:proj-|ant-)?[A-Za-z0-9_-]{20,}\b|\bsk_live_[A-Za-z0-9]{20,}\b|\bglpat-[A-Za-z0-9_-]{20,}\b/],
   ["jwt", /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/],
-  ["env_secret", /^\s*(?:export\s+)?[A-Z][A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|APIKEY|PRIVATE_KEY|ACCESS_KEY|CREDENTIALS?)[A-Z0-9_]*\s*=\s*\S{8,}/m],
 ];
+
+/**
+ * `NAME=value` where the name says it is a secret. Checked line by line with a
+ * bounded name: the earlier single pattern ("[A-Z0-9_]*SECRET[A-Z0-9_]*")
+ * backtracked quadratically, 0.6 s on 64 KB of "XSECRET" (test/regex-safety).
+ */
+export const ENV_LINE = /^\s{0,16}(?:export\s{1,4})?([A-Z][A-Z0-9_]{0,99})\s{0,4}=\s{0,4}\S{8}/;
+export const ENV_SECRET_NAME = /SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|APIKEY|PRIVATE_KEY|ACCESS_KEY|CREDENTIAL/;
+
+function envSecret(text: string): boolean {
+  for (const line of text.split("\n", 4_000)) {
+    if (line.length > 4_096) continue;
+    const m = ENV_LINE.exec(line);
+    if (m && ENV_SECRET_NAME.test(m[1]!)) return true;
+  }
+  return false;
+}
 
 /** What kind of secret the text looks like, or null for ordinary text. */
 export function classifySecret(text: string): SecretKind | null {
   if (!text || text.length > 64 * 1024) return null;
   for (const [kind, pattern] of PATTERNS) if (pattern.test(text)) return kind;
+  if (envSecret(text)) return "env_secret";
   const token = text.trim();
   // A single long random-looking word: a password or key with no recognisable prefix.
   if (token.length >= 20 && token.length <= 512 && !/\s/.test(token) && !/^https?:\/\//i.test(token)) {

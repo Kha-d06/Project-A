@@ -32,6 +32,7 @@ export function parseAddress(header: string): { name: string; address: string; d
 export function authResults(header: string): Record<string, string>;
 export function bareUrl(raw: string): string | null;
 export function linksToCheck(email: Pick<EmailFields, "links" | "text">): string[];
+export function safePatternSource(source: unknown): boolean;
 export function compilePack(pack: RulePack | null | undefined): CompiledPack | null;
 export function analyzeLocally(email: EmailFields, pack: CompiledPack | null, lang?: "en" | "ar"): Finding[];
 export function linkReputationFindings(results: LinkResult[]): Finding[];

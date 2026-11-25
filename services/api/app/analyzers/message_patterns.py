@@ -251,11 +251,16 @@ RULES: tuple[MessageRule, ...] = (
     ),
 )
 
+# Bare host names are labels of at most 63 characters, each ending in a dot, at
+# most eight deep. Unbounded "(?:[a-z0-9-]+\.)+" backtracked quadratically: a
+# 20 KB message took about 10 seconds (tests/test_regex_safety.py).
 URL_PATTERN = re.compile(
     r"""(?:https?://|www\.)[^\s<>"'،؛]+"""
-    r"""|\b(?:[a-z0-9-]+\.)+(?:com|net|org|info|xyz|top|site|online|shop|live|link|click|"""
-    r"""app|co|io|me|ly|gl|cc|ru|cn|tk|ae|sa|eg|uk)\b(?:/[^\s<>"'،؛]*)?""",
+    r"""|\b(?:[a-z0-9-]{1,63}\.){1,8}(?:com|net|org|info|xyz|top|site|online|shop|live|link|"""
+    r"""click|app|co|io|me|ly|gl|cc|ru|cn|tk|ae|sa|eg|uk)\b(?:/[^\s<>"'،؛]*)?""",
     re.IGNORECASE,
 )
-EMAIL_PATTERN = re.compile(r"\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b", re.IGNORECASE)
+EMAIL_PATTERN = re.compile(
+    r"\b[a-z0-9._%+-]{1,64}@(?:[a-z0-9-]{1,63}\.){1,8}[a-z]{2,24}\b", re.IGNORECASE
+)
 PHONE_PATTERN = re.compile(r"(?<![\w.])\+?\d[\d\s().-]{7,16}\d(?!\w)")

@@ -72,7 +72,7 @@ export function nameFindings(name: string): Finding[] {
   return findings;
 }
 
-const SCRIPT_PATTERNS: { rule: string; pattern: RegExp; title: string }[] = [
+export const SCRIPT_PATTERNS: { rule: string; pattern: RegExp; title: string }[] = [
   { rule: "encoded_powershell", pattern: /powershell(\.exe)?["'\s].{0,80}-(e|ec|enc|encodedcommand)\s+[A-Za-z0-9+/=]{40,}/i, title: "Runs a hidden, encoded PowerShell command" },
   { rule: "download_execute", pattern: /(downloadstring|downloadfile|invoke-webrequest|iwr\s|start-bitstransfer|new-object\s+net\.webclient)[\s\S]{0,300}(iex|invoke-expression|start-process|\.exe)/i, title: "Downloads and runs code from the internet" },
   { rule: "lolbin_download", pattern: /(certutil(\.exe)?\s.{0,40}-urlcache|bitsadmin(\.exe)?\s.{0,40}\/transfer|mshta(\.exe)?\s+["']?https?:)/i, title: "Abuses a built-in Windows tool to fetch files" },

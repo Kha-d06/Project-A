@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { ecryptfsHomes, parseFdesetup, parseFindmntRoot, parseLsblk, parseProcSwaps, parseZfsEncryption } from "../src/engine/encryption";
+import { tpmFromSysfs } from "../src/engine/firmware";
+
 import {
   NETWORK_HARDENING,
   networkHardeningCheck,
@@ -109,5 +112,62 @@ describe("~/.ssh permissions", () => {
     expect(open.status).toBe("warn");
     expect(open.fix).toBe("chmod 700 ~/.ssh");
     expect(sshPermissionsCheck(null, [], me).status).toBe("pass");
+  });
+});
+
+describe("disk encryption edge cases (osquery-style)", () => {
+  const luksRoot = (extra: object[] = []) =>
+    JSON.stringify({
+      blockdevices: [
+        {
+          name: "nvme0n1",
+          type: "disk",
+          children: [
+            { name: "nvme0n1p1", type: "part", fstype: "vfat", mountpoints: ["/boot/efi"] },
+            { name: "nvme0n1p2", type: "part", fstype: "crypto_LUKS", children: [{ name: "cryptroot", type: "crypt", fstype: "btrfs", mountpoints: ["/", "/home"] }] },
+            ...extra,
+          ],
+        },
+      ],
+    });
+
+  it("treats plain swap next to an encrypted root as partial", () => {
+    expect(parseLsblk(luksRoot()).state).toBe("on");
+    const leaky = parseLsblk(luksRoot([{ name: "nvme0n1p3", type: "part", fstype: "swap", mountpoints: ["[SWAP]"] }]));
+    expect(leaky.state).toBe("partial");
+    expect(leaky.detail).toContain("nvme0n1p3");
+    // Swap inside dm-crypt, or zram in memory, is fine.
+    expect(parseLsblk(luksRoot([{ name: "nvme0n1p3", type: "part", children: [{ name: "cryptswap", type: "crypt", fstype: "swap", mountpoints: ["[SWAP]"] }] }])).state).toBe("on");
+    const zram = JSON.parse(luksRoot()) as { blockdevices: object[] };
+    zram.blockdevices.push({ name: "zram0", type: "disk", fstype: "swap", mountpoints: ["[SWAP]"] });
+    expect(parseLsblk(JSON.stringify(zram)).state).toBe("on");
+    expect(parseProcSwaps("Filename Type Size Used Priority\n/swap.img file 2097148 0 -2\n/dev/zram0 partition 8000000 0 100\n")).toEqual(["/swap.img"]);
+  });
+
+  it("reads ZFS native encryption for roots lsblk can't see", () => {
+    expect(parseFindmntRoot("zfs rpool/ROOT/ubuntu\n")).toEqual({ fstype: "zfs", source: "rpool/ROOT/ubuntu" });
+    expect(parseZfsEncryption("aes-256-gcm\n", "rpool/ROOT/ubuntu").state).toBe("on");
+    expect(parseZfsEncryption("off\n", "rpool/ROOT/ubuntu").state).toBe("off");
+    expect(parseZfsEncryption("", "x").state).toBe("unknown");
+  });
+
+  it("notices eCryptfs home folders on a plain system disk", () => {
+    expect(ecryptfsHomes("/dev/sda1 / ext4 rw 0 0\n/home/sam/.Private /home/sam ecryptfs rw 0 0\n")).toEqual(["/home/sam"]);
+  });
+
+  it("reads FileVault's in-between states and explains Apple silicon", () => {
+    expect(parseFdesetup("FileVault is Off, but will be enabled after the next restart.").state).toBe("partial");
+    expect(parseFdesetup("FileVault is On.\nDecryption in progress: Percent completed = 40").state).toBe("partial");
+    expect(parseFdesetup("FileVault is On.").state).toBe("on");
+    const off = parseFdesetup("FileVault is Off.", true);
+    expect(off.state).toBe("off");
+    expect(off.detail).toContain("hardware-encrypted");
+  });
+
+  it("never reports 'no TPM' when tpm0 exists but the kernel has no version file", () => {
+    expect(tpmFromSysfs(null, true, true, "Manufacturer: 0x49465800\nTCG version: 1.2\n")).toBe("tpm1");
+    expect(tpmFromSysfs(null, true, true, null)).toBe("unknown");
+    expect(tpmFromSysfs(null, true, false, null)).toBe("none");
+    expect(tpmFromSysfs("2\n", true, true)).toBe("tpm2");
   });
 });

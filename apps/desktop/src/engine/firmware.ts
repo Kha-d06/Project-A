@@ -53,9 +53,16 @@ export function macSecureBoot(nvramStdout: string): Tri | "medium" {
 
 export type TpmState = "tpm2" | "tpm1" | "none" | "unknown";
 
-/** Linux `/sys/class/tpm/tpm0/tpm_version_major`, or null when there is no tpm0. */
-export function tpmFromSysfs(versionMajor: string | null, tpmClassExists: boolean): TpmState {
-  if (versionMajor === null) return tpmClassExists ? "none" : "unknown";
+/**
+ * Linux `/sys/class/tpm/tpm0/tpm_version_major`. Kernels before 5.6 have tpm0
+ * without that file: a TPM 1.2 then shows "TCG version: 1.2" in device/caps,
+ * and anything else is present but of unknown version (never "no TPM").
+ */
+export function tpmFromSysfs(versionMajor: string | null, tpmClassExists: boolean, tpm0Exists = false, caps: string | null = null): TpmState {
+  if (versionMajor === null) {
+    if (tpm0Exists) return caps && /TCG version:\s*1\.2/i.test(caps) ? "tpm1" : "unknown";
+    return tpmClassExists ? "none" : "unknown";
+  }
   const major = versionMajor.trim();
   return major === "2" ? "tpm2" : major === "1" ? "tpm1" : "unknown";
 }
@@ -202,7 +209,12 @@ async function linuxFacts(): Promise<FirmwareFacts> {
   let secureBoot: FirmwareFacts["secureBoot"] = efi ? secureBootFromEfivar(await readFile(EFI_SECURE_BOOT).catch(() => null)) : "legacy-bios";
   if (secureBoot === "unknown") secureBoot = secureBootFromMokutil(await run("mokutil", ["--sb-state"]));
   const tpmClass = await readdir("/sys/class/tpm").then(() => true).catch(() => false);
-  const tpm = tpmFromSysfs(await readFile("/sys/class/tpm/tpm0/tpm_version_major", "utf8").catch(() => null), tpmClass);
+  const tpm = tpmFromSysfs(
+    await readFile("/sys/class/tpm/tpm0/tpm_version_major", "utf8").catch(() => null),
+    tpmClass,
+    await exists("/sys/class/tpm/tpm0"),
+    await readFile("/sys/class/tpm/tpm0/device/caps", "utf8").catch(() => null),
+  );
   let lastUpdate = lastAptUpdate(await readFile("/var/log/apt/history.log", "utf8").catch(() => ""));
   if (!lastUpdate) lastUpdate = lastRpmInstall(await run("rpm", ["-qa", "--queryformat", "%{INSTALLTIME}\n"]));
   return { secureBoot, tpm, lastUpdate };

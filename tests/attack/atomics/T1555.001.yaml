@@ -1,23 +1,31 @@
 attack_technique: T1555.001
 display_name: "Credentials from Password Stores: Keychain"
 atomic_tests:
-  - name: Dump the keychain with the security tool
+  - name: A keychain dump that keeps running
     auto_generated_guid: 41a7c0de-3b2f-4f0c-a9a2-0c1d2e3f0001
-    description: SigmaHQ proc_creation_macos_security_* shape. A single quick dump between two snapshots is a known polling gap.
+    description: SigmaHQ proc_creation_macos_security_* shape. The keychain path is a FIFO, so the tool stays blocked opening it with the dump command line visible, the way a dump waiting on a large or locked keychain does.
     supported_platforms: [macos]
     executor:
       name: sh
       command: |
-        # One dump lasts milliseconds; a 15-second process snapshot only catches
-        # one running, so it is repeated back to back for a minute.
-        ( n=0; end=$((SECONDS + 60)); while [ "$SECONDS" -lt "$end" ]; do /usr/bin/security dump-keychain /Library/Keychains/System.keychain >/dev/null || echo "dump failed ($?)"; n=$((n+1)); done; echo "$n dumps" ) &
+        f="$HOME/atomic-keychain.fifo"; rm -f "$f"; mkfifo "$f"
+        /usr/bin/security dump-keychain "$f" >/dev/null 2>&1 &
         echo $! > "$HOME/atomic.pid"
-        # Evidence for the log: is a dump visible to ps at all while the loop runs?
-        ( for t in 3 10 20; do sleep 4; echo "ps at ~${t}s: $(ps -axww -o pid=,command= | grep -c '[d]ump-keychain') dump(s) running"; done ) &
+        sleep 2; echo "security processes: $(ps -axww -o command= | grep -c '^/usr/bin/security dump-keychain')"
       cleanup_command: |
-        pkill -P "$(cat "$HOME/atomic.pid")" 2>/dev/null; kill "$(cat "$HOME/atomic.pid")" 2>/dev/null; rm -f "$HOME/atomic.pid"
+        kill "$(cat "$HOME/atomic.pid")" 2>/dev/null; rm -f "$HOME/atomic.pid" "$HOME/atomic-keychain.fifo"
     qalaa:
       expect:
         event: alert
         match: { kind: credential, credential: keychain, severity: high }
-      within_seconds: 50
+      within_seconds: 40
+
+  - name: Quick keychain dumps between two snapshots
+    auto_generated_guid: 41a7c0de-3b2f-4f0c-a9a2-0c1d2e3f0002
+    supported_platforms: [macos]
+    executor:
+      name: sh
+      command: /usr/bin/security dump-keychain >/dev/null 2>&1 || true
+    qalaa:
+      status: gap
+      note: One dump takes milliseconds; a 15-second process snapshot sees it only by chance (seen in CI). Reliable detection needs Endpoint Security process events, pending Apple's entitlement (Wave 4.B, with a user-space fallback behind a capability flag).

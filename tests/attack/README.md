@@ -23,7 +23,7 @@ counted as passes.
 | T1552.004 Quick `cp` of a key | gap: polling misses it (fanotify every-open mode sees it) | gap | gap |
 | T1552.001 Credentials in files (`.env`, cloud) | covered | covered | gap |
 | T1555.003 Browser key + passwords (stealer pattern) | covered | — | gap |
-| T1555.001 Keychain dump | — | covered | — |
+| T1555.001 Keychain dump | — | covered while the dump runs; a millisecond dump is a gap (15 s snapshots) | — |
 | T1571 New listener | covered | covered | covered |
 | T1200 BadUSB | fixture (`apps/desktop/test/attack-t1200.test.ts`) | fixture | fixture |
 | T1059.004, T1486, T1562.004, T1070.003 | gap (Wave 4.B / not built) | gap | gap |

@@ -12,6 +12,9 @@ export struct BrokerRow { id: string, title: string, detail: string, state: stri
 export struct CredRow { id: string, title: string, detail: string, state: string }
 export struct SandboxRow { title: string, detail: string, url: string }
 export struct BehRow { id: string, title: string, detail: string, state: string }
+export struct ScanRow { path: string, title: string, detail: string, verdict: string, can-quarantine: bool, quarantined: bool }
+export struct QuarRow { id: string, title: string, detail: string }
+export struct DeepRow { title: string, detail: string }
 export struct PortRow { key: string, port: int, title: string, detail: string, fresh: bool, blocked: bool, exposed: bool }
 export struct Labels {
     title: string, home: string, about: string, score: string, checks: string, actions: string,
@@ -27,6 +30,10 @@ export struct Labels {
     brokers: string, brokers-title: string, brokers-intro: string, brokers-unreviewed: string, brokers-open: string,
     brokers-requested: string, brokers-removed: string, brokers-not-listed: string, brokers-copy: string,
     brokers-name: string, brokers-email: string,
+    scan: string, scan-title: string, scan-intro: string, scan-quick: string, scan-path: string, scan-custom: string,
+    scan-exclude: string, scan-exclusions: string, scan-include: string, scan-results: string, scan-inspect: string,
+    scan-quarantine: string, scan-server: string, scan-close: string, scan-deep: string, scan-deep-intro: string,
+    quarantine: string, quar-title: string, quar-intro: string, quar-none: string, quar-restore: string, quar-delete: string,
 }
 
 component Card inherits Rectangle {
@@ -81,6 +88,28 @@ component CheckLine inherits Rectangle {
     }
 }
 
+/// The page list; the same rail sits on the left, or on the right in Arabic.
+component NavRail inherits VerticalLayout {
+    in property <Labels> labels;
+    in property <string> palette-hint;
+    in-out property <string> page;
+    width: 180px;
+    padding: 20px;
+    spacing: 6px;
+    Text { text: labels.title; font-size: 20px; font-weight: 600; color: Theme.ink; horizontal-alignment: Theme.rtl ? right : left; }
+    Rectangle { height: 12px; }
+    Button { text: labels.home; checkable: true; checked: page == "home"; clicked => { page = "home"; } }
+    Button { text: labels.scan; checkable: true; checked: page == "scan"; clicked => { page = "scan"; } }
+    Button { text: labels.quarantine; checkable: true; checked: page == "quarantine"; clicked => { page = "quarantine"; } }
+    Button { text: labels.ports; checkable: true; checked: page == "ports"; clicked => { page = "ports"; } }
+    Button { text: labels.credentials; checkable: true; checked: page == "credentials"; clicked => { page = "credentials"; } }
+    Button { text: labels.behaviour; checkable: true; checked: page == "behaviour"; clicked => { page = "behaviour"; } }
+    Button { text: labels.brokers; checkable: true; checked: page == "brokers"; clicked => { page = "brokers"; } }
+    Button { text: labels.about; checkable: true; checked: page == "about"; clicked => { page = "about"; } }
+    Rectangle {}
+    Text { text: palette-hint; font-size: 13px; color: Theme.muted; wrap: word-wrap; horizontal-alignment: Theme.rtl ? right : left; }
+}
+
 export component App inherits Window {
     title: labels.title;
     preferred-width: 1080px;
@@ -103,6 +132,16 @@ export component App inherits Window {
     in property <[ActionCard]> actions;
     in property <[ToggleRow]> toggles;
     in property <[PortRow]> ports;
+    in property <[ScanRow]> scan-rows;
+    in property <string> scan-summary;
+    in property <string> scan-engines;
+    in property <string> scan-watched;
+    in property <[string]> scan-exclusions;
+    in property <bool> scanning: false;
+    in-out property <string> scan-path;
+    in-out property <string> inspector-text;
+    in property <[DeepRow]> deep-rows;
+    in property <[QuarRow]> quarantine-rows;
     in property <[CredRow]> credential-rows;
     in property <[BehRow]> behaviour-rows;
     in property <string> beh-note;
@@ -142,6 +181,16 @@ export component App inherits Window {
     callback broker-open(string);
     callback broker-mark(string, string);
     callback broker-letter(string);
+    callback scan-quick();
+    callback scan-custom(string);
+    callback scan-exclude(string);
+    callback scan-include(string);
+    callback scan-inspect(string);
+    callback scan-quarantine(string);
+    callback scan-server(string);
+    callback scan-deep();
+    callback quar-restore(string);
+    callback quar-delete(string);
     changed page => { page-changed(page); }
 
     changed rtl => { Theme.rtl = rtl; }
@@ -174,21 +223,7 @@ export component App inherits Window {
 
         HorizontalLayout {
             // Navigation rail (on the right in Arabic).
-            if !rtl: nav := VerticalLayout {
-                width: 180px;
-                padding: 20px;
-                spacing: 6px;
-                Text { text: labels.title; font-size: 20px; font-weight: 600; color: Theme.ink; }
-                Rectangle { height: 12px; }
-                Button { text: labels.home; checkable: true; checked: page == "home"; clicked => { page = "home"; } }
-                Button { text: labels.ports; checkable: true; checked: page == "ports"; clicked => { page = "ports"; } }
-                Button { text: labels.credentials; checkable: true; checked: page == "credentials"; clicked => { page = "credentials"; } }
-                Button { text: labels.behaviour; checkable: true; checked: page == "behaviour"; clicked => { page = "behaviour"; } }
-                Button { text: labels.brokers; checkable: true; checked: page == "brokers"; clicked => { page = "brokers"; } }
-                Button { text: labels.about; checkable: true; checked: page == "about"; clicked => { page = "about"; } }
-                Rectangle {}
-                Muted { text: labels.palette-hint; }
-            }
+            if !rtl: NavRail { labels: root.labels; palette-hint: root.labels.palette-hint; page <=> root.page; }
 
             ScrollView {
                 VerticalLayout {
@@ -587,6 +622,132 @@ export component App inherits Window {
                         }
                     }
 
+                    if connected && page == "scan": Card {
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 12px;
+                            Heading { text: labels.scan-title; font-size: 20px; }
+                            Muted { text: labels.scan-intro; }
+                            Muted { text: scan-engines; font-size: 12px; }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: Theme.rtl ? end : start;
+                                Button { text: labels.scan-quick; primary: true; enabled: !busy && !scanning; clicked => { root.scan-quick(); } }
+                                Button { text: labels.scan-deep; enabled: !busy && !scanning; clicked => { root.scan-deep(); } }
+                            }
+                            Muted { text: scan-watched; font-size: 12px; }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                LineEdit { placeholder-text: labels.scan-path; accessible-label: labels.scan-path; text <=> root.scan-path; }
+                                Button { text: labels.scan-custom; enabled: !busy && !scanning && root.scan-path != ""; clicked => { root.scan-custom(root.scan-path); } }
+                                Button { text: labels.scan-exclude; enabled: !busy && root.scan-path != ""; clicked => { root.scan-exclude(root.scan-path); } }
+                            }
+                            Text {
+                                text: scan-summary;
+                                color: scanning ? Theme.active : Theme.ink;
+                                horizontal-alignment: Theme.rtl ? right : left;
+                                accessible-role: text;
+                                accessible-label: scan-summary;
+                            }
+                            if scan-exclusions.length > 0: Muted { text: labels.scan-exclusions; font-size: 12px; }
+                            for path in scan-exclusions: HorizontalLayout {
+                                spacing: 8px;
+                                Muted { text: path; vertical-alignment: center; }
+                                Button { text: labels.scan-include; accessible-label: labels.scan-include + ": " + path; enabled: !busy; clicked => { root.scan-include(path); } }
+                            }
+                        }
+                    }
+
+                    // The file inspector: every finding for one file.
+                    if connected && (page == "scan" || page == "quarantine") && inspector-text != "": Card {
+                        border-color: Theme.active;
+                        accessible-role: groupbox;
+                        accessible-label: labels.scan-inspect;
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 10px;
+                            Heading { text: labels.scan-inspect; }
+                            Text { text: inspector-text; color: Theme.ink; wrap: word-wrap; font-family: Theme.font; horizontal-alignment: Theme.rtl ? right : left; }
+                            HorizontalLayout {
+                                alignment: Theme.rtl ? end : start;
+                                Button { text: labels.scan-close; clicked => { root.inspector-text = ""; } }
+                            }
+                        }
+                    }
+
+                    if connected && page == "scan" && deep-rows.length > 0: Card {
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 8px;
+                            Heading { text: labels.scan-deep; }
+                            Muted { text: labels.scan-deep-intro; }
+                            for row in deep-rows: VerticalLayout {
+                                accessible-role: list-item;
+                                accessible-label: row.title;
+                                Text { text: row.title; color: Theme.ink; font-weight: 600; wrap: word-wrap; horizontal-alignment: Theme.rtl ? right : left; }
+                                Muted { text: row.detail; }
+                            }
+                        }
+                    }
+
+                    if connected && page == "scan": Card {
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 10px;
+                            Heading { text: labels.scan-results; }
+                            for row in scan-rows: Rectangle {
+                                border-color: row.verdict == "malicious" ? Theme.blocked : row.verdict == "suspicious" ? Theme.attention : Theme.line;
+                                border-width: 1px;
+                                border-radius: 8px;
+                                accessible-role: groupbox;
+                                accessible-label: row.title + ": " + row.detail;
+                                VerticalLayout {
+                                    padding: 12px;
+                                    spacing: 6px;
+                                    Text { text: row.title; font-weight: 600; color: Theme.ink; horizontal-alignment: Theme.rtl ? right : left; }
+                                    Muted { text: row.detail; }
+                                    Muted { text: row.path; font-size: 11px; }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: Theme.rtl ? end : start;
+                                        Button { text: labels.scan-inspect; accessible-label: labels.scan-inspect + ": " + row.title; clicked => { root.scan-inspect(row.path); } }
+                                        if row.can-quarantine: Button { text: labels.scan-quarantine; accessible-label: labels.scan-quarantine + ": " + row.title; enabled: !busy; clicked => { root.scan-quarantine(row.path); } }
+                                        if !row.quarantined: Button { text: labels.scan-server; accessible-label: labels.scan-server + ": " + row.title; enabled: !busy; clicked => { root.scan-server(row.path); } }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if connected && page == "quarantine": Card {
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 10px;
+                            Heading { text: labels.quar-title; font-size: 20px; }
+                            Muted { text: labels.quar-intro; }
+                            if quarantine-rows.length == 0: Muted { text: labels.quar-none; }
+                            for row in quarantine-rows: Rectangle {
+                                border-color: Theme.line;
+                                border-width: 1px;
+                                border-radius: 8px;
+                                accessible-role: groupbox;
+                                accessible-label: row.title;
+                                VerticalLayout {
+                                    padding: 12px;
+                                    spacing: 6px;
+                                    Text { text: row.title; font-weight: 600; color: Theme.ink; horizontal-alignment: Theme.rtl ? right : left; }
+                                    Muted { text: row.detail; }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: Theme.rtl ? end : start;
+                                        Button { text: labels.quar-restore; accessible-label: labels.quar-restore + ": " + row.title; enabled: !busy; clicked => { root.quar-restore(row.id); } }
+                                        Button { text: labels.quar-delete; accessible-label: labels.quar-delete + ": " + row.title; enabled: !busy; clicked => { root.quar-delete(row.id); } }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if connected && page == "about": Card {
                         VerticalLayout {
                             padding: 24px;
@@ -600,21 +761,7 @@ export component App inherits Window {
                 }
             }
 
-            if rtl: VerticalLayout {
-                width: 180px;
-                padding: 20px;
-                spacing: 6px;
-                Text { text: labels.title; font-size: 20px; font-weight: 600; color: Theme.ink; horizontal-alignment: right; }
-                Rectangle { height: 12px; }
-                Button { text: labels.home; checkable: true; checked: page == "home"; clicked => { page = "home"; } }
-                Button { text: labels.ports; checkable: true; checked: page == "ports"; clicked => { page = "ports"; } }
-                Button { text: labels.credentials; checkable: true; checked: page == "credentials"; clicked => { page = "credentials"; } }
-                Button { text: labels.behaviour; checkable: true; checked: page == "behaviour"; clicked => { page = "behaviour"; } }
-                Button { text: labels.brokers; checkable: true; checked: page == "brokers"; clicked => { page = "brokers"; } }
-                Button { text: labels.about; checkable: true; checked: page == "about"; clicked => { page = "about"; } }
-                Rectangle {}
-                Muted { text: labels.palette-hint; }
-            }
+            if rtl: NavRail { labels: root.labels; palette-hint: root.labels.palette-hint; page <=> root.page; }
         }
     }
 

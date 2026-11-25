@@ -16,7 +16,7 @@ use std::rc::Rc;
 use slint::{ModelRc, SharedString, VecModel};
 
 use crate::strings::{t, Lang};
-use crate::view::{BehaviourView, BrokerView, CredentialView, HomeView, PaletteEntry, PortView, SandboxView};
+use crate::view::{BehaviourView, BrokerView, CredentialView, HomeView, PaletteEntry, PortView, QuarantineView, SandboxView, ScanPageView};
 
 pub fn labels(lang: Lang) -> Labels {
     let s = |key: &str| SharedString::from(t(lang, key));
@@ -82,6 +82,28 @@ pub fn labels(lang: Lang) -> Labels {
         brokers_copy: s("brokers.copy"),
         brokers_name: s("brokers.name"),
         brokers_email: s("brokers.email"),
+        scan: s("nav.scan"),
+        scan_title: s("scan.title"),
+        scan_intro: s("scan.intro"),
+        scan_quick: s("scan.quick"),
+        scan_path: s("scan.path"),
+        scan_custom: s("scan.custom"),
+        scan_exclude: s("scan.exclude"),
+        scan_exclusions: s("scan.exclusions"),
+        scan_include: s("scan.include"),
+        scan_results: s("scan.results"),
+        scan_inspect: s("scan.inspect"),
+        scan_quarantine: s("scan.quarantine"),
+        scan_server: s("scan.server"),
+        scan_close: s("scan.close"),
+        scan_deep: s("scan.deep"),
+        scan_deep_intro: s("scan.deep_intro"),
+        quarantine: s("nav.quarantine"),
+        quar_title: s("quar.title"),
+        quar_intro: s("quar.intro"),
+        quar_none: s("quar.none"),
+        quar_restore: s("quar.restore"),
+        quar_delete: s("quar.delete"),
     }
 }
 
@@ -231,4 +253,49 @@ pub fn set_brokers(app: &App, rows: &[BrokerView], summary: &str) {
         .collect();
     app.set_broker_rows(ModelRc::from(Rc::new(VecModel::from(items))));
     app.set_broker_summary(summary.into());
+}
+
+pub fn set_scan(app: &App, view: &ScanPageView) {
+    let rows: Vec<ScanRow> = view
+        .rows
+        .iter()
+        .map(|r| ScanRow {
+            path: r.path.clone().into(),
+            title: r.title.clone().into(),
+            detail: r.detail.clone().into(),
+            verdict: r.verdict.clone().into(),
+            can_quarantine: r.can_quarantine,
+            quarantined: r.quarantined,
+        })
+        .collect();
+    app.set_scan_rows(ModelRc::from(Rc::new(VecModel::from(rows))));
+    app.set_scan_summary(view.summary.clone().into());
+    app.set_scan_engines(view.engines.clone().into());
+    app.set_scan_watched(view.watched.clone().into());
+    let exclusions: Vec<SharedString> = view.exclusions.iter().map(|e| e.clone().into()).collect();
+    app.set_scan_exclusions(ModelRc::from(Rc::new(VecModel::from(exclusions))));
+    app.set_scanning(view.scanning);
+}
+
+pub fn set_deep(app: &App, rows: &[(String, String)]) {
+    let items: Vec<DeepRow> = rows
+        .iter()
+        .map(|(title, detail)| DeepRow {
+            title: title.clone().into(),
+            detail: detail.clone().into(),
+        })
+        .collect();
+    app.set_deep_rows(ModelRc::from(Rc::new(VecModel::from(items))));
+}
+
+pub fn set_quarantine(app: &App, rows: &[QuarantineView]) {
+    let items: Vec<QuarRow> = rows
+        .iter()
+        .map(|r| QuarRow {
+            id: r.id.clone().into(),
+            title: r.title.clone().into(),
+            detail: r.detail.clone().into(),
+        })
+        .collect();
+    app.set_quarantine_rows(ModelRc::from(Rc::new(VecModel::from(items))));
 }

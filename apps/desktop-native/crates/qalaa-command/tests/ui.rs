@@ -110,7 +110,8 @@ fn command_centre_interface() {
     }
     assert_eq!(filtered.borrow().last().map(String::as_str), Some("scan"));
     let items: Vec<String> = app.get_palette_items().iter().map(|i| i.id.to_string()).collect();
-    assert_eq!(items, vec!["scan.quick".to_owned()]);
+    // The quick scan, then the Scan page.
+    assert_eq!(items, vec!["scan.quick".to_owned(), "page.scan".to_owned()]);
     let ran_palette = Rc::new(RefCell::new(Vec::<String>::new()));
     {
         let ran_palette = Rc::clone(&ran_palette);
@@ -332,6 +333,93 @@ fn command_centre_interface() {
     );
     assert_eq!(labelled(&app, "Remove yourself from data brokers  ·  0 / 1 done").len(), 1);
 
+    // --- Scan: results from the shared fixture, inspector, quarantine, exclusions, progress.
+    let scan_json: serde_json::Value =
+        serde_json::from_str(include_str!("../../qalaa-ipc/tests/fixtures/scan.json")).expect("scan fixture");
+    let scan_status: qalaa_ipc::ScanStatus = serde_json::from_value(scan_json["status"].clone()).expect("scan status");
+    let scan_now = qalaa_command::view::parse_iso("2026-11-25T13:00:00Z").expect("time");
+    qalaa_command::set_scan(&app, &qalaa_command::view::scan_view(&scan_status, scan_now, Lang::En));
+    app.set_page("scan".into());
+    let scan_calls = Rc::new(RefCell::new(Vec::<String>::new()));
+    {
+        let calls = Rc::clone(&scan_calls);
+        app.on_scan_quick(move || calls.borrow_mut().push("quick".to_owned()));
+    }
+    {
+        let calls = Rc::clone(&scan_calls);
+        app.on_scan_custom(move |p| calls.borrow_mut().push(format!("custom {p}")));
+    }
+    {
+        let calls = Rc::clone(&scan_calls);
+        app.on_scan_inspect(move |p| calls.borrow_mut().push(format!("inspect {p}")));
+    }
+    {
+        let calls = Rc::clone(&scan_calls);
+        app.on_scan_quarantine(move |p| calls.borrow_mut().push(format!("quarantine {p}")));
+    }
+    {
+        let calls = Rc::clone(&scan_calls);
+        app.on_scan_include(move |p| calls.borrow_mut().push(format!("include {p}")));
+    }
+    {
+        let calls = Rc::clone(&scan_calls);
+        app.on_scan_deep(move || calls.borrow_mut().push("deep".to_owned()));
+    }
+    assert_eq!(labelled(&app, "Last scan: 3 files, 2 found, 59 minutes ago").len(), 1);
+    // Suspicious and not yet in quarantine: can be moved. Already quarantined: no button.
+    assert_eq!(labelled(&app, "Move to quarantine: setup.js").len(), 1);
+    assert!(labelled(&app, "Move to quarantine: invoice.pdf.exe").is_empty());
+    assert!(labelled(&app, "Move to quarantine: notes.txt").is_empty());
+    labelled(&app, "Quick scan")[0].invoke_accessible_default_action();
+    labelled(&app, "Details: setup.js")[0].invoke_accessible_default_action();
+    labelled(&app, "Move to quarantine: setup.js")[0].invoke_accessible_default_action();
+    labelled(&app, "Scan it again: /home/me/Downloads/builds")[0].invoke_accessible_default_action();
+    labelled(&app, "Deep check")[0].invoke_accessible_default_action();
+    assert_eq!(labelled(&app, "Scan this path")[0].accessible_enabled(), Some(false));
+    app.set_scan_path("/home/me/Desktop".into());
+    labelled(&app, "Scan this path")[0].invoke_accessible_default_action();
+    assert_eq!(
+        *scan_calls.borrow(),
+        vec![
+            "quick".to_owned(),
+            "inspect /home/me/Downloads/setup.js".to_owned(),
+            "quarantine /home/me/Downloads/setup.js".to_owned(),
+            "include /home/me/Downloads/builds".to_owned(),
+            "deep".to_owned(),
+            "custom /home/me/Desktop".to_owned(),
+        ]
+    );
+    // While a scan runs, another can't be started from here.
+    app.set_scanning(true);
+    assert_eq!(labelled(&app, "Quick scan")[0].accessible_enabled(), Some(false));
+    app.set_scanning(false);
+    // The inspector opens with every finding and closes again.
+    let details: qalaa_ipc::ScanDetails = serde_json::from_value(scan_json["details"].clone()).expect("details");
+    assert!(labelled(&app, "Details").is_empty());
+    app.set_inspector_text(qalaa_command::view::inspector_text(&details, scan_now, Lang::En).into());
+    assert!(!labelled(&app, "Details").is_empty());
+    labelled(&app, "Close")[0].invoke_accessible_default_action();
+    assert_eq!(app.get_inspector_text(), "");
+
+    // --- Quarantine: restore or delete.
+    let list: qalaa_ipc::QuarantineList = serde_json::from_value(scan_json["quarantine"].clone()).expect("quarantine");
+    qalaa_command::set_quarantine(&app, &qalaa_command::view::quarantine_view(&list.items, scan_now, Lang::En));
+    app.set_page("quarantine".into());
+    let quar_calls = Rc::new(RefCell::new(Vec::<String>::new()));
+    {
+        let calls = Rc::clone(&quar_calls);
+        app.on_quar_restore(move |id| calls.borrow_mut().push(format!("restore {id}")));
+    }
+    {
+        let calls = Rc::clone(&quar_calls);
+        app.on_quar_delete(move |id| calls.borrow_mut().push(format!("delete {id}")));
+    }
+    labelled(&app, "Restore: invoice.pdf.exe · Threat")[0].invoke_accessible_default_action();
+    labelled(&app, "Delete for good: invoice.pdf.exe · Threat")[0].invoke_accessible_default_action();
+    assert_eq!(*quar_calls.borrow(), vec!["restore q-1".to_owned(), "delete q-1".to_owned()]);
+    qalaa_command::set_quarantine(&app, &[]);
+    assert_eq!(labelled(&app, "Nothing in quarantine.").len(), 1);
+
     // --- About carries the Slint credit the royalty-free licence requires.
     app.set_page("about".into());
     assert!(ElementHandle::find_by_element_type_name(&app, "AboutSlint").count() >= 1);
@@ -344,4 +432,7 @@ fn command_centre_interface() {
     assert!(arabic.get_rtl());
     assert_eq!(labelled(&arabic, "درجة الحماية").len(), 1);
     assert_eq!(labelled(&arabic, "افحص التنزيلات الجديدة").len(), 1);
+    // The new pages are in the Arabic rail too.
+    assert!(!labelled(&arabic, "فحص").is_empty());
+    assert!(!labelled(&arabic, "الحجر").is_empty());
 }

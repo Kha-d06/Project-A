@@ -228,3 +228,124 @@ pub struct SandboxRun {
 pub struct SandboxList {
     pub runs: Vec<SandboxRun>,
 }
+
+/// One scanned file, as listed (`scan.get`). Mirrors `ScanSummary` in core/scan-service.ts.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanSummary {
+    pub path: String,
+    pub name: String,
+    pub size: u64,
+    /// "malicious", "suspicious", "no_known_threat" or "not_scanned".
+    pub verdict: String,
+    /// The most serious finding's title, or "".
+    pub title: String,
+    pub findings: u32,
+    pub engines: Vec<String>,
+    pub scanned_at: String,
+    pub error: Option<String>,
+    /// The quarantine item id when the file was moved there.
+    pub quarantined: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ScanProgress {
+    pub scanned: u32,
+    pub found: u32,
+    pub current: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanLast {
+    pub scanned: u32,
+    pub malicious: u32,
+    pub suspicious: u32,
+    /// "quick" or "custom".
+    pub kind: String,
+    pub finished_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ScanEngines {
+    pub clamav: bool,
+    pub native: bool,
+    pub cloud: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanStatus {
+    pub scanning: bool,
+    pub kind: Option<String>,
+    pub progress: Option<ScanProgress>,
+    pub last: Option<ScanLast>,
+    pub results: Vec<ScanSummary>,
+    pub watch_folders: Vec<String>,
+    pub exclusions: Vec<String>,
+    pub engines: ScanEngines,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Finding {
+    /// "critical", "high", "medium", "low" or "info".
+    pub severity: String,
+    pub rule: String,
+    pub title: String,
+    pub detail: String,
+    /// For findings inside an archive: the member's name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub member: Option<String>,
+}
+
+/// One file's full result, for the file inspector (`scan.details`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanDetails {
+    pub path: String,
+    pub name: String,
+    pub size: u64,
+    pub sha256: Option<String>,
+    pub verdict: String,
+    pub findings: Vec<Finding>,
+    pub engines: Vec<String>,
+    pub scanned_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    pub quarantined: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DeepFinding {
+    pub area: String,
+    pub item: String,
+    /// "high", "medium" or "low".
+    pub severity: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeepCheck {
+    pub findings: Vec<DeepFinding>,
+    pub checked: Vec<String>,
+    pub checked_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuarantineItem {
+    pub id: String,
+    pub original_path: String,
+    pub name: String,
+    pub size: u64,
+    pub sha256: Option<String>,
+    pub verdict: String,
+    pub reason: String,
+    pub quarantined_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct QuarantineList {
+    pub items: Vec<QuarantineItem>,
+}

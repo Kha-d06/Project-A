@@ -15,6 +15,7 @@ import type { SafeDnsService } from "./safe-dns-service";
 import type { SafePayService } from "./safepay-service";
 import type { SandboxService } from "./sandbox-service";
 import type { ScanEngineService } from "./scan-engine-service";
+import type { ScanService } from "./scan-service";
 import { IpcError } from "./protocol";
 
 export interface CoreHost {
@@ -46,6 +47,8 @@ export interface CoreHost {
   sandbox?: SandboxService;
   /** qalaa-scan, the native scanner, and its signed rule bundle. */
   scanEngine?: ScanEngineService;
+  /** Scans, results, the file inspector, exclusions and quarantine. */
+  scans?: ScanService;
 }
 
 export type Handler = (params: unknown) => Promise<unknown>;
@@ -67,7 +70,7 @@ export function toggleChanges(params: unknown): Partial<Record<HomeToggle["key"]
 
 /** Events pushed to every client (the native window and the Guardian pet). */
 export type Emit = (
-  event: "home.changed" | "scan.started" | "scan.finished" | "threat.blocked" | "alert" | "clipboard.armed" | "clipboard.cleared" | "safepay.started" | "safepay.ended",
+  event: "home.changed" | "scan.started" | "scan.progress" | "scan.finished" | "threat.blocked" | "alert" | "clipboard.armed" | "clipboard.cleared" | "safepay.started" | "safepay.ended",
   payload: unknown,
 ) => void;
 
@@ -101,11 +104,38 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       return changed();
     },
     "scan.quick": async () => {
-      emit("scan.started", {});
+      // The scan service announces its own start, progress and end.
+      if (!host.scans) emit("scan.started", {});
       const totals = await host.quickScan();
-      emit("scan.finished", totals);
+      if (!host.scans) emit("scan.finished", totals);
       await changed();
       return totals;
+    },
+    "scan.get": async () => requireScans(host).status(),
+    "scan.custom": async (params) => {
+      const totals = await requireScans(host).custom(params);
+      await changed();
+      return totals;
+    },
+    "scan.details": async (params) => requireScans(host).details(params),
+    "scan.deep": async () => requireScans(host).deep(),
+    "scan.exclude": async (params) => requireScans(host).addExclusion(params),
+    "scan.include": async (params) => requireScans(host).removeExclusion(params),
+    "quarantine.list": async () => ({ items: await requireScans(host).quarantineList() }),
+    "quarantine.add": async (params) => {
+      const item = await requireScans(host).quarantineAdd(params);
+      await changed();
+      return item;
+    },
+    "quarantine.restore": async (params) => {
+      const restored = await requireScans(host).quarantineRestore(params);
+      await changed();
+      return restored;
+    },
+    "quarantine.delete": async (params) => {
+      const deleted = await requireScans(host).quarantineDelete(params);
+      await changed();
+      return deleted;
     },
     "signatures.update": async () => {
       await host.updateSignatures();
@@ -194,6 +224,11 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       return status;
     },
   };
+}
+
+function requireScans(host: CoreHost): ScanService {
+  if (!host.scans) throw new IpcError("unavailable", "Scanning from this window needs the background service.");
+  return host.scans;
 }
 
 function requireBehaviour(host: CoreHost): BehaviourService {

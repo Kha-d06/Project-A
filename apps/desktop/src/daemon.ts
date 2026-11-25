@@ -9,7 +9,7 @@
  *   node dist/daemon.js            # or the packaged single executable
  *   QALAA_DATA_DIR=… QALAA_IPC_ENDPOINT=… node dist/daemon.js   # tests
  */
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { join, sep } from "node:path";
 
@@ -22,6 +22,7 @@ import { CredentialGuardService, pollMs as credentialPollMs } from "./core/crede
 import { KeyboardService } from "./core/keyboard-service";
 import { ListenerService } from "./core/listener-service";
 import { ScanEngineService } from "./core/scan-engine-service";
+import { HISTORY_LIMIT, ScanService } from "./core/scan-service";
 import { SandboxService } from "./core/sandbox-service";
 import { findDnsFilter } from "./engine/dns-filter";
 import { BehaviourService } from "./core/behaviour-service";
@@ -37,20 +38,17 @@ import { findClam } from "./engine/clamav";
 import { systemClipboard } from "./engine/clipboard";
 import { findSevenZip } from "./engine/formats";
 import { listKeyboards, pollMs } from "./engine/hid";
-import { isExcluded } from "./engine/protection";
 import { Quarantine } from "./engine/quarantine";
 import { scanFile } from "./engine/scanner";
+import { deepCheck } from "./engine/tools";
 import { fetchSignatures, lookupHash } from "./engine/server";
 import { type DesktopSettings, defaultSettings, loadSettings, saveSettings } from "./engine/settings";
 import { listeningPorts } from "./engine/security";
 import { SignatureStore } from "./engine/signatures";
-import type { ScanResult } from "./engine/types";
 import { isDirectory, walk } from "./engine/walk";
 
 declare const __QALAA_VERSION__: string;
 const VERSION = typeof __QALAA_VERSION__ === "string" ? __QALAA_VERSION__ : "dev";
-const HISTORY_LIMIT = 300;
-
 async function mtime(file: string): Promise<string | null> {
   try {
     return (await stat(file)).mtime.toISOString();
@@ -67,12 +65,6 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
   await signatures.open();
   const quarantine = new Quarantine(join(dataDir, "quarantine"));
   let signatureError: string | null = null;
-  let history: ScanResult[] = [];
-  try {
-    history = JSON.parse(await readFile(historyFile, "utf8")) as ScanResult[];
-  } catch {
-    history = [];
-  }
   const listeners = new ListenerService(join(dataDir, "listeners.json"), process.platform, () => listeningPorts(), emit);
   await listeners.load();
   const keyboards = new KeyboardService(join(dataDir, "keyboards.json"), () => listKeyboards(), emit);
@@ -104,6 +96,30 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
   }
   const clamBinary = await findClam();
   const sevenZip = await findSevenZip();
+  const scans = new ScanService({
+    historyFile,
+    quarantine,
+    scanFile,
+    walk,
+    isDirectory,
+    context: () => ({
+      signatures,
+      clamBinary: settings.useClamav ? clamBinary : null,
+      nativeScanner: scanEngine.scanner(),
+      sevenZip,
+      cloudLookup: settings.cloudLookup ? (sha: string) => lookupHash(settings.serverUrl, sha) : undefined,
+    }),
+    watchFolders: () => settings.watchFolders,
+    exclusions: () => settings.exclusions,
+    async saveExclusions(exclusions) {
+      settings = { ...settings, exclusions };
+      await saveSettings(settingsFile, settings);
+    },
+    deepCheck: () => deepCheck(process.platform, homedir()),
+    emit,
+  });
+  await scans.load();
+  const history = () => scans.results();
 
   return {
     version: VERSION,
@@ -119,6 +135,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     safePay,
     aliases,
     brokers,
+    scans,
     async homeInput(): Promise<HomeInput> {
       const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       return {
@@ -130,13 +147,13 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
         networkWatch: settings.networkWatch,
         cloudLookup: settings.cloudLookup,
         signatures: { count: signatures.size, updatedAt: signatures.meta?.updatedAt ?? null, error: signatureError },
-        lastScanAt: history[0]?.scannedAt ?? null,
+        lastScanAt: history()[0]?.scannedAt ?? null,
         lastNetworkScanAt: await mtime(join(dataDir, "network-devices.json")),
         lastBackupAt: settings.lastBackup?.at ?? null,
         lastBackupError: settings.lastBackupError,
         backupConfigured: settings.backupFolders.length > 0 && Boolean(settings.backupDestination),
         quarantineCount: (await quarantine.list()).length,
-        recentThreats: history.filter((r) => (r.verdict === "malicious" || r.verdict === "suspicious") && Date.parse(r.scannedAt) > weekAgo).length,
+        recentThreats: history().filter((r) => (r.verdict === "malicious" || r.verdict === "suspicious") && Date.parse(r.scannedAt) > weekAgo).length,
         ransomwareAlertAt: null,
         updateAvailable: null,
         silentUntil: settings.silentUntil,
@@ -156,28 +173,8 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
       clipboard.configure({ enabled: settings.clipboardGuard });
       credentials.configure({ enabled: settings.credentialGuard });
     },
-    async quickScan() {
-      const totals = { scanned: 0, malicious: 0, suspicious: 0 };
-      const context = {
-        signatures,
-        clamBinary: settings.useClamav ? clamBinary : null,
-        nativeScanner: scanEngine.scanner(),
-        sevenZip,
-        cloudLookup: settings.cloudLookup ? (sha: string) => lookupHash(settings.serverUrl, sha) : undefined,
-      };
-      const skip = (path: string) => isExcluded(path, settings.exclusions);
-      for (const folder of settings.watchFolders) {
-        if (!(await isDirectory(folder))) continue;
-        for await (const file of walk(folder, 50_000, skip)) {
-          const result = await scanFile(file, context);
-          history = [result, ...history].slice(0, HISTORY_LIMIT);
-          totals.scanned += 1;
-          if (result.verdict === "malicious") totals.malicious += 1;
-          if (result.verdict === "suspicious") totals.suspicious += 1;
-        }
-      }
-      await writeFile(historyFile, JSON.stringify(history));
-      return totals;
+    quickScan() {
+      return scans.quick();
     },
     async updateSignatures() {
       try {

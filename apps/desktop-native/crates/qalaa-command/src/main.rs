@@ -7,14 +7,16 @@ use std::thread;
 
 use qalaa_command::strings::{t, Lang};
 use qalaa_command::view::{
-    alias_notice, brokers_view, clipboard_text, content_protected, credentials_view, filter_palette, home_view, palette_entries,
-    ports_view, PaletteEntry,
+    alias_notice, brokers_view, clipboard_text, content_protected, credentials_view, deep_view, filter_palette, home_view, inspector_text,
+    palette_entries, ports_view, progress_text, quarantine_view, scan_view, PaletteEntry,
 };
 use qalaa_command::{
-    apply_home, now_secs, set_behaviour, set_brokers, set_credentials, set_language, set_offline, set_palette, set_ports, set_sandbox, App,
+    apply_home, now_secs, set_behaviour, set_brokers, set_credentials, set_deep, set_language, set_offline, set_palette, set_ports,
+    set_quarantine, set_sandbox, set_scan, App,
 };
 use qalaa_ipc::{
-    BehaviourStatus, BrokerStatus, Client, CredentialStatus, HomeModel, IpcError, ListenerStatus, Message, SandboxList, SandboxRun, Stream,
+    BehaviourStatus, BrokerStatus, Client, CredentialStatus, DeepCheck, HomeModel, IpcError, ListenerStatus, Message, QuarantineItem,
+    QuarantineList, SandboxList, SandboxRun, ScanDetails, ScanStatus, Stream,
 };
 use serde_json::json;
 use slint::winit_030::WinitWindowAccessor;
@@ -70,6 +72,78 @@ fn call(app: &App, state: &Arc<State>, method: &'static str, params: Option<serd
             }
         });
     });
+}
+
+/// Runs a shared-client call off the interface thread and hands the result to `done` on it.
+fn on_client<T: Send + 'static>(
+    app: &App,
+    state: &Arc<State>,
+    work: impl FnOnce(&mut Client<Stream>) -> Result<T, IpcError> + Send + 'static,
+    done: impl FnOnce(&App, Lang, T) + Send + 'static,
+) {
+    let weak = app.as_weak();
+    let state = Arc::clone(state);
+    app.set_busy(true);
+    thread::spawn(move || {
+        let result = (|| {
+            let mut guard = state.client.lock().map_err(|_| "lock".to_owned())?;
+            let client = guard.as_mut().ok_or_else(|| "not connected".to_owned())?;
+            work(client).map_err(|e| e.to_string())
+        })();
+        let lang = state.lang;
+        let _ = weak.upgrade_in_event_loop(move |app| {
+            app.set_busy(false);
+            match result {
+                Ok(value) => {
+                    app.set_notice("".into());
+                    done(&app, lang, value);
+                }
+                Err(message) => app.set_notice(message.into()),
+            }
+        });
+    });
+}
+
+/// Shows the Scan page from a fresh `scan.get`.
+fn scan_page(app: &App, state: &Arc<State>) {
+    on_client(
+        app,
+        state,
+        |c| c.call::<ScanStatus>("scan.get", None),
+        |app, lang, status| {
+            set_scan(app, &scan_view(&status, now_secs(), lang));
+        },
+    );
+}
+
+/// A scan can take minutes, so it gets its own connection: the rest of the window keeps working,
+/// and progress arrives as scan.progress events on the listening connection.
+fn run_scan(app: &App, state: &Arc<State>, method: &'static str, params: Option<serde_json::Value>) {
+    let weak = app.as_weak();
+    let state = Arc::clone(state);
+    app.set_scanning(true);
+    app.set_scan_summary(progress_text(0, 0, state.lang).into());
+    thread::spawn(move || {
+        let result = connect().and_then(|mut c| c.call_raw(method, params)).map_err(|e| e.to_string());
+        let _ = weak.upgrade_in_event_loop(move |app| {
+            app.set_scanning(false);
+            if let Err(message) = result {
+                app.set_notice(message.into());
+            }
+            scan_page(&app, &state);
+        });
+    });
+}
+
+fn quarantine_page(app: &App, state: &Arc<State>) {
+    on_client(
+        app,
+        state,
+        |c| c.call::<QuarantineList>("quarantine.list", None),
+        |app, lang, list| {
+            set_quarantine(app, &quarantine_view(&list.items, now_secs(), lang));
+        },
+    );
 }
 
 /// Calls a listeners.* method off the interface thread and shows the result on the Ports page.
@@ -309,6 +383,26 @@ fn listen(app: &App, state: &Arc<State>) {
                     });
                     continue;
                 }
+                if event.name == "scan.progress" {
+                    let scanned = event.payload.get("scanned").and_then(serde_json::Value::as_u64).unwrap_or(0);
+                    let found = event.payload.get("found").and_then(serde_json::Value::as_u64).unwrap_or(0);
+                    let lang = state.lang;
+                    let _ = weak.upgrade_in_event_loop(move |app| {
+                        app.set_scanning(true);
+                        let n = |v: u64| u32::try_from(v).unwrap_or(u32::MAX);
+                        app.set_scan_summary(progress_text(n(scanned), n(found), lang).into());
+                    });
+                    continue;
+                }
+                if event.name == "scan.finished" || event.name == "threat.blocked" {
+                    let _ = weak.upgrade_in_event_loop(|app| {
+                        let page = app.get_page();
+                        if page == "scan" || page == "quarantine" {
+                            app.invoke_page_changed(page);
+                        }
+                    });
+                    continue;
+                }
                 if event.name != "home.changed" {
                     continue;
                 }
@@ -386,8 +480,29 @@ fn main() -> Result<(), slint::PlatformError> {
             let Some(command) = command else { return };
             match command.method.as_str() {
                 "settings.set" => call(&app, &state, "settings.set", command.params),
-                "scan.quick" => call(&app, &state, "scan.quick", None),
+                "scan.quick" => run_scan(&app, &state, "scan.quick", None),
                 "signatures.update" => call(&app, &state, "signatures.update", None),
+                "view.open"
+                    if command
+                        .params
+                        .as_ref()
+                        .and_then(|p| p.get("view"))
+                        .and_then(serde_json::Value::as_str)
+                        == Some("quarantine") =>
+                {
+                    app.set_page("quarantine".into());
+                }
+                "view.open"
+                    if command
+                        .params
+                        .as_ref()
+                        .and_then(|p| p.get("view"))
+                        .and_then(serde_json::Value::as_str)
+                        // "Review threats" lands on the scan results, where detections are listed first.
+                        .is_some_and(|v| v == "scan" || v == "timeline") =>
+                {
+                    app.set_page("scan".into());
+                }
                 "view.open"
                     if command
                         .params
@@ -451,9 +566,11 @@ fn main() -> Result<(), slint::PlatformError> {
         app.on_palette_run(move |id| {
             let Some(app) = weak.upgrade() else { return };
             match id.as_str() {
-                "scan.quick" => call(&app, &state, "scan.quick", None),
+                "scan.quick" => run_scan(&app, &state, "scan.quick", None),
                 "signatures.update" => call(&app, &state, "signatures.update", None),
                 "page.home" => app.set_page("home".into()),
+                "page.scan" => app.set_page("scan".into()),
+                "page.quarantine" => app.set_page("quarantine".into()),
                 "page.about" => app.set_page("about".into()),
                 "page.ports" => app.set_page("ports".into()),
                 "page.credentials" => app.set_page("credentials".into()),
@@ -525,6 +642,8 @@ fn main() -> Result<(), slint::PlatformError> {
                     sandbox(&app, &state, None);
                 }
                 "brokers" => brokers(&app, &state, "brokers.get", None),
+                "scan" => scan_page(&app, &state),
+                "quarantine" => quarantine_page(&app, &state),
                 _ => {}
             }
         });
@@ -633,6 +752,160 @@ fn main() -> Result<(), slint::PlatformError> {
                     Err(message) => app.set_notice(message.into()),
                 });
             });
+        });
+    }
+
+    // --- Scan and Quarantine ---------------------------------------------------------
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_scan_quick(move || {
+            if let Some(app) = weak.upgrade() {
+                run_scan(&app, &state, "scan.quick", None);
+            }
+        });
+    }
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_scan_custom(move |path| {
+            if let Some(app) = weak.upgrade() {
+                run_scan(&app, &state, "scan.custom", Some(json!({ "paths": [path.trim()] })));
+            }
+        });
+    }
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_scan_exclude(move |path| {
+            let Some(app) = weak.upgrade() else { return };
+            let params = json!({ "path": path.trim() });
+            on_client(
+                &app,
+                &state,
+                move |c| c.call::<ScanStatus>("scan.exclude", Some(params)),
+                |app, lang, status| {
+                    app.set_scan_path("".into());
+                    set_scan(app, &scan_view(&status, now_secs(), lang));
+                },
+            );
+        });
+    }
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_scan_include(move |path| {
+            let Some(app) = weak.upgrade() else { return };
+            let params = json!({ "path": path.as_str() });
+            on_client(
+                &app,
+                &state,
+                move |c| c.call::<ScanStatus>("scan.include", Some(params)),
+                |app, lang, status| {
+                    set_scan(app, &scan_view(&status, now_secs(), lang));
+                },
+            );
+        });
+    }
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_scan_inspect(move |path| {
+            let Some(app) = weak.upgrade() else { return };
+            let params = json!({ "path": path.as_str() });
+            on_client(
+                &app,
+                &state,
+                move |c| c.call::<ScanDetails>("scan.details", Some(params)),
+                |app, lang, details| {
+                    app.set_inspector_text(inspector_text(&details, now_secs(), lang).into());
+                },
+            );
+        });
+    }
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_scan_deep(move || {
+            let Some(app) = weak.upgrade() else { return };
+            on_client(
+                &app,
+                &state,
+                |c| c.call::<DeepCheck>("scan.deep", None),
+                |app, lang, deep| {
+                    set_deep(app, &deep_view(&deep, lang));
+                },
+            );
+        });
+    }
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_scan_quarantine(move |path| {
+            let Some(app) = weak.upgrade() else { return };
+            let params = json!({ "path": path.as_str() });
+            let after = Arc::clone(&state);
+            on_client(
+                &app,
+                &state,
+                move |c| {
+                    c.call::<QuarantineItem>("quarantine.add", Some(params))?;
+                    c.call::<ScanStatus>("scan.get", None)
+                },
+                move |app, lang, status| {
+                    set_scan(app, &scan_view(&status, now_secs(), lang));
+                    app.set_notice(t(after.lang, "quar.added").into());
+                },
+            );
+        });
+    }
+    {
+        // The full server analysis is the sandbox upload; its report opens in the browser.
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_scan_server(move |path| {
+            let Some(app) = weak.upgrade() else { return };
+            let params = json!({ "path": path.as_str() });
+            on_client(
+                &app,
+                &state,
+                move |c| c.call::<SandboxRun>("sandbox.submit", Some(params)),
+                |_app, _lang, run| {
+                    open_in_browser(&run.report_url);
+                },
+            );
+        });
+    }
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_quar_restore(move |id| {
+            let Some(app) = weak.upgrade() else { return };
+            let params = json!({ "id": id.as_str() });
+            on_client(
+                &app,
+                &state,
+                move |c| {
+                    let restored = c.call_raw("quarantine.restore", Some(params))?;
+                    let list = c.call::<QuarantineList>("quarantine.list", None)?;
+                    Ok((restored, list))
+                },
+                |app, lang, (restored, list)| {
+                    set_quarantine(app, &quarantine_view(&list.items, now_secs(), lang));
+                    let path = restored.get("path").and_then(serde_json::Value::as_str).unwrap_or_default();
+                    app.set_notice(t(lang, "quar.restored").replace("{path}", path).into());
+                },
+            );
+        });
+    }
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_quar_delete(move |id| {
+            let Some(app) = weak.upgrade() else { return };
+            let params = json!({ "id": id.as_str() });
+            on_client(
+                &app,
+                &state,
+                move |c| {
+                    c.call_raw("quarantine.delete", Some(params))?;
+                    c.call::<QuarantineList>("quarantine.list", None)
+                },
+                |app, lang, list| {
+                    set_quarantine(app, &quarantine_view(&list.items, now_secs(), lang));
+                    app.set_notice(t(lang, "quar.deleted").into());
+                },
+            );
         });
     }
 

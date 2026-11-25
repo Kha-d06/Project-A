@@ -1,0 +1,117 @@
+{
+  "status": {
+    "scanning": false,
+    "kind": null,
+    "progress": null,
+    "last": {
+      "scanned": 3,
+      "malicious": 1,
+      "suspicious": 1,
+      "kind": "quick",
+      "finishedAt": "2026-11-25T12:00:30.000Z"
+    },
+    "results": [
+      {
+        "path": "/home/me/Downloads/setup.js",
+        "name": "setup.js",
+        "size": 3,
+        "verdict": "suspicious",
+        "title": "Script downloads and runs a file",
+        "findings": 1,
+        "engines": [
+          "signatures",
+          "heuristics"
+        ],
+        "scannedAt": "2026-11-25T12:00:00.000Z",
+        "error": null,
+        "quarantined": null
+      },
+      {
+        "path": "/home/me/Downloads/notes.txt",
+        "name": "notes.txt",
+        "size": 4,
+        "verdict": "no_known_threat",
+        "title": "",
+        "findings": 0,
+        "engines": [
+          "signatures",
+          "heuristics"
+        ],
+        "scannedAt": "2026-11-25T12:00:00.000Z",
+        "error": null,
+        "quarantined": null
+      },
+      {
+        "path": "/home/me/Downloads/invoice.pdf.exe",
+        "name": "invoice.pdf.exe",
+        "size": 3,
+        "verdict": "malicious",
+        "title": "Known test threat",
+        "findings": 1,
+        "engines": [
+          "signatures",
+          "heuristics"
+        ],
+        "scannedAt": "2026-11-25T12:00:00.000Z",
+        "error": null,
+        "quarantined": "q-1"
+      }
+    ],
+    "watchFolders": [
+      "/home/me/Downloads"
+    ],
+    "exclusions": [
+      "/home/me/Downloads/builds"
+    ],
+    "engines": {
+      "clamav": true,
+      "native": false,
+      "cloud": false
+    }
+  },
+  "details": {
+    "path": "/home/me/Downloads/setup.js",
+    "name": "setup.js",
+    "size": 3,
+    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "verdict": "suspicious",
+    "findings": [
+      {
+        "rule": "heur.script",
+        "title": "Script downloads and runs a file",
+        "severity": "medium",
+        "detail": "Matched in the first 4 KB."
+      }
+    ],
+    "engines": [
+      "signatures",
+      "heuristics"
+    ],
+    "scannedAt": "2026-11-25T12:00:00.000Z",
+    "quarantined": null
+  },
+  "quarantine": {
+    "items": [
+      {
+        "id": "q-1",
+        "originalPath": "/home/me/Downloads/invoice.pdf.exe",
+        "name": "invoice.pdf.exe",
+        "size": 3,
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "verdict": "malicious",
+        "reason": "Known test threat",
+        "quarantinedAt": "2026-11-25T12:01:00.000Z"
+      }
+    ]
+  },
+  "added": {
+    "id": "q-1",
+    "originalPath": "/home/me/Downloads/invoice.pdf.exe",
+    "name": "invoice.pdf.exe",
+    "size": 3,
+    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "verdict": "malicious",
+    "reason": "Known test threat",
+    "quarantinedAt": "2026-11-25T12:01:00.000Z"
+  }
+}

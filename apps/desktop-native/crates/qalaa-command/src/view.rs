@@ -1,7 +1,10 @@
 //! Turns the service's Home model into rows for the interface. Plain Rust with
 //! no window, so it is tested directly.
 
-use qalaa_ipc::{BehaviourStatus, BrokerStatus, CheckStatus, CredentialStatus, HomeModel, ListenerStatus, PostureState, SandboxRun};
+use qalaa_ipc::{
+    BehaviourStatus, BrokerStatus, CheckStatus, CredentialStatus, DeepCheck, HomeModel, ListenerStatus, PostureState, QuarantineItem,
+    SandboxRun, ScanDetails, ScanStatus,
+};
 
 use crate::strings::{t, Lang};
 
@@ -181,6 +184,14 @@ pub fn palette_entries(view: Option<&HomeView>, lang: Lang) -> Vec<PaletteEntry>
         PaletteEntry {
             id: "page.home".into(),
             title: t(lang, "palette.home").into(),
+        },
+        PaletteEntry {
+            id: "page.scan".into(),
+            title: t(lang, "nav.scan").into(),
+        },
+        PaletteEntry {
+            id: "page.quarantine".into(),
+            title: t(lang, "nav.quarantine").into(),
         },
         PaletteEntry {
             id: "page.ports".into(),
@@ -492,9 +503,269 @@ pub fn sandbox_view(runs: &[SandboxRun], lang: Lang) -> Vec<SandboxView> {
         .collect()
 }
 
+/// "1.2 MB", for file sizes.
+pub fn bytes(n: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+    let mut value = n as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{n} B")
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
+}
+
+/// A verdict in words. Never "safe": a clean result is "no known threat".
+pub fn verdict_text(verdict: &str, lang: Lang) -> String {
+    match t(lang, &format!("verdict.{verdict}")) {
+        "?" => verdict.to_owned(),
+        s => s.to_owned(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScanRowView {
+    pub path: String,
+    pub title: String,
+    pub detail: String,
+    /// "malicious", "suspicious", "no_known_threat" or "not_scanned".
+    pub verdict: String,
+    pub can_quarantine: bool,
+    pub quarantined: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScanPageView {
+    pub rows: Vec<ScanRowView>,
+    /// The running scan's progress, or the last scan's totals.
+    pub summary: String,
+    pub engines: String,
+    pub watched: String,
+    pub exclusions: Vec<String>,
+    pub scanning: bool,
+}
+
+pub fn scan_view(status: &ScanStatus, now: i64, lang: Lang) -> ScanPageView {
+    let rows = status
+        .results
+        .iter()
+        .map(|r| {
+            let serious = r.verdict == "malicious" || r.verdict == "suspicious";
+            let mut parts = vec![verdict_text(&r.verdict, lang), bytes(r.size)];
+            if !r.title.is_empty() {
+                parts.push(r.title.clone());
+            }
+            if let Some(error) = &r.error {
+                parts.push(error.clone());
+            }
+            if r.quarantined.is_some() {
+                parts.push(t(lang, "scan.quarantined").to_owned());
+            }
+            parts.push(relative(Some(&r.scanned_at), now, lang));
+            ScanRowView {
+                path: r.path.clone(),
+                title: r.name.clone(),
+                detail: parts.join(" · "),
+                verdict: r.verdict.clone(),
+                can_quarantine: serious && r.quarantined.is_none(),
+                quarantined: r.quarantined.is_some(),
+            }
+        })
+        .collect();
+    let summary = if let Some(p) = &status.progress {
+        progress_text(p.scanned, p.found, lang)
+    } else if let Some(last) = &status.last {
+        t(lang, "scan.last")
+            .replace("{scanned}", &last.scanned.to_string())
+            .replace("{found}", &(last.malicious + last.suspicious).to_string())
+            .replace("{when}", &relative(Some(&last.finished_at), now, lang))
+    } else {
+        t(lang, "scan.none").to_owned()
+    };
+    let mut engines = vec![t(lang, "engine.signatures")];
+    if status.engines.native {
+        engines.push(t(lang, "engine.native"));
+    }
+    if status.engines.clamav {
+        engines.push(t(lang, "engine.clamav"));
+    }
+    if status.engines.cloud {
+        engines.push(t(lang, "engine.cloud"));
+    }
+    let mut engines_text = format!("{} {}", t(lang, "scan.engines"), engines.join(", "));
+    if !status.engines.native {
+        engines_text.push_str(" · ");
+        engines_text.push_str(t(lang, "engine.native_missing"));
+    }
+    ScanPageView {
+        rows,
+        summary,
+        engines: engines_text,
+        watched: format!("{} {}", t(lang, "scan.watched"), status.watch_folders.join(", ")),
+        exclusions: status.exclusions.clone(),
+        scanning: status.scanning,
+    }
+}
+
+/// "Scanning… 120 files checked, 1 found".
+pub fn progress_text(scanned: u32, found: u32, lang: Lang) -> String {
+    t(lang, "scan.running")
+        .replace("{scanned}", &scanned.to_string())
+        .replace("{found}", &found.to_string())
+}
+
+/// The file inspector's text: every finding, the engines, the fingerprint.
+pub fn inspector_text(d: &ScanDetails, now: i64, lang: Lang) -> String {
+    let mut lines = vec![
+        format!("{} · {} · {}", d.name, verdict_text(&d.verdict, lang), bytes(d.size)),
+        d.path.clone(),
+    ];
+    if d.findings.is_empty() {
+        lines.push(t(lang, "scan.no_findings").to_owned());
+    }
+    for f in &d.findings {
+        let severity = match t(lang, &format!("sev.{}", f.severity)) {
+            "?" => f.severity.clone(),
+            s => s.to_owned(),
+        };
+        let member = f.member.as_ref().map(|m| format!(" ({m})")).unwrap_or_default();
+        let detail = if f.detail.is_empty() {
+            String::new()
+        } else {
+            format!(": {}", f.detail)
+        };
+        lines.push(format!("• [{severity}] {}{member}{detail}", f.title));
+    }
+    lines.push(format!("{} {}", t(lang, "scan.engines"), d.engines.join(", ")));
+    if let Some(sha) = &d.sha256 {
+        lines.push(format!("SHA-256 {sha}"));
+    }
+    if let Some(error) = &d.error {
+        lines.push(error.clone());
+    }
+    lines.push(format!("{} {}", t(lang, "scan.scanned"), relative(Some(&d.scanned_at), now, lang)));
+    lines.join("\n")
+}
+
+/// The deep check's findings as (title, detail), or one line saying nothing unusual was found.
+pub fn deep_view(deep: &DeepCheck, lang: Lang) -> Vec<(String, String)> {
+    if deep.findings.is_empty() {
+        return vec![(
+            t(lang, "scan.deep_none").to_owned(),
+            format!("{} {}", t(lang, "scan.deep_checked"), deep.checked.join(", ")),
+        )];
+    }
+    deep.findings
+        .iter()
+        .map(|f| {
+            let severity = match t(lang, &format!("sev.{}", f.severity)) {
+                "?" => f.severity.clone(),
+                s => s.to_owned(),
+            };
+            (format!("[{severity}] {}: {}", f.area, f.item), f.detail.clone())
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct QuarantineView {
+    pub id: String,
+    pub title: String,
+    pub detail: String,
+}
+
+pub fn quarantine_view(items: &[QuarantineItem], now: i64, lang: Lang) -> Vec<QuarantineView> {
+    items
+        .iter()
+        .map(|i| QuarantineView {
+            id: i.id.clone(),
+            title: format!("{} · {}", i.name, verdict_text(&i.verdict, lang)),
+            detail: format!(
+                "{} {} · {} · {} · {}",
+                t(lang, "quar.from"),
+                i.original_path,
+                i.reason,
+                bytes(i.size),
+                relative(Some(&i.quarantined_at), now, lang)
+            ),
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scan_results_say_no_known_threat_never_safe() {
+        let json: serde_json::Value = serde_json::from_str(include_str!("../../qalaa-ipc/tests/fixtures/scan.json")).expect("fixture");
+        let status: qalaa_ipc::ScanStatus = serde_json::from_value(json["status"].clone()).expect("status");
+        let now = parse_iso("2026-11-25T13:00:00Z").expect("time");
+        for lang in [Lang::En, Lang::Ar] {
+            let view = scan_view(&status, now, lang);
+            assert_eq!(view.rows.len(), 3);
+            for row in &view.rows {
+                assert!(!row.detail.to_lowercase().contains("safe"), "{}", row.detail);
+            }
+        }
+        let view = scan_view(&status, now, Lang::En);
+        assert!(view.rows[1].detail.starts_with("No known threat"));
+        assert!(view.rows[2].quarantined && !view.rows[2].can_quarantine);
+        assert!(view.rows[0].can_quarantine);
+        assert_eq!(view.summary, "Last scan: 3 files, 2 found, 59 minutes ago");
+        // No native engine on the fixture's computer: said plainly.
+        assert!(view.engines.contains("ClamAV") && view.engines.contains("isn't installed"));
+        let mut running = status.clone();
+        running.progress = Some(qalaa_ipc::ScanProgress {
+            scanned: 120,
+            found: 1,
+            current: "/x".into(),
+        });
+        assert_eq!(scan_view(&running, now, Lang::En).summary, "Scanning… 120 files checked, 1 found");
+    }
+
+    #[test]
+    fn inspector_lists_every_finding_and_the_fingerprint() {
+        let json: serde_json::Value = serde_json::from_str(include_str!("../../qalaa-ipc/tests/fixtures/scan.json")).expect("fixture");
+        let details: qalaa_ipc::ScanDetails = serde_json::from_value(json["details"].clone()).expect("details");
+        let text = inspector_text(&details, parse_iso("2026-11-25T13:00:00Z").expect("time"), Lang::En);
+        assert!(text.contains("• [medium] Script downloads and runs a file: Matched in the first 4 KB."));
+        assert!(text.contains(&format!("SHA-256 {}", "b".repeat(64))));
+        assert!(text.contains("Engines: signatures, heuristics"));
+    }
+
+    #[test]
+    fn deep_check_and_sizes() {
+        let empty = qalaa_ipc::DeepCheck {
+            findings: vec![],
+            checked: vec!["Startup".into(), "Cron".into()],
+            checked_at: "2026-11-25T12:00:00Z".into(),
+        };
+        assert_eq!(
+            deep_view(&empty, Lang::En),
+            vec![(
+                "Nothing unusual in the places checked.".to_owned(),
+                "Checked: Startup, Cron".to_owned()
+            )]
+        );
+        let found = qalaa_ipc::DeepCheck {
+            findings: vec![qalaa_ipc::DeepFinding {
+                area: "Cron".into(),
+                item: "@reboot curl x | sh".into(),
+                severity: "high".into(),
+                detail: "Runs a download".into(),
+            }],
+            ..empty
+        };
+        assert_eq!(deep_view(&found, Lang::Ar)[0].0, "[عالٍ] Cron: @reboot curl x | sh");
+        assert_eq!(bytes(512), "512 B");
+        assert_eq!(bytes(1536), "1.5 KB");
+        assert_eq!(bytes(5 * 1024 * 1024), "5.0 MB");
+    }
 
     const NOW: &str = "2026-11-24T12:00:00Z";
 

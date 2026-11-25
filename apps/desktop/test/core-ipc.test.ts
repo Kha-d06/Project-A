@@ -134,9 +134,11 @@ describe.skipIf(process.platform === "win32")("daemon over a Unix socket", () =>
     const endpoint = join(dataDir, "d.sock");
     const paths = { ...ipcPaths("linux", { QALAA_IPC_ENDPOINT: endpoint }, dataDir) };
 
-    const host = await createDaemonHost(dataDir);
     let server: IpcServer | null = null;
-    const handlers = createHandlers(host, (event, payload) => server?.broadcast(event, payload));
+    const broadcast = (event: Parameters<IpcServer["broadcast"]>[0], payload: unknown) => server?.broadcast(event, payload);
+    // As runDaemon does: services that raise events themselves (scans) use the same broadcast.
+    const host = await createDaemonHost(dataDir, broadcast);
+    const handlers = createHandlers(host, broadcast);
     server = await startIpcServer(paths, handlers, { version: host.version });
     servers.push(server);
 

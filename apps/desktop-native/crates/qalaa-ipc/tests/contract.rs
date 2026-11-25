@@ -84,3 +84,30 @@ fn talks_to_a_service_over_a_socket() {
     assert_eq!(client.take_events().len(), 1);
     service.join().expect("service");
 }
+
+#[test]
+fn decodes_the_scan_fixture_written_by_the_typescript_tests() {
+    use qalaa_ipc::{QuarantineItem, QuarantineList, ScanDetails, ScanStatus};
+    let json: serde_json::Value = serde_json::from_str(include_str!("fixtures/scan.json")).expect("json");
+    let status: ScanStatus = serde_json::from_value(json["status"].clone()).expect("status decodes");
+    assert!(!status.scanning);
+    assert_eq!(status.results.len(), 3);
+    assert_eq!(status.results[2].quarantined.as_deref(), Some("q-1"));
+    assert_eq!(status.last.as_ref().map(|l| l.malicious), Some(1));
+    assert!(status.engines.clamav && !status.engines.native);
+    let details: ScanDetails = serde_json::from_value(json["details"].clone()).expect("details decode");
+    assert_eq!(details.findings[0].rule, "heur.script");
+    let list: QuarantineList = serde_json::from_value(json["quarantine"].clone()).expect("list decodes");
+    assert_eq!(list.items[0].id, "q-1");
+    let added: QuarantineItem = serde_json::from_value(json["added"].clone()).expect("item decodes");
+    assert_eq!(added.reason, "Known test threat");
+    // Nothing the service sent is lost.
+    for (key, value) in [
+        ("status", serde_json::to_value(&status)),
+        ("details", serde_json::to_value(&details)),
+        ("quarantine", serde_json::to_value(&list)),
+        ("added", serde_json::to_value(&added)),
+    ] {
+        assert_eq!(value.expect("encodes"), json[key], "{key} round-trips");
+    }
+}

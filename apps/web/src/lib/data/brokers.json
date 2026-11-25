@@ -1,0 +1,35 @@
+{
+  "version": "2026-11-25",
+  "reviewed": null,
+  "note": "Opt-out pages move. Links have not been checked online for this version; each entry also names the site so the person can find its privacy page.",
+  "recheckDays": 90,
+  "brokers": [
+    { "id": "spokeo", "name": "Spokeo", "site": "spokeo.com", "optOutUrl": "https://www.spokeo.com/optout", "regions": ["US"], "verification": "email_link", "removalDays": 3, "steps": ["Find your listing and copy its address.", "Paste it on the opt-out page with an email address.", "Open the confirmation link they send."], "template": null },
+    { "id": "whitepages", "name": "Whitepages", "site": "whitepages.com", "optOutUrl": "https://www.whitepages.com/suppression-requests", "regions": ["US"], "verification": "phone_call", "removalDays": 2, "steps": ["Paste the address of your listing.", "Confirm with the automated phone call and its code."], "template": null },
+    { "id": "beenverified", "name": "BeenVerified", "site": "beenverified.com", "optOutUrl": "https://www.beenverified.com/app/optout/search", "regions": ["US"], "verification": "email_link", "removalDays": 1, "steps": ["Search for your name and state.", "Choose your record and give an email address.", "Open the confirmation link."], "template": null },
+    { "id": "peopleconnect", "name": "Intelius, TruthFinder, Instant Checkmate (PeopleConnect)", "site": "peopleconnect.us", "optOutUrl": "https://suppression.peopleconnect.us/login", "regions": ["US"], "verification": "email_code", "removalDays": 2, "steps": ["Sign in with an email address and the code they send.", "Find and suppress each of your records."], "template": null },
+    { "id": "peoplefinders", "name": "PeopleFinders", "site": "peoplefinders.com", "optOutUrl": "https://www.peoplefinders.com/opt-out", "regions": ["US"], "verification": "email_link", "removalDays": 7, "steps": ["Search for your record.", "Request removal and confirm by email."], "template": null },
+    { "id": "radaris", "name": "Radaris", "site": "radaris.com", "optOutUrl": "https://radaris.com/control/privacy", "regions": ["US"], "verification": "account", "removalDays": 2, "steps": ["Find your profile and choose to control it.", "Ask for the information to be hidden."], "template": null },
+    { "id": "fastpeoplesearch", "name": "FastPeopleSearch", "site": "fastpeoplesearch.com", "optOutUrl": "https://www.fastpeoplesearch.com/removal", "regions": ["US"], "verification": "email_link", "removalDays": 3, "steps": ["Find your record and choose removal.", "Confirm by email."], "template": null },
+    { "id": "truepeoplesearch", "name": "TruePeopleSearch", "site": "truepeoplesearch.com", "optOutUrl": "https://www.truepeoplesearch.com/removal", "regions": ["US"], "verification": "email_link", "removalDays": 3, "steps": ["Find your record and choose removal.", "Confirm by email."], "template": null },
+    { "id": "usphonebook", "name": "USPhoneBook", "site": "usphonebook.com", "optOutUrl": "https://www.usphonebook.com/opt-out", "regions": ["US"], "verification": "email_link", "removalDays": 2, "steps": ["Find your listing.", "Request removal and confirm by email."], "template": null },
+    { "id": "acxiom", "name": "Acxiom", "site": "acxiom.com", "optOutUrl": "https://isapps.acxiom.com/optout/optout.aspx", "regions": ["US", "EU", "UK"], "verification": "email_link", "removalDays": 30, "steps": ["Fill in the opt-out form for marketing data.", "Confirm by email.", "In the EU or UK you can also send the erasure request below."], "template": "gdpr" },
+    { "id": "lexisnexis", "name": "LexisNexis Risk Solutions", "site": "lexisnexis.com", "optOutUrl": "https://optout.lexisnexis.com/", "regions": ["US"], "verification": "id_document", "removalDays": 30, "steps": ["Fill in the opt-out request.", "They may ask for proof of identity; send only what the form asks for."], "template": "ccpa" },
+    { "id": "epsilon", "name": "Epsilon", "site": "epsilon.com", "optOutUrl": "https://legal.epsilon.com/dsr/", "regions": ["US", "EU", "UK"], "verification": "email_link", "removalDays": 45, "steps": ["Send a data subject request for deletion.", "Confirm by email."], "template": "gdpr" },
+    { "id": "experian-marketing", "name": "Experian Marketing Services", "site": "experian.com", "optOutUrl": "https://www.experian.com/privacy/opting_out", "regions": ["US", "UK"], "verification": "form", "removalDays": 30, "steps": ["Use the marketing opt-out form (not the credit report).", "Keep the reference number."], "template": "ccpa" }
+  ],
+  "templates": {
+    "gdpr": {
+      "subject": "Erasure request under Article 17 GDPR / UK GDPR",
+      "body": "Hello {broker},\n\nI ask you to erase all personal data you hold about me, under Article 17 of the GDPR (or UK GDPR), and to stop processing it, including for marketing and for sale or sharing with others (Article 21). Please also tell me what data you held and where it came from (Article 15).\n\nName: {name}\nEmail: {email}\n\nPlease reply within one month, as Article 12(3) requires.\n\nThank you,\n{name}"
+    },
+    "ccpa": {
+      "subject": "Request to delete and not sell or share my personal information (CCPA/CPRA)",
+      "body": "Hello {broker},\n\nUnder the California Consumer Privacy Act as amended by the CPRA, I ask you to delete the personal information you have collected about me, and not to sell or share it.\n\nName: {name}\nEmail: {email}\n\nPlease confirm within 45 days.\n\nThank you,\n{name}"
+    },
+    "pdpl": {
+      "subject": "Request to erase my personal data",
+      "body": "Hello {broker},\n\nUnder the personal data protection law that applies to me (for example the UAE Federal Decree-Law No. 45 of 2021 or the Saudi Personal Data Protection Law), I ask you to erase the personal data you hold about me and stop processing it.\n\nName: {name}\nEmail: {email}\n\nPlease confirm when it is done.\n\nThank you,\n{name}"
+    }
+  }
+}

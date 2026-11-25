@@ -283,6 +283,23 @@ export interface Passkey {
   backed_up: boolean;
 }
 
+export interface EmailAlias {
+  id: string;
+  address: string;
+  label: string | null;
+  paused: boolean;
+  created_at: string;
+  forwarded_count: number;
+  blocked_count: number;
+  last_forwarded_at: string | null;
+}
+
+export interface AliasList {
+  aliases: EmailAlias[];
+  domains: string[];
+  forwards_to: string | null;
+}
+
 export interface PasskeyOptions {
   challenge_id: string;
   options: Record<string, unknown>;

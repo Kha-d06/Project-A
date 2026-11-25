@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  EyeOff,
   Flag,
   KeyRound,
   Laptop,
@@ -48,6 +49,7 @@ const NAV: { href: string; key: NavKey; icon: typeof History }[] = [
   { href: "/dashboard/passwords", key: "extra.vault", icon: LockKeyhole },
   { href: "/dashboard/vpn", key: "extra.vpn", icon: Globe },
   { href: "/dashboard/breach", key: "extra.breach", icon: KeyRound },
+  { href: "/dashboard/privacy", key: "extra.privacy", icon: EyeOff },
   { href: "/dashboard/settings", key: "settings", icon: Settings },
 ];
 

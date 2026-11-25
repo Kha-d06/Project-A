@@ -1,4 +1,6 @@
 import type {
+  AliasList,
+  EmailAlias,
   Passkey,
   PasskeyOptions,
   Activity,
@@ -233,6 +235,13 @@ export const api = {
   trends: (days = 30) => request<Trends>("/trends", { query: { days } }),
   breach: {
     email: () => request<BreachResult>("/breach/email"),
+  },
+  aliases: {
+    list: () => request<AliasList>("/aliases"),
+    create: (body: { domain?: string; local_part?: string; label?: string }) => request<EmailAlias>("/aliases", { method: "POST", json: body }),
+    update: (id: string, body: { paused?: boolean; label?: string }) =>
+      request<EmailAlias>(`/aliases/${encodeURIComponent(id)}`, { method: "PATCH", json: body }),
+    remove: (id: string) => request<void>(`/aliases/${encodeURIComponent(id)}`, { method: "DELETE" }),
   },
   identity: {
     status: () => request<IdentityStatus>("/identity"),

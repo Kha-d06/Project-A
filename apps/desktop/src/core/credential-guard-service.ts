@@ -73,6 +73,7 @@ export interface CredentialStatus {
   /** Newest first; open and suspended ones wait for a decision. */
   incidents: CredentialIncident[];
   trusted: string[];
+  lastPoll: PollInfo | null;
 }
 
 export type Signal = "SIGSTOP" | "SIGCONT" | "SIGKILL";
@@ -98,6 +99,14 @@ export interface CredentialGuardDeps {
 
 const MAX_INCIDENTS = 20;
 const MAX_SEEN = 2_000;
+
+export interface PollInfo {
+  at: string;
+  ms: number;
+  files: number;
+  commands: number;
+  error?: string;
+}
 
 export function pollMs(platform: NodeJS.Platform): number {
   return platform === "darwin" ? 15_000 : 5_000;
@@ -132,7 +141,7 @@ export function defaultSource(platform: NodeJS.Platform, home: string): Credenti
 export function defaultCommands(platform: NodeJS.Platform): CredentialGuardDeps["commands"] | undefined {
   if (platform !== "darwin") return undefined;
   return async () =>
-    keychainDumps(await run("ps", ["-axo", "pid=,command="]).catch(() => "")).map((d) => ({ pid: d.pid, exe: "/usr/bin/security", command: d.command, kind: "keychain" as const }));
+    keychainDumps(await run("ps", ["-axww", "-o", "pid=,command="])).map((d) => ({ pid: d.pid, exe: "/usr/bin/security", command: d.command, kind: "keychain" as const }));
 }
 
 export function defaultExeOf(platform: NodeJS.Platform): (pid: number) => Promise<string | null> {
@@ -214,7 +223,7 @@ export class CredentialGuardService {
   }
 
   status(): CredentialStatus {
-    return { supported: this.isSupported(), enabled: this.enabled, mode: this.mode(), incidents: this.incidents.map((i) => ({ ...i })), trusted: this.trusted.map((t) => t.exe) };
+    return { supported: this.isSupported(), enabled: this.enabled, mode: this.mode(), incidents: this.incidents.map((i) => ({ ...i })), trusted: this.trusted.map((t) => t.exe), lastPoll: this.lastPoll() };
   }
 
   /** Expected: allowed by the person (same path and binary), or a default name in a trusted location. */
@@ -295,19 +304,37 @@ export class CredentialGuardService {
     return incident;
   }
 
-  /** One look at what is open now; returns new incidents. */
-  async poll(): Promise<CredentialIncident[]> {
+  private inFlight: Promise<CredentialIncident[]> | null = null;
+  private last: PollInfo | null = null;
+
+  /** One look at what is open now; returns new incidents. Overlapping calls share one look. */
+  poll(): Promise<CredentialIncident[]> {
+    this.inFlight ??= this.look().finally(() => (this.inFlight = null));
+    return this.inFlight;
+  }
+
+  /** When the last look ran and what it saw, for diagnostics. */
+  lastPoll(): PollInfo | null {
+    return this.last ? { ...this.last } : null;
+  }
+
+  private async look(): Promise<CredentialIncident[]> {
     if (!this.enabled || !this.source) return [];
-    const files = (await this.source()) ?? [];
+    const started = this.now();
     const found: CredentialIncident[] = [];
+    const errors: string[] = [];
+    // Commands first: one ps is quick, while lsof on a busy Mac can take many seconds.
+    const commands = (await this.commands?.().catch((e: unknown) => (errors.push(`commands: ${String(e)}`), []))) ?? [];
+    for (const c of commands) {
+      const incident = await this.observeCommand(c);
+      if (incident) found.push(incident);
+    }
+    const files = (await this.source().catch((e: unknown) => (errors.push(`files: ${String(e)}`), []))) ?? [];
     for (const f of files) {
       const incident = await this.observe(f.pid, f.path, f.exe);
       if (incident) found.push(incident);
     }
-    for (const c of (await this.commands?.().catch(() => [])) ?? []) {
-      const incident = await this.observeCommand(c);
-      if (incident) found.push(incident);
-    }
+    this.last = { at: new Date(started).toISOString(), ms: this.now() - started, files: files.length, commands: commands.length, ...(errors.length ? { error: errors.join("; ").slice(0, 300) } : {}) };
     return found;
   }
 

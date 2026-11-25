@@ -268,8 +268,12 @@ def run_one(atomic: Atomic, service: Service) -> tuple[str, str]:
         state = ""
         if (expected.get("match") or {}).get("kind") == "credential":
             try:
-                incidents = service.call("credentials.get").get("incidents", [])
-                state = f"; credential incidents: {[(i.get('program'), i.get('file')) for i in incidents][:8]}"
+                status = service.call("credentials.get")
+                incidents = status.get("incidents", [])
+                state = (
+                    f"; credential incidents: {[(i.get('program'), i.get('file')) for i in incidents][:8]}"
+                    f"; last look: {status.get('lastPoll')}"
+                )
             except Exception as exc:  # noqa: BLE001 - diagnostics only
                 state = f"; credentials.get failed: {exc}"
         if (expected.get("match") or {}).get("kind") == "listener":

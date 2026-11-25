@@ -54,8 +54,20 @@ export class ListenerService {
     return atomicWrite(this.file, JSON.stringify(this.baseline));
   }
 
-  /** Looks at what listens now; alerts once for each new reachable listener. */
-  async check(): Promise<Listener[]> {
+  private inFlight: Promise<Listener[]> | null = null;
+
+  /**
+   * Looks at what listens now; alerts once for each new reachable listener.
+   * Overlapping calls share one look: a slow lsof started before a program
+   * opened its port can otherwise finish later and record that port as part of
+   * the first, quiet baseline.
+   */
+  check(): Promise<Listener[]> {
+    this.inFlight ??= this.look().finally(() => (this.inFlight = null));
+    return this.inFlight;
+  }
+
+  private async look(): Promise<Listener[]> {
     const ports = await this.list();
     if (!ports) return [];
     this.current = withKeys(ports);

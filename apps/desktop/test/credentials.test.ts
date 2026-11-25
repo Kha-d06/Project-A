@@ -426,3 +426,38 @@ describe("program trust on this machine", () => {
     }
   });
 });
+
+describe("keychain dumps on macOS", () => {
+  it("are seen by the quick ps look even while the slow open-files look stalls, and the look is recorded", async () => {
+    let release!: () => void;
+    const stalled = new Promise<void>((r) => (release = r));
+    let sourceCalls = 0;
+    const { service, events } = makeService({
+      platform: "darwin",
+      source: async () => {
+        sourceCalls++;
+        await stalled;
+        return [];
+      },
+      commands: async () => [{ pid: 7298, exe: "/usr/bin/security", command: "security dump-keychain", kind: "keychain" }],
+    });
+    const a = service.poll();
+    const b = service.poll();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(events.map(([, p]) => (p as { credential: string }).credential)).toEqual(["keychain"]);
+    release();
+    await Promise.all([a, b]);
+    expect(sourceCalls).toBe(1);
+    expect(service.status().lastPoll).toMatchObject({ files: 0, commands: 1 });
+  });
+
+  it("reports a failing ps instead of silently seeing nothing", async () => {
+    const { service } = makeService({ commands: async () => Promise.reject(new Error("ps: not found")) });
+    await service.poll();
+    expect(service.status().lastPoll?.error).toContain("ps: not found");
+  });
+
+  it("parses wide macOS ps output", () => {
+    expect(keychainDumps("  7298 /usr/bin/security dump-keychain /Library/Keychains/System.keychain\n  12 /sbin/launchd\n")).toEqual([{ pid: 7298, command: "security dump-keychain" }]);
+  });
+});

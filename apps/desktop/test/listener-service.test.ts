@@ -81,3 +81,29 @@ describe("listener service", () => {
     await expect(without["listeners.get"]?.(undefined)).rejects.toThrow(/aren't running/);
   });
 });
+
+describe("overlapping checks (slow lsof on macOS)", () => {
+  it("share one look, so a port opened after the first look starts is never absorbed into the quiet baseline", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "qalaa-listeners-"));
+    const events: unknown[] = [];
+    let ports: ListeningPort[] = [port(22, "sshd")];
+    let release!: () => void;
+    const slow = new Promise<void>((r) => (release = r));
+    let calls = 0;
+    const service = new ListenerService(join(dir, "l.json"), "darwin", async () => {
+      calls++;
+      if (calls === 1) await slow;
+      return ports;
+    }, (_e, p) => events.push(p));
+    await service.load();
+    const first = service.check(); // the daemon's own start-up look
+    const second = service.check(); // the harness asks while it is still running
+    release();
+    await Promise.all([first, second]);
+    expect(calls).toBe(1);
+    ports = [port(22, "sshd"), port(48731, "Python")];
+    const fresh = await service.check();
+    expect(fresh.map((l) => l.port)).toEqual([48731]);
+    expect(events).toHaveLength(1);
+  });
+});

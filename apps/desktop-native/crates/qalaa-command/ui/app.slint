@@ -34,6 +34,10 @@ export struct Labels {
     scan-exclude: string, scan-exclusions: string, scan-include: string, scan-results: string, scan-inspect: string,
     scan-quarantine: string, scan-server: string, scan-close: string, scan-deep: string, scan-deep-intro: string,
     quarantine: string, quar-title: string, quar-intro: string, quar-none: string, quar-restore: string, quar-delete: string,
+    protection: string, prot-title: string, prot-intro: string, prot-folders: string, prot-folder-path: string,
+    prot-folder-add: string, prot-folder-remove: string, prot-halted: string, prot-halted-intro: string, prot-resume: string,
+    prot-kill: string, prot-cfa-enable: string, prot-cfa-audit: string, prot-cfa-disable: string, prot-cfa-add: string,
+    prot-cfa-allow: string, prot-cfa-hint: string, prot-system: string, prot-system-check: string,
 }
 
 component Card inherits Rectangle {
@@ -101,6 +105,7 @@ component NavRail inherits VerticalLayout {
     Button { text: labels.home; checkable: true; checked: page == "home"; clicked => { page = "home"; } }
     Button { text: labels.scan; checkable: true; checked: page == "scan"; clicked => { page = "scan"; } }
     Button { text: labels.quarantine; checkable: true; checked: page == "quarantine"; clicked => { page = "quarantine"; } }
+    Button { text: labels.protection; checkable: true; checked: page == "protection"; clicked => { page = "protection"; } }
     Button { text: labels.ports; checkable: true; checked: page == "ports"; clicked => { page = "ports"; } }
     Button { text: labels.credentials; checkable: true; checked: page == "credentials"; clicked => { page = "credentials"; } }
     Button { text: labels.behaviour; checkable: true; checked: page == "behaviour"; clicked => { page = "behaviour"; } }
@@ -142,6 +147,13 @@ export component App inherits Window {
     in-out property <string> inspector-text;
     in property <[DeepRow]> deep-rows;
     in property <[QuarRow]> quarantine-rows;
+    in property <[ToggleRow]> prot-toggles;
+    in property <[string]> prot-folders;
+    in property <[QuarRow]> prot-halted;
+    in property <[DeepRow]> prot-notes;
+    in property <[DeepRow]> prot-system-rows;
+    in property <bool> show-cfa: false;
+    in-out property <string> prot-path;
     in property <[CredRow]> credential-rows;
     in property <[BehRow]> behaviour-rows;
     in property <string> beh-note;
@@ -191,6 +203,12 @@ export component App inherits Window {
     callback scan-deep();
     callback quar-restore(string);
     callback quar-delete(string);
+    callback prot-toggle(string, bool);
+    callback prot-folder-add(string);
+    callback prot-folder-remove(string);
+    callback prot-halted-action(string, string);
+    callback prot-cfa(string, string);
+    callback prot-system();
     changed page => { page-changed(page); }
 
     changed rtl => { Theme.rtl = rtl; }
@@ -744,6 +762,108 @@ export component App inherits Window {
                                         Button { text: labels.quar-delete; accessible-label: labels.quar-delete + ": " + row.title; enabled: !busy; clicked => { root.quar-delete(row.id); } }
                                     }
                                 }
+                            }
+                        }
+                    }
+
+                    if connected && page == "protection": Card {
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 12px;
+                            Heading { text: labels.prot-title; font-size: 20px; }
+                            Muted { text: labels.prot-intro; }
+                            for toggle in prot-toggles: VerticalLayout {
+                                spacing: 0px;
+                                Switch {
+                                    text: toggle.label;
+                                    checked: toggle.on;
+                                    enabled: toggle.available && !busy;
+                                    accessible-label: toggle.label;
+                                    toggled => { root.prot-toggle(toggle.key, self.checked); }
+                                }
+                                if toggle.hint != "": Muted { text: toggle.hint; font-size: 12px; }
+                            }
+                        }
+                    }
+
+                    // Frozen programs come first after the switches: they need a decision.
+                    if connected && page == "protection" && prot-halted.length > 0: Card {
+                        border-color: Theme.blocked;
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 10px;
+                            Heading { text: labels.prot-halted; color: Theme.blocked; }
+                            Muted { text: labels.prot-halted-intro; }
+                            for row in prot-halted: Rectangle {
+                                border-color: Theme.blocked;
+                                border-width: 1px;
+                                border-radius: 8px;
+                                accessible-role: groupbox;
+                                accessible-label: row.title;
+                                VerticalLayout {
+                                    padding: 12px;
+                                    spacing: 6px;
+                                    Text { text: row.title; font-weight: 600; color: Theme.ink; horizontal-alignment: Theme.rtl ? right : left; }
+                                    Muted { text: row.detail; }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: Theme.rtl ? end : start;
+                                        Button { text: labels.prot-kill; primary: true; accessible-label: labels.prot-kill + ": " + row.title; enabled: !busy; clicked => { root.prot-halted-action(row.id, "kill"); } }
+                                        Button { text: labels.prot-resume; accessible-label: labels.prot-resume + ": " + row.title; enabled: !busy; clicked => { root.prot-halted-action(row.id, "resume"); } }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if connected && page == "protection": Card {
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 10px;
+                            Heading { text: labels.prot-folders; }
+                            for note in prot-notes: VerticalLayout {
+                                accessible-role: list-item;
+                                accessible-label: note.title;
+                                Text { text: note.title; color: Theme.ink; font-weight: 600; wrap: word-wrap; horizontal-alignment: Theme.rtl ? right : left; }
+                                if note.detail != "": Muted { text: note.detail; }
+                            }
+                            for path in prot-folders: HorizontalLayout {
+                                spacing: 8px;
+                                Muted { text: path; vertical-alignment: center; }
+                                Button { text: labels.prot-folder-remove; accessible-label: labels.prot-folder-remove + ": " + path; enabled: !busy; clicked => { root.prot-folder-remove(path); } }
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                LineEdit { placeholder-text: labels.prot-folder-path; accessible-label: labels.prot-folder-path; text <=> root.prot-path; }
+                                Button { text: labels.prot-folder-add; enabled: !busy && root.prot-path != ""; clicked => { root.prot-folder-add(root.prot-path); } }
+                                if show-cfa: Button { text: labels.prot-cfa-add; enabled: !busy && root.prot-path != ""; clicked => { root.prot-cfa("add-folder", root.prot-path); } }
+                                if show-cfa: Button { text: labels.prot-cfa-allow; enabled: !busy && root.prot-path != ""; clicked => { root.prot-cfa("allow-app", root.prot-path); } }
+                            }
+                            if show-cfa: HorizontalLayout {
+                                spacing: 8px;
+                                alignment: Theme.rtl ? end : start;
+                                Button { text: labels.prot-cfa-enable; enabled: !busy; clicked => { root.prot-cfa("enable", ""); } }
+                                Button { text: labels.prot-cfa-audit; enabled: !busy; clicked => { root.prot-cfa("audit", ""); } }
+                                Button { text: labels.prot-cfa-disable; enabled: !busy; clicked => { root.prot-cfa("disable", ""); } }
+                            }
+                            if show-cfa: Muted { text: labels.prot-cfa-hint; font-size: 12px; }
+                        }
+                    }
+
+                    if connected && page == "protection": Card {
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 10px;
+                            Heading { text: labels.prot-system; }
+                            for row in prot-system-rows: VerticalLayout {
+                                accessible-role: list-item;
+                                accessible-label: row.title;
+                                Text { text: row.title; color: Theme.ink; wrap: word-wrap; horizontal-alignment: Theme.rtl ? right : left; }
+                                if row.detail != "": Muted { text: row.detail; font-size: 12px; }
+                            }
+                            HorizontalLayout {
+                                alignment: Theme.rtl ? end : start;
+                                Button { text: labels.prot-system-check; enabled: !busy; clicked => { root.prot-system(); } }
                             }
                         }
                     }

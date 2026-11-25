@@ -16,7 +16,10 @@ use std::rc::Rc;
 use slint::{ModelRc, SharedString, VecModel};
 
 use crate::strings::{t, Lang};
-use crate::view::{BehaviourView, BrokerView, CredentialView, HomeView, PaletteEntry, PortView, QuarantineView, SandboxView, ScanPageView};
+use crate::view::{
+    BehaviourView, BrokerView, CredentialView, HomeView, PaletteEntry, PortView, ProtectionPageView, QuarantineView, SandboxView,
+    ScanPageView,
+};
 
 pub fn labels(lang: Lang) -> Labels {
     let s = |key: &str| SharedString::from(t(lang, key));
@@ -104,6 +107,25 @@ pub fn labels(lang: Lang) -> Labels {
         quar_none: s("quar.none"),
         quar_restore: s("quar.restore"),
         quar_delete: s("quar.delete"),
+        protection: s("nav.protection"),
+        prot_title: s("prot.title"),
+        prot_intro: s("prot.intro"),
+        prot_folders: s("prot.folders"),
+        prot_folder_path: s("prot.folder_path"),
+        prot_folder_add: s("prot.folder_add"),
+        prot_folder_remove: s("prot.folder_remove"),
+        prot_halted: s("prot.halted"),
+        prot_halted_intro: s("prot.halted_intro"),
+        prot_resume: s("prot.resume"),
+        prot_kill: s("prot.kill"),
+        prot_cfa_enable: s("prot.cfa_enable"),
+        prot_cfa_audit: s("prot.cfa_audit"),
+        prot_cfa_disable: s("prot.cfa_disable"),
+        prot_cfa_add: s("prot.cfa_add"),
+        prot_cfa_allow: s("prot.cfa_allow"),
+        prot_cfa_hint: s("prot.cfa_hint"),
+        prot_system: s("prot.system"),
+        prot_system_check: s("prot.system_check"),
     }
 }
 
@@ -278,14 +300,7 @@ pub fn set_scan(app: &App, view: &ScanPageView) {
 }
 
 pub fn set_deep(app: &App, rows: &[(String, String)]) {
-    let items: Vec<DeepRow> = rows
-        .iter()
-        .map(|(title, detail)| DeepRow {
-            title: title.clone().into(),
-            detail: detail.clone().into(),
-        })
-        .collect();
-    app.set_deep_rows(ModelRc::from(Rc::new(VecModel::from(items))));
+    app.set_deep_rows(ModelRc::from(Rc::new(VecModel::from(pairs(rows)))));
 }
 
 pub fn set_quarantine(app: &App, rows: &[QuarantineView]) {
@@ -298,4 +313,46 @@ pub fn set_quarantine(app: &App, rows: &[QuarantineView]) {
         })
         .collect();
     app.set_quarantine_rows(ModelRc::from(Rc::new(VecModel::from(items))));
+}
+
+pub fn set_protection(app: &App, view: &ProtectionPageView) {
+    let toggles: Vec<ToggleRow> = view
+        .toggles
+        .iter()
+        .map(|t| ToggleRow {
+            key: t.key.clone().into(),
+            label: t.label.clone().into(),
+            hint: t.hint.clone().into(),
+            on: t.on,
+            available: t.available,
+        })
+        .collect();
+    app.set_prot_toggles(ModelRc::from(Rc::new(VecModel::from(toggles))));
+    let folders: Vec<SharedString> = view.folders.iter().map(|f| f.clone().into()).collect();
+    app.set_prot_folders(ModelRc::from(Rc::new(VecModel::from(folders))));
+    let halted: Vec<QuarRow> = view
+        .halted
+        .iter()
+        .map(|h| QuarRow {
+            id: h.id.clone().into(),
+            title: h.title.clone().into(),
+            detail: h.detail.clone().into(),
+        })
+        .collect();
+    app.set_prot_halted(ModelRc::from(Rc::new(VecModel::from(halted))));
+    app.set_prot_notes(ModelRc::from(Rc::new(VecModel::from(pairs(&view.notes)))));
+    app.set_show_cfa(view.show_cfa);
+}
+
+pub fn set_protection_system(app: &App, rows: &[(String, String)]) {
+    app.set_prot_system_rows(ModelRc::from(Rc::new(VecModel::from(pairs(rows)))));
+}
+
+fn pairs(rows: &[(String, String)]) -> Vec<DeepRow> {
+    rows.iter()
+        .map(|(title, detail)| DeepRow {
+            title: title.clone().into(),
+            detail: detail.clone().into(),
+        })
+        .collect()
 }

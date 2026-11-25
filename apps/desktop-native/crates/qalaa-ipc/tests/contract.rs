@@ -111,3 +111,26 @@ fn decodes_the_scan_fixture_written_by_the_typescript_tests() {
         assert_eq!(value.expect("encodes"), json[key], "{key} round-trips");
     }
 }
+
+#[test]
+fn decodes_the_protection_fixture_written_by_the_typescript_tests() {
+    use qalaa_ipc::{ProtectionStatus, SystemChecks};
+    let json: serde_json::Value = serde_json::from_str(include_str!("fixtures/protection.json")).expect("json");
+    let linux: ProtectionStatus = serde_json::from_value(json["linux"].clone()).expect("linux decodes");
+    assert!(linux.on_access.supported && linux.on_access.responder);
+    assert_eq!(linux.ransomware.halted[0].pid, 4242);
+    assert!(linux.cfa.is_none());
+    assert!(linux.ransomware.last_alert.is_some());
+    let windows: ProtectionStatus = serde_json::from_value(json["windows"].clone()).expect("windows decodes");
+    assert_eq!(windows.cfa.as_ref().map(|c| c.state.as_str()), Some("audit"));
+    assert!(!windows.terminal.supported);
+    let system: SystemChecks = serde_json::from_value(json["system"].clone()).expect("system decodes");
+    assert_eq!(system.wifi.as_ref().map(|w| w.risk.as_str()), Some("open"));
+    for (key, value) in [
+        ("linux", serde_json::to_value(&linux)),
+        ("windows", serde_json::to_value(&windows)),
+        ("system", serde_json::to_value(&system)),
+    ] {
+        assert_eq!(value.expect("encodes"), json[key], "{key} round-trips");
+    }
+}

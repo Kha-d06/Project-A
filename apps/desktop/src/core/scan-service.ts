@@ -75,7 +75,9 @@ export interface ScanServiceDeps {
   saveExclusions: (exclusions: string[]) => Promise<void>;
   /** Startup entries, hidden processes and the like (tools.deepCheck). */
   deepCheck?: () => Promise<{ findings: DeepFinding[]; checked: string[] }>;
-  emit?: (event: "scan.started" | "scan.progress" | "scan.finished", payload: unknown) => void;
+  emit?: (event: "scan.started" | "scan.progress" | "scan.finished" | "threat.blocked" | "alert", payload: unknown) => void;
+  /** Known threats found by the watchers (not manual scans) go straight to quarantine. */
+  autoQuarantine?: () => boolean;
   platform?: NodeJS.Platform;
   now?: () => number;
 }
@@ -109,6 +111,7 @@ export class ScanService {
   private progress: ScanStatus["progress"] = null;
   private last: ScanStatus["last"] = null;
   private lastProgressAt = 0;
+  private saving: Promise<void> = Promise.resolve();
   private readonly platform: NodeJS.Platform;
   private readonly now: () => number;
 
@@ -230,6 +233,30 @@ export class ScanService {
     return { deleted: true };
   }
 
+  /**
+   * A file found by a watcher (a new download, an on-access open, a dropped program).
+   * Recorded like any scan; a known threat is quarantined when auto-quarantine is on,
+   * and every client hears about it ("threat.blocked" or "alert").
+   */
+  async scanAutomatic(path: string, known?: ScanResult): Promise<(ScanResult & { quarantined?: string }) | null> {
+    if (isExcluded(path, this.deps.exclusions(), this.platform)) return null; // the person chose not to scan it
+    const result: ScanResult & { quarantined?: string } = { ...(known ?? (await this.deps.scanFile(path, this.deps.context()))) };
+    if (result.verdict === "malicious" && (this.deps.autoQuarantine?.() ?? false)) {
+      try {
+        const item = await this.deps.quarantine.add(path, { sha256: result.sha256, verdict: result.verdict, reason: result.findings[0]?.title ?? "" });
+        result.quarantined = item.id;
+      } catch {
+        // left in place; the result still shows the detection
+      }
+    }
+    this.history = [result, ...this.history.filter((r) => r.path !== result.path)].slice(0, HISTORY_LIMIT);
+    await this.persist();
+    if (result.verdict === "malicious" || result.verdict === "suspicious") {
+      this.deps.emit?.(result.quarantined ? "threat.blocked" : "alert", { kind: "scan", name: result.name, verdict: result.verdict });
+    }
+    return result;
+  }
+
   private absolute(path: string): boolean {
     return this.platform === "win32" ? /^[a-z]:[\\/]|^\\\\/i.test(path) : isAbsolute(path);
   }
@@ -274,7 +301,9 @@ export class ScanService {
     }
   }
 
+  /** Writes one after another, so a watcher's result and a manual scan never interleave. */
   private persist(): Promise<void> {
-    return writeFile(this.deps.historyFile, JSON.stringify(this.history.slice(0, HISTORY_LIMIT)));
+    this.saving = this.saving.catch(() => undefined).then(() => writeFile(this.deps.historyFile, JSON.stringify(this.history.slice(0, HISTORY_LIMIT))));
+    return this.saving;
   }
 }

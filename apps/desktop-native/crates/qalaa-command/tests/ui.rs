@@ -420,6 +420,64 @@ fn command_centre_interface() {
     qalaa_command::set_quarantine(&app, &[]);
     assert_eq!(labelled(&app, "Nothing in quarantine.").len(), 1);
 
+    // --- Protection: switches, a frozen program, folders, Wi-Fi and updates.
+    let prot_json: serde_json::Value =
+        serde_json::from_str(include_str!("../../qalaa-ipc/tests/fixtures/protection.json")).expect("protection fixture");
+    let linux: qalaa_ipc::ProtectionStatus = serde_json::from_value(prot_json["linux"].clone()).expect("linux");
+    let prot_now = qalaa_command::view::parse_iso("2026-11-25T12:30:00Z").expect("time");
+    qalaa_command::set_protection(&app, &qalaa_command::view::protection_view(&linux, prot_now, Lang::En));
+    let checks: qalaa_ipc::SystemChecks = serde_json::from_value(prot_json["system"].clone()).expect("system");
+    qalaa_command::set_protection_system(&app, &qalaa_command::view::system_view(&checks, Lang::En));
+    app.set_page("protection".into());
+    let prot_calls = Rc::new(RefCell::new(Vec::<String>::new()));
+    {
+        let calls = Rc::clone(&prot_calls);
+        app.on_prot_toggle(move |key, on| calls.borrow_mut().push(format!("{key} {on}")));
+    }
+    {
+        let calls = Rc::clone(&prot_calls);
+        app.on_prot_halted_action(move |pid, action| calls.borrow_mut().push(format!("{action} {pid}")));
+    }
+    {
+        let calls = Rc::clone(&prot_calls);
+        app.on_prot_folder_add(move |p| calls.borrow_mut().push(format!("add {p}")));
+    }
+    {
+        let calls = Rc::clone(&prot_calls);
+        app.on_prot_folder_remove(move |p| calls.borrow_mut().push(format!("remove {p}")));
+    }
+    {
+        let calls = Rc::clone(&prot_calls);
+        app.on_prot_system(move || calls.borrow_mut().push("system".to_owned()));
+    }
+    labelled(&app, "Scan new files")[0].invoke_accessible_default_action();
+    labelled(&app, "Remove: Program 4242 was frozen")[0].invoke_accessible_default_action();
+    labelled(&app, "Stop protecting: /home/me/Documents")[0].invoke_accessible_default_action();
+    app.set_prot_path("/home/me/Pictures".into());
+    labelled(&app, "Protect this folder")[0].invoke_accessible_default_action();
+    labelled(&app, "Check now")[0].invoke_accessible_default_action();
+    assert_eq!(
+        *prot_calls.borrow(),
+        vec![
+            "realtime false".to_owned(),
+            "kill 4242".to_owned(),
+            "remove /home/me/Documents".to_owned(),
+            "add /home/me/Pictures".to_owned(),
+            "system".to_owned(),
+        ]
+    );
+    assert!(!labelled(
+        &app,
+        "Wi-Fi \"Cafe\" is open: others nearby can see unencrypted traffic. Use the VPN here."
+    )
+    .is_empty());
+    // Windows-only Controlled Folder Access buttons don't appear on Linux.
+    assert!(labelled(&app, "Audit only").is_empty());
+    let windows: qalaa_ipc::ProtectionStatus = serde_json::from_value(prot_json["windows"].clone()).expect("windows");
+    qalaa_command::set_protection(&app, &qalaa_command::view::protection_view(&windows, prot_now, Lang::En));
+    assert_eq!(labelled(&app, "Audit only").len(), 1);
+    assert!(labelled(&app, "Check terminal commands").is_empty());
+
     // --- About carries the Slint credit the royalty-free licence requires.
     app.set_page("about".into());
     assert!(ElementHandle::find_by_element_type_name(&app, "AboutSlint").count() >= 1);

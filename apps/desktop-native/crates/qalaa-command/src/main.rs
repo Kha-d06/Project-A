@@ -8,15 +8,15 @@ use std::thread;
 use qalaa_command::strings::{t, Lang};
 use qalaa_command::view::{
     alias_notice, brokers_view, clipboard_text, content_protected, credentials_view, deep_view, filter_palette, home_view, inspector_text,
-    palette_entries, ports_view, progress_text, quarantine_view, scan_view, PaletteEntry,
+    palette_entries, ports_view, progress_text, protection_view, quarantine_view, scan_view, system_view, PaletteEntry,
 };
 use qalaa_command::{
     apply_home, now_secs, set_behaviour, set_brokers, set_credentials, set_deep, set_language, set_offline, set_palette, set_ports,
-    set_quarantine, set_sandbox, set_scan, App,
+    set_protection, set_protection_system, set_quarantine, set_sandbox, set_scan, App,
 };
 use qalaa_ipc::{
-    BehaviourStatus, BrokerStatus, Client, CredentialStatus, DeepCheck, HomeModel, IpcError, ListenerStatus, Message, QuarantineItem,
-    QuarantineList, SandboxList, SandboxRun, ScanDetails, ScanStatus, Stream,
+    BehaviourStatus, BrokerStatus, Client, CredentialStatus, DeepCheck, HomeModel, IpcError, ListenerStatus, Message, ProtectionStatus,
+    QuarantineItem, QuarantineList, SandboxList, SandboxRun, ScanDetails, ScanStatus, Stream, SystemChecks,
 };
 use serde_json::json;
 use slint::winit_030::WinitWindowAccessor;
@@ -133,6 +133,32 @@ fn run_scan(app: &App, state: &Arc<State>, method: &'static str, params: Option<
             scan_page(&app, &state);
         });
     });
+}
+
+/// Calls a protection.* method (or just protection.get) and shows the Protection page.
+fn protection(app: &App, state: &Arc<State>, method: &'static str, params: Option<serde_json::Value>) {
+    on_client(
+        app,
+        state,
+        move |c| {
+            if method != "protection.get" {
+                c.call_raw(method, params)?;
+            }
+            c.call::<ProtectionStatus>("protection.get", None)
+        },
+        |app, lang, status| set_protection(app, &protection_view(&status, now_secs(), lang)),
+    );
+}
+
+fn protection_system(app: &App, state: &Arc<State>) {
+    on_client(
+        app,
+        state,
+        |c| c.call::<SystemChecks>("protection.system", None),
+        |app, lang, checks| {
+            set_protection_system(app, &system_view(&checks, lang));
+        },
+    );
 }
 
 fn quarantine_page(app: &App, state: &Arc<State>) {
@@ -394,6 +420,14 @@ fn listen(app: &App, state: &Arc<State>) {
                     });
                     continue;
                 }
+                if event.name == "alert" && event.payload.get("kind").and_then(serde_json::Value::as_str) == Some("ransomware") {
+                    let _ = weak.upgrade_in_event_loop(|app| {
+                        if app.get_page() == "protection" {
+                            app.invoke_page_changed("protection".into());
+                        }
+                    });
+                    continue;
+                }
                 if event.name == "scan.finished" || event.name == "threat.blocked" {
                     let _ = weak.upgrade_in_event_loop(|app| {
                         let page = app.get_page();
@@ -571,6 +605,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 "page.home" => app.set_page("home".into()),
                 "page.scan" => app.set_page("scan".into()),
                 "page.quarantine" => app.set_page("quarantine".into()),
+                "page.protection" => app.set_page("protection".into()),
                 "page.about" => app.set_page("about".into()),
                 "page.ports" => app.set_page("ports".into()),
                 "page.credentials" => app.set_page("credentials".into()),
@@ -644,6 +679,10 @@ fn main() -> Result<(), slint::PlatformError> {
                 "brokers" => brokers(&app, &state, "brokers.get", None),
                 "scan" => scan_page(&app, &state),
                 "quarantine" => quarantine_page(&app, &state),
+                "protection" => {
+                    protection(&app, &state, "protection.get", None);
+                    protection_system(&app, &state);
+                }
                 _ => {}
             }
         });
@@ -906,6 +945,75 @@ fn main() -> Result<(), slint::PlatformError> {
                     app.set_notice(t(lang, "quar.deleted").into());
                 },
             );
+        });
+    }
+
+    // --- Protection -------------------------------------------------------------------
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_prot_toggle(move |key, on| {
+            let Some(app) = weak.upgrade() else { return };
+            let method = match key.as_str() {
+                "realtime" => "protection.realtime",
+                "onaccess" => "protection.onaccess",
+                "ransomware" => "protection.ransomware",
+                "decoys" => "protection.decoys",
+                "terminal" => "protection.terminal",
+                _ => return,
+            };
+            protection(&app, &state, method, Some(json!({ "on": on })));
+        });
+    }
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_prot_folder_add(move |path| {
+            if let Some(app) = weak.upgrade() {
+                protection(&app, &state, "protection.folder_add", Some(json!({ "path": path.trim() })));
+                app.set_prot_path("".into());
+            }
+        });
+    }
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_prot_folder_remove(move |path| {
+            if let Some(app) = weak.upgrade() {
+                protection(&app, &state, "protection.folder_remove", Some(json!({ "path": path.as_str() })));
+            }
+        });
+    }
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_prot_halted_action(move |pid, action| {
+            let Some(app) = weak.upgrade() else { return };
+            let (Ok(pid), true) = (pid.parse::<u32>(), matches!(action.as_str(), "resume" | "kill")) else {
+                return;
+            };
+            protection(
+                &app,
+                &state,
+                "protection.halted",
+                Some(json!({ "pid": pid, "action": action.as_str() })),
+            );
+        });
+    }
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_prot_cfa(move |action, path| {
+            let Some(app) = weak.upgrade() else { return };
+            let params = if path.is_empty() {
+                json!({ "action": action.as_str() })
+            } else {
+                json!({ "action": action.as_str(), "path": path.trim() })
+            };
+            protection(&app, &state, "protection.cfa", Some(params));
+        });
+    }
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_prot_system(move || {
+            if let Some(app) = weak.upgrade() {
+                protection_system(&app, &state);
+            }
         });
     }
 

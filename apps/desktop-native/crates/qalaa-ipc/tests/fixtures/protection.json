@@ -1,0 +1,114 @@
+{
+  "linux": {
+    "platform": "linux",
+    "realtime": {
+      "on": true,
+      "folders": [
+        "/home/me/Downloads"
+      ]
+    },
+    "ransomware": {
+      "on": true,
+      "decoys": true,
+      "decoyCount": 1,
+      "folders": [
+        "/home/me/Documents"
+      ],
+      "lastAlert": {
+        "reasons": [
+          "a hidden decoy file that nothing should touch was changed (.qalaa-decoy.docx in Documents)"
+        ],
+        "examples": [
+          "/home/me/Documents/.qalaa-decoy.docx"
+        ],
+        "at": "2026-11-25T12:00:00.000Z"
+      },
+      "halted": [
+        {
+          "pid": 4242,
+          "reason": "40 files rewritten in 10 seconds",
+          "files": 40,
+          "at": "2026-11-25T12:00:00.000Z"
+        }
+      ]
+    },
+    "onAccess": {
+      "supported": true,
+      "on": true,
+      "state": "active",
+      "manageable": true,
+      "responder": true
+    },
+    "cfa": null,
+    "terminal": {
+      "supported": true,
+      "command": "/home/me/.local/bin/qalaa",
+      "shells": [
+        {
+          "shell": "bash",
+          "enabled": false
+        }
+      ]
+    }
+  },
+  "windows": {
+    "platform": "win32",
+    "realtime": {
+      "on": true,
+      "folders": [
+        "/home/me/Downloads"
+      ]
+    },
+    "ransomware": {
+      "on": true,
+      "decoys": true,
+      "decoyCount": 0,
+      "folders": [
+        "/home/me/Documents"
+      ],
+      "lastAlert": null,
+      "halted": []
+    },
+    "onAccess": {
+      "supported": true,
+      "on": false,
+      "state": "absent",
+      "manageable": true,
+      "responder": false
+    },
+    "cfa": {
+      "supported": true,
+      "state": "audit",
+      "folders": [
+        "D:\\Work"
+      ],
+      "allowedApps": [
+        "C:\\Tools\\sync.exe"
+      ]
+    },
+    "terminal": {
+      "supported": false,
+      "command": null,
+      "shells": []
+    }
+  },
+  "system": {
+    "wifi": {
+      "ssid": "Cafe",
+      "security": "",
+      "risk": "open"
+    },
+    "updates": {
+      "count": 1,
+      "source": "apt",
+      "items": [
+        {
+          "name": "openssl",
+          "current": "3.0.1",
+          "available": "3.0.2"
+        }
+      ]
+    },
+    "checkedAt": "2026-11-25T12:00:00.000Z"
+  }
+}

@@ -349,3 +349,114 @@ pub struct QuarantineItem {
 pub struct QuarantineList {
     pub items: Vec<QuarantineItem>,
 }
+
+/// Real-time protection (`protection.get`). Mirrors core/protection-service.ts.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RealtimeStatus {
+    pub on: bool,
+    pub folders: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RansomwareAlert {
+    pub reasons: Vec<String>,
+    pub examples: Vec<String>,
+    pub at: String,
+}
+
+/// A process frozen for ransomware behaviour, waiting for the person to decide.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HaltedProcess {
+    pub pid: u32,
+    pub reason: String,
+    pub files: u32,
+    pub at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RansomwareStatus {
+    pub on: bool,
+    pub decoys: bool,
+    pub decoy_count: u32,
+    pub folders: Vec<String>,
+    pub last_alert: Option<RansomwareAlert>,
+    pub halted: Vec<HaltedProcess>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OnAccessStatus {
+    pub supported: bool,
+    pub on: bool,
+    /// "active", "inactive", "failed" or "absent" (the root helper's service).
+    pub state: String,
+    /// pkexec and systemd are there to install it.
+    pub manageable: bool,
+    /// This service is answering the helper.
+    pub responder: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CfaStatus {
+    pub supported: bool,
+    /// "on", "off", "audit" or "unknown".
+    pub state: String,
+    pub folders: Vec<String>,
+    pub allowed_apps: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ShellHook {
+    pub shell: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TerminalStatus {
+    pub supported: bool,
+    pub command: Option<String>,
+    pub shells: Vec<ShellHook>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProtectionStatus {
+    pub platform: String,
+    pub realtime: RealtimeStatus,
+    pub ransomware: RansomwareStatus,
+    pub on_access: OnAccessStatus,
+    pub cfa: Option<CfaStatus>,
+    pub terminal: TerminalStatus,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WifiStatus {
+    pub ssid: Option<String>,
+    pub security: Option<String>,
+    /// "open", "weak", "ok", "none" or "unknown".
+    pub risk: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PendingUpdate {
+    pub name: String,
+    pub current: Option<String>,
+    pub available: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UpdatesStatus {
+    pub count: u32,
+    pub source: String,
+    pub items: Vec<PendingUpdate>,
+}
+
+/// The slower checks (`protection.system`): `None` means the check couldn't run.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemChecks {
+    pub wifi: Option<WifiStatus>,
+    pub updates: Option<UpdatesStatus>,
+    pub checked_at: String,
+}

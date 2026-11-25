@@ -9,7 +9,7 @@
  *   node dist/daemon.js            # or the packaged single executable
  *   QALAA_DATA_DIR=… QALAA_IPC_ENDPOINT=… node dist/daemon.js   # tests
  */
-import { stat } from "node:fs/promises";
+import { readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { join, sep } from "node:path";
 
@@ -22,6 +22,7 @@ import { CredentialGuardService, pollMs as credentialPollMs } from "./core/crede
 import { KeyboardService } from "./core/keyboard-service";
 import { ListenerService } from "./core/listener-service";
 import { ScanEngineService } from "./core/scan-engine-service";
+import { ProtectionService, onAccessIdentity } from "./core/protection-service";
 import { HISTORY_LIMIT, ScanService } from "./core/scan-service";
 import { SandboxService } from "./core/sandbox-service";
 import { findDnsFilter } from "./engine/dns-filter";
@@ -39,7 +40,15 @@ import { systemClipboard } from "./engine/clipboard";
 import { findSevenZip } from "./engine/formats";
 import { listKeyboards, pollMs } from "./engine/hid";
 import { Quarantine } from "./engine/quarantine";
+import { RansomwareBurst } from "./engine/behaviour";
+import * as cfa from "./engine/cfa";
+import * as fanotify from "./engine/fanotify";
+import { isExcluded, plantDecoys, tamperedDecoys, type DecoyRecord } from "./engine/protection";
+import { RansomwareMonitor } from "./engine/ransomware";
 import { scanFile } from "./engine/scanner";
+import { disableTerminal, enableTerminal, terminalStatus } from "./engine/shell-init";
+import { pendingUpdates, wifiStatus } from "./engine/system";
+import { FolderWatcher } from "./engine/watcher";
 import { deepCheck } from "./engine/tools";
 import { fetchSignatures, lookupHash } from "./engine/server";
 import { type DesktopSettings, defaultSettings, loadSettings, saveSettings } from "./engine/settings";
@@ -57,7 +66,7 @@ async function mtime(file: string): Promise<string | null> {
   }
 }
 
-export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService; safePay: SafePayService; aliases: AliasService; brokers: BrokerService; scanEngine: ScanEngineService; behaviour: BehaviourService }> {
+export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService; safePay: SafePayService; aliases: AliasService; brokers: BrokerService; scanEngine: ScanEngineService; behaviour: BehaviourService; protection: ProtectionService }> {
   const settingsFile = join(dataDir, "settings.json");
   const historyFile = join(dataDir, "history.json");
   let settings = await loadSettings(settingsFile, defaultSettings(join(homedir(), "Downloads"), [], hostname().slice(0, 80) || "This computer"));
@@ -96,19 +105,20 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
   }
   const clamBinary = await findClam();
   const sevenZip = await findSevenZip();
+  const scanContext = () => ({
+    signatures,
+    clamBinary: settings.useClamav ? clamBinary : null,
+    nativeScanner: scanEngine.scanner(),
+    sevenZip,
+    cloudLookup: settings.cloudLookup ? (sha: string) => lookupHash(settings.serverUrl, sha) : undefined,
+  });
   const scans = new ScanService({
     historyFile,
     quarantine,
     scanFile,
     walk,
     isDirectory,
-    context: () => ({
-      signatures,
-      clamBinary: settings.useClamav ? clamBinary : null,
-      nativeScanner: scanEngine.scanner(),
-      sevenZip,
-      cloudLookup: settings.cloudLookup ? (sha: string) => lookupHash(settings.serverUrl, sha) : undefined,
-    }),
+    context: () => scanContext(),
     watchFolders: () => settings.watchFolders,
     exclusions: () => settings.exclusions,
     async saveExclusions(exclusions) {
@@ -116,9 +126,70 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
       await saveSettings(settingsFile, settings);
     },
     deepCheck: () => deepCheck(process.platform, homedir()),
+    autoQuarantine: () => settings.autoQuarantine,
     emit,
   });
   await scans.load();
+  const unpacked = (file: string) => join(__dirname, file).replace(`app.asar${sep}`, `app.asar.unpacked${sep}`);
+  const decoyFile = join(dataDir, "decoys.json");
+  const onAccessSocket = join(dataDir, "onaccess.sock");
+  const burst = new RansomwareBurst();
+  let protection: ProtectionService;
+  const folderWatcher = new FolderWatcher((path) => protection.onNewFile(path));
+  const ransomwareMonitor = new RansomwareMonitor((alert) => protection.ransomwareAlert(alert));
+  protection = new ProtectionService({
+    platform: process.platform,
+    settings: () => settings,
+    async saveSettings(changes) {
+      settings = { ...settings, ...changes };
+      await saveSettings(settingsFile, settings);
+    },
+    scanAutomatic: (path, known) => scans.scanAutomatic(path, known),
+    scanFile: (path) => scanFile(path, scanContext()),
+    isExcluded: (path) => isExcluded(path, settings.exclusions),
+    emit,
+    folderWatcher,
+    ransomwareMonitor,
+    decoys: {
+      load: async () => JSON.parse(await readFile(decoyFile, "utf8")) as DecoyRecord,
+      save: (record) => writeFile(decoyFile, JSON.stringify(record)),
+      plant: (folders) => plantDecoys(folders),
+      tampered: (record) => tamperedDecoys(record),
+      remove: (path) => unlink(path),
+    },
+    onAccess: {
+      supported: fanotify.onAccessSupported(),
+      status: () => fanotify.onAccessStatus(),
+      enable: () => fanotify.enableOnAccess({ bundledHelper: unpacked("onaccessd.py"), socketPath: onAccessSocket, markRoots: [onAccessIdentity().home], user: onAccessIdentity().user }),
+      disable: () => fanotify.disableOnAccess(),
+      async startResponder(hooks) {
+        const server = new fanotify.OnAccessServer({
+          socketPath: onAccessSocket,
+          scan: hooks.scan,
+          isExcluded: hooks.isExcluded,
+          onBlocked: hooks.onBlocked,
+          onOpen: hooks.onOpen,
+          behaviour: { feed: hooks.feed },
+          onHalt: hooks.onHalt,
+        });
+        await server.start();
+        return server;
+      },
+      burst,
+      // The helper froze it as root, so changing its state needs root too (a pkexec prompt).
+      signal: (pid, action) => runElevated({ command: "pkexec", args: ["kill", action === "kill" ? "-KILL" : "-CONT", String(pid)] }),
+    },
+    observeOpen: (pid, path) => void credentials.observe(pid, path).catch(() => undefined),
+    cfa: { status: () => cfa.cfaStatus(), apply: (action, path) => cfa.cfaApply(action, path) },
+    terminal: {
+      status: () => terminalStatus(),
+      // The qalaa command runs on this service's own Node runtime; cli.js is built beside daemon.js.
+      enable: () => enableTerminal(process.execPath, unpacked("cli.js"), undefined, undefined, dataDir),
+      disable: () => disableTerminal(),
+    },
+    wifi: () => wifiStatus(),
+    updates: () => pendingUpdates(),
+  });
   const history = () => scans.results();
 
   return {
@@ -136,6 +207,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     aliases,
     brokers,
     scans,
+    protection,
     async homeInput(): Promise<HomeInput> {
       const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       return {
@@ -168,10 +240,15 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
       };
     },
     async updateToggles(changes) {
-      settings = { ...settings, ...changes };
+      // On-access installs or removes a root helper, so it isn't just a saved setting.
+      const { onAccessScan, ...rest } = changes;
+      if (onAccessScan !== undefined && onAccessScan !== settings.onAccessScan) await protection.setOnAccess({ on: onAccessScan });
+      settings = { ...settings, ...rest };
       await saveSettings(settingsFile, settings);
       clipboard.configure({ enabled: settings.clipboardGuard });
       credentials.configure({ enabled: settings.credentialGuard });
+      // Real-time and ransomware watching follow their toggles at once.
+      await protection.apply();
     },
     quickScan() {
       return scans.quick();
@@ -200,6 +277,8 @@ export async function runDaemon(env: NodeJS.ProcessEnv = process.env) {
   const checkListeners = () => void host.listeners.check().then((fresh) => (fresh.length ? handlers["home.get"]?.(undefined).then((m) => emit("home.changed", m)) : undefined)).catch(() => undefined);
   checkListeners();
   setInterval(checkListeners, 60_000).unref();
+  // Real-time protection: new-file watching, ransomware watch and decoys, on-access.
+  await host.protection.start().catch((error: unknown) => console.error(`Protection did not start: ${String(error)}`));
   // Behaviour rules: new programs every second or two (the first look only records what runs).
   const behaviourCap = host.behaviour.capability();
   if (host.behaviour.isSupported()) {

@@ -15,6 +15,7 @@ import type { SafeDnsService } from "./safe-dns-service";
 import type { SafePayService } from "./safepay-service";
 import type { SandboxService } from "./sandbox-service";
 import type { ScanEngineService } from "./scan-engine-service";
+import type { ProtectionService } from "./protection-service";
 import type { ScanService } from "./scan-service";
 import { IpcError } from "./protocol";
 
@@ -49,6 +50,8 @@ export interface CoreHost {
   scanEngine?: ScanEngineService;
   /** Scans, results, the file inspector, exclusions and quarantine. */
   scans?: ScanService;
+  /** Real-time protection: watching, ransomware, on-access, CFA, terminal, Wi-Fi and updates. */
+  protection?: ProtectionService;
 }
 
 export type Handler = (params: unknown) => Promise<unknown>;
@@ -111,6 +114,29 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       await changed();
       return totals;
     },
+    "protection.get": async () => requireProtection(host).status(),
+    "protection.system": async () => requireProtection(host).system(),
+    "protection.realtime": async (params) => {
+      const status = await requireProtection(host).setRealtime(params);
+      await changed();
+      return status;
+    },
+    "protection.ransomware": async (params) => {
+      const status = await requireProtection(host).setRansomware(params);
+      await changed();
+      return status;
+    },
+    "protection.decoys": async (params) => requireProtection(host).setDecoys(params),
+    "protection.folder_add": async (params) => requireProtection(host).addFolder(params),
+    "protection.folder_remove": async (params) => requireProtection(host).removeFolder(params),
+    "protection.onaccess": async (params) => {
+      const status = await requireProtection(host).setOnAccess(params);
+      await changed();
+      return status;
+    },
+    "protection.halted": async (params) => requireProtection(host).resolveHalted(params),
+    "protection.cfa": async (params) => requireProtection(host).cfaApply(params),
+    "protection.terminal": async (params) => requireProtection(host).setTerminal(params),
     "scan.get": async () => requireScans(host).status(),
     "scan.custom": async (params) => {
       const totals = await requireScans(host).custom(params);
@@ -224,6 +250,11 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       return status;
     },
   };
+}
+
+function requireProtection(host: CoreHost): ProtectionService {
+  if (!host.protection) throw new IpcError("unavailable", "Real-time protection settings need the background service.");
+  return host.protection;
 }
 
 function requireScans(host: CoreHost): ScanService {

@@ -2,8 +2,8 @@
 //! no window, so it is tested directly.
 
 use qalaa_ipc::{
-    BehaviourStatus, BrokerStatus, CheckStatus, CredentialStatus, DeepCheck, HomeModel, ListenerStatus, PostureState, QuarantineItem,
-    SandboxRun, ScanDetails, ScanStatus,
+    BehaviourStatus, BrokerStatus, CheckStatus, CredentialStatus, DeepCheck, HomeModel, ListenerStatus, PostureState, ProtectionStatus,
+    QuarantineItem, SandboxRun, ScanDetails, ScanStatus, SystemChecks,
 };
 
 use crate::strings::{t, Lang};
@@ -192,6 +192,10 @@ pub fn palette_entries(view: Option<&HomeView>, lang: Lang) -> Vec<PaletteEntry>
         PaletteEntry {
             id: "page.quarantine".into(),
             title: t(lang, "nav.quarantine").into(),
+        },
+        PaletteEntry {
+            id: "page.protection".into(),
+            title: t(lang, "nav.protection").into(),
         },
         PaletteEntry {
             id: "page.ports".into(),
@@ -696,9 +700,211 @@ pub fn quarantine_view(items: &[QuarantineItem], now: i64, lang: Lang) -> Vec<Qu
         .collect()
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProtectionPageView {
+    /// realtime, onaccess, ransomware, decoys, terminal (in that order; terminal only off Windows).
+    pub toggles: Vec<ToggleView>,
+    pub folders: Vec<String>,
+    /// Frozen processes: id is the pid.
+    pub halted: Vec<QuarantineView>,
+    /// Ransomware alert and Controlled Folder Access state, as (title, detail).
+    pub notes: Vec<(String, String)>,
+    pub show_cfa: bool,
+}
+
+fn fill(lang: Lang, key: &str, pairs: &[(&str, String)]) -> String {
+    let mut text = t(lang, key).to_owned();
+    for (name, value) in pairs {
+        text = text.replace(&format!("{{{name}}}"), value);
+    }
+    text
+}
+
+pub fn protection_view(status: &ProtectionStatus, now: i64, lang: Lang) -> ProtectionPageView {
+    let mut toggles = vec![ToggleView {
+        key: "realtime".into(),
+        label: t(lang, "prot.realtime").into(),
+        hint: fill(lang, "prot.realtime_hint", &[("folders", status.realtime.folders.join(", "))]),
+        on: status.realtime.on,
+        available: true,
+    }];
+    let oa = &status.on_access;
+    let onaccess_hint = if !oa.supported {
+        t(lang, "prot.onaccess_linux").to_owned()
+    } else if oa.on && oa.state != "active" {
+        fill(lang, "prot.onaccess_state", &[("state", oa.state.clone())])
+    } else if !oa.manageable && !oa.on {
+        t(lang, "prot.onaccess_unmanageable").to_owned()
+    } else {
+        t(lang, "prot.onaccess_hint").to_owned()
+    };
+    toggles.push(ToggleView {
+        key: "onaccess".into(),
+        label: t(lang, "prot.onaccess").into(),
+        hint: onaccess_hint,
+        on: oa.on,
+        available: oa.supported && (oa.manageable || oa.on),
+    });
+    let rw = &status.ransomware;
+    toggles.push(ToggleView {
+        key: "ransomware".into(),
+        label: t(lang, "prot.ransomware").into(),
+        hint: if rw.folders.is_empty() {
+            t(lang, "prot.no_folders").to_owned()
+        } else {
+            t(lang, "prot.ransomware_hint").to_owned()
+        },
+        on: rw.on,
+        available: true,
+    });
+    toggles.push(ToggleView {
+        key: "decoys".into(),
+        label: t(lang, "prot.decoys").into(),
+        hint: fill(lang, "prot.decoys_hint", &[("n", rw.decoy_count.to_string())]),
+        on: rw.decoys,
+        available: rw.on,
+    });
+    if status.terminal.supported {
+        let shells: Vec<String> = status
+            .terminal
+            .shells
+            .iter()
+            .map(|s| format!("{} {}", s.shell, if s.enabled { t(lang, "prot.on") } else { t(lang, "prot.off") }))
+            .collect();
+        toggles.push(ToggleView {
+            key: "terminal".into(),
+            label: t(lang, "prot.terminal").into(),
+            hint: format!("{} {}", t(lang, "prot.terminal_hint"), shells.join(", ")),
+            on: status.terminal.shells.iter().any(|s| s.enabled),
+            available: true,
+        });
+    }
+    let halted = rw
+        .halted
+        .iter()
+        .map(|h| QuarantineView {
+            id: h.pid.to_string(),
+            title: fill(lang, "prot.halted_title", &[("pid", h.pid.to_string())]),
+            detail: format!("{} · {}", h.reason, relative(Some(&h.at), now, lang)),
+        })
+        .collect();
+    let mut notes = Vec::new();
+    if let Some(alert) = &rw.last_alert {
+        notes.push((
+            fill(lang, "prot.alert", &[("when", relative(Some(&alert.at), now, lang))]),
+            format!("{} · {}", alert.reasons.join("; "), alert.examples.join(", ")),
+        ));
+    }
+    if let Some(cfa) = &status.cfa {
+        let state = match t(lang, &format!("prot.cfa.{}", cfa.state)) {
+            "?" => cfa.state.clone(),
+            s => s.to_owned(),
+        };
+        let mut detail = Vec::new();
+        if !cfa.folders.is_empty() {
+            detail.push(format!("{} {}", t(lang, "prot.cfa_folders"), cfa.folders.join(", ")));
+        }
+        if !cfa.allowed_apps.is_empty() {
+            detail.push(format!("{} {}", t(lang, "prot.cfa_apps"), cfa.allowed_apps.join(", ")));
+        }
+        notes.push((format!("{} {state}", t(lang, "prot.cfa")), detail.join(" · ")));
+    }
+    ProtectionPageView {
+        toggles,
+        folders: rw.folders.clone(),
+        halted,
+        notes,
+        show_cfa: status.cfa.as_ref().is_some_and(|c| c.supported),
+    }
+}
+
+/// The Wi-Fi and updates checks as (title, detail). A check that couldn't run says so.
+pub fn system_view(checks: &SystemChecks, lang: Lang) -> Vec<(String, String)> {
+    let wifi = match &checks.wifi {
+        None => (t(lang, "prot.wifi_unknown").to_owned(), String::new()),
+        Some(w) if w.risk == "none" || w.ssid.is_none() => (t(lang, "prot.wifi_none").to_owned(), String::new()),
+        Some(w) => {
+            let name = w.ssid.clone().unwrap_or_default();
+            let key = match w.risk.as_str() {
+                "open" => "prot.wifi_open",
+                "weak" => "prot.wifi_weak",
+                "ok" => "prot.wifi_ok",
+                _ => "prot.wifi_unclear",
+            };
+            (fill(lang, key, &[("ssid", name)]), w.security.clone().unwrap_or_default())
+        }
+    };
+    let updates = match &checks.updates {
+        None => (t(lang, "prot.updates_unknown").to_owned(), String::new()),
+        Some(u) if u.count == 0 => (t(lang, "prot.updates_none").to_owned(), u.source.clone()),
+        Some(u) => (
+            fill(lang, "prot.updates", &[("n", u.count.to_string()), ("source", u.source.clone())]),
+            u.items.iter().take(8).map(|i| i.name.clone()).collect::<Vec<_>>().join(", "),
+        ),
+    };
+    vec![wifi, updates]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn protection_fixture() -> serde_json::Value {
+        serde_json::from_str(include_str!("../../qalaa-ipc/tests/fixtures/protection.json")).expect("fixture")
+    }
+
+    #[test]
+    fn protection_page_lists_switches_frozen_programs_and_alerts() {
+        let json = protection_fixture();
+        let linux: qalaa_ipc::ProtectionStatus = serde_json::from_value(json["linux"].clone()).expect("linux");
+        let now = parse_iso("2026-11-25T12:30:00Z").expect("time");
+        let view = protection_view(&linux, now, Lang::En);
+        let keys: Vec<&str> = view.toggles.iter().map(|t| t.key.as_str()).collect();
+        assert_eq!(keys, ["realtime", "onaccess", "ransomware", "decoys", "terminal"]);
+        assert!(view.toggles.iter().all(|t| t.available));
+        assert_eq!(view.toggles[0].hint, "Checks each new file in: /home/me/Downloads");
+        assert_eq!(view.halted[0].id, "4242");
+        assert_eq!(view.halted[0].title, "Program 4242 was frozen");
+        assert!(view.notes[0].0.starts_with("Possible ransomware activity, 30 minutes ago"));
+        assert!(!view.show_cfa);
+
+        let windows: qalaa_ipc::ProtectionStatus = serde_json::from_value(json["windows"].clone()).expect("windows");
+        let view = protection_view(&windows, now, Lang::En);
+        // No terminal protection on Windows; on-access is Linux only and says so.
+        assert!(!view.toggles.iter().any(|t| t.key == "terminal"));
+        let onaccess = view.toggles.iter().find(|t| t.key == "onaccess").expect("onaccess");
+        assert!(onaccess.available, "the fixture's fake says supported");
+        assert!(view.show_cfa);
+        assert_eq!(
+            view.notes[0].0,
+            "Windows Controlled Folder Access: audit only (logs, doesn't block)"
+        );
+        assert!(view.notes[0].1.contains("D:\\Work"));
+
+        let mut unsupported = windows.clone();
+        unsupported.on_access.supported = false;
+        let view = protection_view(&unsupported, now, Lang::Ar);
+        let onaccess = view.toggles.iter().find(|t| t.key == "onaccess").expect("onaccess");
+        assert!(!onaccess.available);
+        assert!(onaccess.hint.contains("لينكس"));
+    }
+
+    #[test]
+    fn system_checks_that_could_not_run_say_so() {
+        let json = protection_fixture();
+        let checks: qalaa_ipc::SystemChecks = serde_json::from_value(json["system"].clone()).expect("system");
+        let rows = system_view(&checks, Lang::En);
+        assert!(rows[0].0.starts_with("Wi-Fi \"Cafe\" is open"));
+        assert_eq!(rows[1], ("1 system update(s) waiting (apt)".to_owned(), "openssl".to_owned()));
+        let unknown = qalaa_ipc::SystemChecks {
+            wifi: None,
+            updates: None,
+            checked_at: checks.checked_at.clone(),
+        };
+        let rows = system_view(&unknown, Lang::En);
+        assert_eq!(rows[0].0, "Couldn't check the Wi-Fi on this system.");
+        assert_eq!(rows[1].0, "Couldn't check for system updates on this system.");
+    }
 
     #[test]
     fn scan_results_say_no_known_threat_never_safe() {

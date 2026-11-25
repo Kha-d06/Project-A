@@ -25,6 +25,7 @@ dependencies = [
     "yara-python>=4.5",
     "oletools>=0.60",
     "pefile>=2024.8",
+    "lief==1.0.0",
     "dnspython>=2.7",
     "pyaxmlparser>=0.3.31",
     "pyotp>=2.9",

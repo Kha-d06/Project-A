@@ -10,6 +10,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.analyzers import file_types
+from app.analyzers.binary_info import binary_findings
 from app.analyzers.file_types import FileType, extension_of
 from app.analyzers.office_macros import macro_findings
 from app.analyzers.pe_info import pe_findings
@@ -442,6 +443,11 @@ def _content_findings(path: Path, filename: str, detected: FileType, outcome: Ou
         outcome.findings += findings
         outcome.details.update(details)
 
+    if detected in (file_types.PE, file_types.ELF, file_types.MACHO):
+        findings, details = binary_findings(path, detected.key)
+        outcome.findings += findings
+        outcome.details.update(details)
+
     if detected.executable:
         outcome.findings.append(
             FindingData(
@@ -471,8 +477,8 @@ def static_inspection(
             "Structure and embedded content",
             SOURCE,
             "completed",
-            "Looked for disguised file types, macros, risky archive contents and, for Windows "
-            "programs, their capabilities.",
+            "Looked for disguised file types, macros, risky archive contents and, for "
+            "Windows, Linux and macOS programs, their capabilities and signatures.",
         )
     )
     yara_check(path, outcome, rule_set)

@@ -6,8 +6,9 @@
  * Read-only: nothing is changed. Each failed check says how to fix it.
  */
 import { execFile } from "node:child_process";
-import { readFile, stat } from "node:fs/promises";
-import { delimiter } from "node:path";
+import { lstat, readFile, readdir, stat } from "node:fs/promises";
+import { homedir } from "node:os";
+import { basename, delimiter, dirname, join } from "node:path";
 
 import { firmwarePosture } from "./firmware";
 
@@ -110,33 +111,129 @@ export function unquotedServicePaths(rows: { Name: string; PathName: string | nu
     .map((r) => r.Name);
 }
 
-/** sshd_config → root login and password authentication checks. */
-export function sshChecks(config: string): PostureCheck[] {
-  const value = (key: string) => {
-    const lines = config.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
-    const hit = lines.find((l) => l.toLowerCase().startsWith(`${key.toLowerCase()} `));
-    return hit?.split(/\s+/)[1]?.toLowerCase() ?? null;
-  };
-  const root = value("PermitRootLogin");
-  const password = value("PasswordAuthentication");
+/**
+ * sshd's effective global settings, the way sshd reads them: the first value
+ * of each keyword wins, Include pulls in other files at that point (relative
+ * paths are under /etc/ssh, globs are expanded in order), and everything after
+ * the first Match line applies only to some connections, so it doesn't count.
+ */
+export async function sshdGlobalSettings(
+  config: string,
+  readInclude: (pattern: string) => Promise<string[]> = async () => [],
+  depth = 0,
+  settings = new Map<string, string>(),
+): Promise<{ settings: Map<string, string>; matched: boolean }> {
+  for (const raw of config.split("\n")) {
+    const line = raw.replace(/#.*$/, "").trim();
+    if (!line) continue;
+    const [key = "", ...rest] = line.split(/\s+|=/).filter(Boolean);
+    const keyword = key.toLowerCase();
+    if (keyword === "match") return { settings, matched: true };
+    if (keyword === "include") {
+      if (depth >= 8) continue; // sshd's own limit on nesting
+      for (const pattern of rest) {
+        for (const text of await readInclude(pattern.startsWith("/") ? pattern : `/etc/ssh/${pattern}`)) {
+          const inner = await sshdGlobalSettings(text, readInclude, depth + 1, settings);
+          if (inner.matched) return inner;
+        }
+      }
+      continue;
+    }
+    if (!settings.has(keyword) && rest.length) settings.set(keyword, rest.join(" ").toLowerCase());
+  }
+  return { settings, matched: false };
+}
+
+/** `sshd -T` prints every effective setting as "keyword value" (needs root). */
+export function parseSshdT(output: string): Map<string, string> {
+  const settings = new Map<string, string>();
+  for (const line of output.split("\n")) {
+    const m = /^(\S+)\s+(.*)$/.exec(line.trim());
+    if (m && !settings.has(m[1]!.toLowerCase())) settings.set(m[1]!.toLowerCase(), m[2]!.toLowerCase());
+  }
+  return settings;
+}
+
+/** Root login, password sign-in and empty passwords, from sshd's effective settings. */
+export function sshChecksFrom(settings: Map<string, string>, source: "sshd -T" | "config files"): PostureCheck[] {
+  const root = settings.get("permitrootlogin") ?? null;
+  const password = settings.get("passwordauthentication") ?? null;
+  const empty = settings.get("permitemptypasswords") ?? null;
+  const from = source === "sshd -T" ? " (sshd -T)" : "";
   return [
     {
       id: "ssh-root",
       title: "SSH does not allow root to sign in with a password",
       status: root === "yes" ? "fail" : "pass",
-      detail: root ? `PermitRootLogin ${root}` : "Default (prohibit-password).",
-      fix: 'Set "PermitRootLogin no" in /etc/ssh/sshd_config and restart sshd.',
+      detail: root ? `PermitRootLogin ${root}${from}` : "Default (prohibit-password).",
+      fix: 'Set "PermitRootLogin no" in /etc/ssh/sshd_config (or a file it includes) and restart sshd.',
       weight: 8,
     },
     {
       id: "ssh-passwords",
       title: "SSH uses keys rather than passwords",
       status: password === "no" ? "pass" : "warn",
-      detail: password ? `PasswordAuthentication ${password}` : "Passwords are allowed (default).",
+      detail: password ? `PasswordAuthentication ${password}${from}` : "Passwords are allowed (default).",
       fix: 'Set up key sign-in, then "PasswordAuthentication no".',
       weight: 4,
     },
+    {
+      id: "ssh-empty-passwords",
+      title: "SSH refuses accounts with empty passwords",
+      status: empty === "yes" ? "fail" : "pass",
+      detail: empty ? `PermitEmptyPasswords ${empty}${from}` : null,
+      fix: 'Set "PermitEmptyPasswords no".',
+      weight: 6,
+    },
   ];
+}
+
+/** sshd_config text alone (no includes): kept for callers and tests. */
+export async function sshChecks(config: string): Promise<PostureCheck[]> {
+  return sshChecksFrom((await sshdGlobalSettings(config)).settings, "config files");
+}
+
+export interface SshEntry {
+  name: string;
+  mode: number;
+  uid: number;
+  isDir: boolean;
+}
+
+/**
+ * ~/.ssh permissions, as sshd and ssh expect them (Lynis-style): the folder is
+ * private, private keys are readable only by you, authorized_keys can't be
+ * changed by others, and everything belongs to you.
+ */
+export function sshPermissionsCheck(folder: SshEntry | null, files: SshEntry[], uid: number): PostureCheck {
+  if (!folder) return { id: "ssh-permissions", title: "Your SSH keys are private", status: "pass", detail: "No ~/.ssh folder.", fix: null, weight: 6 };
+  const problems: string[] = [];
+  const fixes: string[] = [];
+  if (folder.uid !== uid) problems.push("~/.ssh belongs to another user");
+  if (folder.mode & 0o077) {
+    problems.push(`~/.ssh is open to others (${(folder.mode & 0o777).toString(8)})`);
+    fixes.push("chmod 700 ~/.ssh");
+  }
+  for (const f of files.filter((e) => !e.isDir)) {
+    const publicFile = /\.pub$|^known_hosts(\.old)?$|^config$/.test(f.name);
+    if (f.uid !== uid) problems.push(`${f.name} belongs to another user`);
+    if (f.name.startsWith("authorized_keys") && f.mode & 0o022) {
+      problems.push(`${f.name} can be changed by others`);
+      fixes.push(`chmod 600 ~/.ssh/${f.name}`);
+    } else if (!publicFile && !f.name.startsWith("authorized_keys") && f.mode & 0o077) {
+      problems.push(`${f.name} can be read by others`);
+      fixes.push(`chmod 600 ~/.ssh/${f.name}`);
+    }
+  }
+  const serious = problems.some((p) => / can be (read|changed) by others| belongs to another user/.test(p));
+  return {
+    id: "ssh-permissions",
+    title: "Your SSH keys are private",
+    status: problems.length === 0 ? "pass" : serious ? "fail" : "warn",
+    detail: problems.length ? problems.join("; ") : `${files.length} files checked.`,
+    fix: fixes.length ? fixes.join(" && ") : problems.length ? "Make sure ~/.ssh and its files belong to you." : null,
+    weight: 6,
+  };
 }
 
 // --- Collection --------------------------------------------------------------------------
@@ -244,6 +341,46 @@ export const KERNEL_HARDENING: { key: string; path: string; ok: (value: number) 
   { key: "kernel.unprivileged_bpf_disabled", path: "/proc/sys/kernel/unprivileged_bpf_disabled", ok: (v) => v >= 1, why: "any user can load BPF programs into the kernel" },
 ];
 
+/** Network settings for a computer that isn't a router (Lynis / CIS benchmark values). */
+export const NETWORK_HARDENING: { key: string; ok: (value: number) => boolean; want: number; why: string }[] = [
+  { key: "net.ipv4.conf.all.rp_filter", ok: (v) => v === 1 || v === 2, want: 1, why: "packets with forged source addresses are accepted" },
+  { key: "net.ipv4.conf.all.accept_redirects", ok: (v) => v === 0, want: 0, why: "any machine on the network can redirect your traffic" },
+  { key: "net.ipv4.conf.default.accept_redirects", ok: (v) => v === 0, want: 0, why: "new network connections accept traffic redirects" },
+  { key: "net.ipv6.conf.all.accept_redirects", ok: (v) => v === 0, want: 0, why: "any machine on the network can redirect your IPv6 traffic" },
+  { key: "net.ipv4.conf.all.secure_redirects", ok: (v) => v === 0, want: 0, why: "redirects from the gateway are still accepted" },
+  { key: "net.ipv4.conf.all.accept_source_route", ok: (v) => v === 0, want: 0, why: "senders can choose the route their packets take" },
+  { key: "net.ipv6.conf.all.accept_source_route", ok: (v) => v === 0, want: 0, why: "senders can choose the route their IPv6 packets take" },
+  { key: "net.ipv4.conf.all.send_redirects", ok: (v) => v === 0, want: 0, why: "this computer tells others to reroute traffic, which only routers should do" },
+  { key: "net.ipv4.tcp_syncookies", ok: (v) => v === 1, want: 1, why: "a flood of half-open connections can exhaust the network stack" },
+  { key: "net.ipv4.icmp_echo_ignore_broadcasts", ok: (v) => v === 1, want: 1, why: "broadcast pings can be used to amplify attacks" },
+  { key: "net.ipv4.conf.all.log_martians", ok: (v) => v === 1, want: 1, why: "packets with impossible addresses aren't logged" },
+];
+
+export const sysctlPath = (key: string) => `/proc/sys/${key.replace(/\./g, "/")}`;
+
+/**
+ * A machine that forwards packets (a router, or a Docker or VM host) needs
+ * some of these differently, so those keys are skipped there.
+ */
+export function networkHardeningCheck(values: Record<string, number | null>, forwarding: boolean): PostureCheck {
+  const routerOnly = new Set(["net.ipv4.conf.all.send_redirects", "net.ipv4.conf.all.rp_filter"]);
+  const applicable = NETWORK_HARDENING.filter((k) => !(forwarding && routerOnly.has(k.key)));
+  const known = applicable.filter((k) => values[k.key] !== null && values[k.key] !== undefined);
+  const weak = known.filter((k) => !k.ok(values[k.key]!));
+  return {
+    id: "network-hardening",
+    title: "Network protections in the kernel are on",
+    status: !known.length ? "unknown" : weak.length === 0 ? "pass" : weak.length <= 2 ? "warn" : "fail",
+    detail: weak.length
+      ? weak.map((k) => `${k.key} = ${values[k.key]}: ${k.why}`).join("; ")
+      : known.length
+        ? `${known.length} settings checked${forwarding ? " (this computer forwards packets, so router settings were skipped)" : ""}.`
+        : null,
+    fix: weak.length ? `Add to /etc/sysctl.d/90-network.conf and run "sudo sysctl --system": ${weak.map((k) => `${k.key} = ${k.want}`).join(", ")}` : null,
+    weight: 6,
+  };
+}
+
 export function kernelHardeningCheck(values: Record<string, number | null>): PostureCheck {
   const known = KERNEL_HARDENING.filter((k) => values[k.key] !== null && values[k.key] !== undefined);
   const weak = known.filter((k) => !k.ok(values[k.key]!));
@@ -255,6 +392,32 @@ export function kernelHardeningCheck(values: Record<string, number | null>): Pos
     fix: weak.length ? `Add to /etc/sysctl.d/90-hardening.conf and run "sudo sysctl --system": ${weak.map((k) => `${k.key} = ${k.key === "kernel.randomize_va_space" ? 2 : 1}`).join(", ")}` : null,
     weight: 6,
   };
+}
+
+/** Files an sshd Include pattern names, in sshd's (sorted) order. */
+async function readIncluded(pattern: string): Promise<string[]> {
+  const dir = dirname(pattern);
+  const glob = basename(pattern);
+  const re = new RegExp(`^${glob.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")}$`);
+  const names = glob.includes("*") || glob.includes("?") ? (await readdir(dir).catch(() => [] as string[])).filter((n) => re.test(n)).sort() : [glob];
+  const texts: string[] = [];
+  for (const name of names.slice(0, 64)) {
+    const text = await readFile(join(dir, name), "utf8").catch(() => null);
+    if (text !== null) texts.push(text);
+  }
+  return texts;
+}
+
+async function sshPermissions(): Promise<PostureCheck> {
+  const dir = join(homedir(), ".ssh");
+  const info = await stat(dir).catch(() => null);
+  if (!info?.isDirectory()) return sshPermissionsCheck(null, [], process.getuid?.() ?? 0);
+  const files: SshEntry[] = [];
+  for (const name of (await readdir(dir).catch(() => [] as string[])).slice(0, 200)) {
+    const f = await lstat(join(dir, name)).catch(() => null);
+    if (f) files.push({ name, mode: f.mode, uid: f.uid, isDir: f.isDirectory() });
+  }
+  return sshPermissionsCheck({ name: ".ssh", mode: info.mode, uid: info.uid, isDir: true }, files, process.getuid?.() ?? info.uid);
 }
 
 async function linuxChecks(): Promise<PostureCheck[]> {
@@ -269,8 +432,15 @@ async function linuxChecks(): Promise<PostureCheck[]> {
     fix: "Use your distribution's default AppArmor or SELinux profile.",
     weight: 8,
   });
-  const sshd = await readFile("/etc/ssh/sshd_config", "utf8").catch(() => null);
-  if (sshd !== null) checks.push(...sshChecks(sshd));
+  // sshd -T is exact but usually needs root; otherwise the files, includes and all.
+  const effective = await run("sshd", ["-T"]);
+  if (effective.ok && /^permitrootlogin /m.test(effective.stdout)) {
+    checks.push(...sshChecksFrom(parseSshdT(effective.stdout), "sshd -T"));
+  } else {
+    const sshd = await readFile("/etc/ssh/sshd_config", "utf8").catch(() => null);
+    if (sshd !== null) checks.push(...sshChecksFrom((await sshdGlobalSettings(sshd, readIncluded)).settings, "config files"));
+  }
+  checks.push(await sshPermissions());
   const unattended = await readFile("/etc/apt/apt.conf.d/20auto-upgrades", "utf8").catch(() => null);
   const dnfAuto = await run("systemctl", ["is-enabled", "dnf-automatic.timer"]);
   checks.push({
@@ -293,6 +463,12 @@ async function linuxChecks(): Promise<PostureCheck[]> {
     sysctl[k.key] = raw === null || !/^\s*-?\d+/.test(raw) ? null : Number.parseInt(raw, 10);
   }
   checks.push(kernelHardeningCheck(sysctl));
+  const network: Record<string, number | null> = {};
+  for (const k of [...NETWORK_HARDENING.map((n) => n.key), "net.ipv4.ip_forward"]) {
+    const raw = await readFile(sysctlPath(k), "utf8").catch(() => null);
+    network[k] = raw === null || !/^\s*-?\d+/.test(raw) ? null : Number.parseInt(raw, 10);
+  }
+  checks.push(networkHardeningCheck(network, network["net.ipv4.ip_forward"] === 1));
   checks.push({ id: "path-writable", title: "No world-writable folders in PATH", status: writable.length ? "fail" : "pass", detail: writable.length ? writable.join(", ") : null, fix: "Remove write access for others: chmod o-w <folder>", weight: 6 });
   return checks;
 }

@@ -131,7 +131,7 @@ describe("security posture", () => {
     expect(scoreChecks([check("unknown")])).toBeNull();
   });
 
-  it("reads Defender, UAC, services and SSH settings", () => {
+  it("reads Defender, UAC, services and SSH settings", async () => {
     expect(defenderChecks('{"AntivirusEnabled":true,"RealTimeProtectionEnabled":true,"AntivirusSignatureAge":1}').map((c) => c.status)).toEqual(["pass", "pass"]);
     expect(defenderChecks('{"AntivirusEnabled":true,"RealTimeProtectionEnabled":false,"AntivirusSignatureAge":12}').map((c) => c.status)).toEqual(["fail", "fail"]);
     expect(uacCheck("    EnableLUA    REG_DWORD    0x1\n    ConsentPromptBehaviorAdmin    REG_DWORD    0x5\n").status).toBe("pass");
@@ -145,8 +145,8 @@ describe("security posture", () => {
         { Name: "System", PathName: "C:\\Windows\\system32\\svchost.exe -k netsvcs" },
       ]),
     ).toEqual(["Bad"]);
-    expect(sshChecks("# comment\nPermitRootLogin yes\nPasswordAuthentication no\n").map((c) => c.status)).toEqual(["fail", "pass"]);
-    expect(sshChecks("").map((c) => c.status)).toEqual(["pass", "warn"]);
+    expect((await sshChecks("# comment\nPermitRootLogin yes\nPasswordAuthentication no\n")).map((c) => c.status)).toEqual(["fail", "pass", "pass"]);
+    expect((await sshChecks("")).map((c) => c.status)).toEqual(["pass", "warn", "pass"]);
   });
 });
 

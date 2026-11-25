@@ -161,6 +161,9 @@ export const en = {
         `Up to ${size}. The file is inspected without being opened or run, kept in isolated storage only while the scan runs, and then deleted. The file itself is never sent to a third-party service.`,
       vtConsent: "Also look up the file's fingerprint on VirusTotal",
       vtConsentHint: "Only the SHA-256 fingerprint is sent, never the file. VirusTotal may keep a record of the lookup.",
+      sandbox: "Also run it in an isolated sandbox (Linux programs and scripts)",
+      sandboxHint:
+        "It runs for up to 30 seconds on this server in gVisor, with no internet and nothing of yours, and we report what it tried to do. Windows programs aren't run.",
     },
     qr: {
       label: "Photo or screenshot of the QR code",

@@ -1,0 +1,6 @@
+I1125 13:56:05.623352       1 strace.go:606] [   6:   6] python3 X execve(0x7ebca81384a0 /bin/sh, 0x7ebca7ec3630 ["/bin/sh", "/sample/run"], 0x7ebca7ec3610 ["PATH=/usr/local/bin:/usr/bin:/bin", "HOME=/tmp/home", "LANG=C.UTF-8"]) = 0 (0x0) (7.715µs)
+I1125 13:56:05.724599       1 strace.go:606] [   7:   7] curl X connect(0x3 socket:[5], 0x7eebd4daf4c0 {Family: AF_UNIX, Addr: "/var/run/nscd/socket"}, 0x6e) = -1 errno=2 (no such file or directory) (34.564µs)
+I1125 13:56:06.107495       1 strace.go:606] [  14:  14] rm X unlinkat(AT_FDCWD /tmp, 0x55a500e37140 /sample/run, 0x0) = -1 errno=30 (read-only file system) (4.553µs)
+I1125 13:56:06.013266       1 strace.go:606] [  12:  12] chmod X fchmodat(AT_FDCWD /tmp, 0x55fc7e5e5170 /tmp/.y, 0o755) = 0 (0x0) (16.337µs)
+I1125 13:56:06.061952       1 strace.go:606] [  13:  13] python3 X connect(0x3 socket:[18], 0x7eeaade4f320 {Family: AF_INET, Addr: 203.0.113.7, Port: 4444}, 0x10) = -1 errno=101 (network is unreachable) (27.258µs)
+I1125 13:56:05.977923       1 strace.go:609] [   6:   6] sh X openat(AT_FDCWD /tmp, 0x5617f88fe648 /etc/crontab, O_WRONLY|O_APPEND|O_CREAT, 0o666) = -1 errno=30 (read-only file system) (28.078µs)

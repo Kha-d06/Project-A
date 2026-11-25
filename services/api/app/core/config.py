@@ -84,6 +84,12 @@ class Settings(BaseSettings):
     yara_rules_dir: Path | None = None
     # A signed qalaa-scan bundle (tools/scan-bundle/build_bundle.py) served to desktops.
     scan_bundle_dir: Path | None = None
+    # Sandbox runs of Linux programs and scripts (gVisor). Off unless runsc and a
+    # read-only root file system for the sandbox are configured; see docs/security.md.
+    detonation_runsc: Path | None = None
+    detonation_rootfs: Path | None = None
+    detonation_platform: str = "systrap"
+    detonation_seconds: int = 30
     max_apk_bytes: int = 100 * 1024 * 1024
     max_image_bytes: int = 10 * 1024 * 1024
 

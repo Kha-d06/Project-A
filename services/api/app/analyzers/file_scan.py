@@ -26,6 +26,7 @@ from app.core.config import get_settings
 from app.intel import providers
 from app.intel.feeds import MALWAREBAZAAR, THREATFOX
 from app.intel.lookup import find_indicators, fresh_sources
+from app.sandbox import detonation
 from app.sandbox.runner import merge_into, run_static_inspection
 
 SOURCE = "Qalaa static file inspection"
@@ -40,11 +41,46 @@ _BOMB_MIN_EXPANDED_BYTES = 100 * 1024 * 1024
 _MAX_LISTED_NAMES = 25
 
 _RUNNABLE_EXTENSIONS = frozenset(
-    {"exe", "scr", "dll", "bat", "cmd", "com", "msi", "vbs", "vbe", "js", "jse", "wsf", "hta",
-     "ps1", "lnk", "jar", "apk", "iso", "img"}
-)  # fmt: skip
-_DOCUMENT_EXTENSIONS = frozenset({"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt",
-                                  "jpg", "jpeg", "png", "gif", "rtf", "csv"})  # fmt: skip
+    {
+        "exe",
+        "scr",
+        "dll",
+        "bat",
+        "cmd",
+        "com",
+        "msi",
+        "vbs",
+        "vbe",
+        "js",
+        "jse",
+        "wsf",
+        "hta",
+        "ps1",
+        "lnk",
+        "jar",
+        "apk",
+        "iso",
+        "img",
+    }
+)
+_DOCUMENT_EXTENSIONS = frozenset(
+    {
+        "pdf",
+        "doc",
+        "docx",
+        "xls",
+        "xlsx",
+        "ppt",
+        "pptx",
+        "txt",
+        "jpg",
+        "jpeg",
+        "png",
+        "gif",
+        "rtf",
+        "csv",
+    }
+)
 _ARCHIVE_EXTENSIONS = frozenset({"zip", "rar", "7z", "gz", "tar", "iso"})
 
 # Archive members are read into memory, one at a time, under these limits. They
@@ -670,8 +706,50 @@ def analyze_file(payload: dict[str, Any], db: Session) -> Outcome:
     if payload.get("virustotal_consent"):
         virustotal_check(sha256, outcome)
 
-    outcome.limitations.append(
-        "This is static analysis: the file was inspected, never opened or run. Behaviour that "
-        "only shows when a file executes cannot be detected this way."
-    )
+    if payload.get("run_in_sandbox"):
+        sandbox_run_check(path, filename, detected, outcome)
+    else:
+        outcome.limitations.append(
+            "This is static analysis: the file was inspected, never opened or run. Behaviour that "
+            "only shows when a file executes cannot be detected this way."
+        )
     return outcome
+
+
+def sandbox_run_check(path: Path, filename: str, detected: FileType, outcome: Outcome) -> None:
+    """Runs a Linux program or script in gVisor when the person asked for it."""
+    settings = get_settings()
+    label = "Run in an isolated sandbox"
+    with path.open("rb") as f:
+        head = f.read(256)
+    kind = detonation.kind_for(detected.key, filename, head)
+    if kind is None:
+        outcome.checks.append(
+            Check(
+                "detonation",
+                label,
+                detonation.SOURCE,
+                "unavailable",
+                "Only Linux programs and shell, Python and Perl scripts can be run in the sandbox. "
+                "Windows and macOS programs aren't run.",
+            )
+        )
+        return
+    runsc, rootfs = settings.detonation_runsc, settings.detonation_rootfs
+    if not runsc or not rootfs or not runsc.exists() or not rootfs.is_dir():
+        outcome.checks.append(
+            Check(
+                "detonation",
+                label,
+                detonation.SOURCE,
+                "unavailable",
+                "This server has no sandbox for running files set up, so the file was only "
+                "inspected.",
+            )
+        )
+        return
+    limits = detonation.DetonationLimits(seconds=settings.detonation_seconds)
+    result = detonation.run_detonation(
+        path, kind, str(runsc), str(rootfs), limits, settings.detonation_platform
+    )
+    detonation.merge_detonation(outcome, result, limits)

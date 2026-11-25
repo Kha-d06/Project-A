@@ -132,6 +132,7 @@ def scan_file(
     user: OptionalUser,
     file: Annotated[UploadFile, File()],
     virustotal_consent: Annotated[bool, Form()] = False,
+    run_in_sandbox: Annotated[bool, Form()] = False,
 ) -> ScanOut:
     rate_limit.enforce(FILE_SCAN_LIMIT, _limit_subject(request, user))
     # With consent, only the SHA-256 fingerprint is sent to VirusTotal, never the file.
@@ -142,7 +143,8 @@ def scan_file(
         file,
         "file",
         get_settings().max_upload_bytes,
-        {"virustotal_consent": virustotal_consent},
+        # A sandbox run only when the person asks for it, for Linux programs and scripts.
+        {"virustotal_consent": virustotal_consent, "run_in_sandbox": run_in_sandbox},
     )
 
 

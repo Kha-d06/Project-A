@@ -74,6 +74,26 @@ jobs:
   # would (read SSH keys, browser stores, open a listener) and the real
   # background service must report it over qalaa-ipc. Linux runs in a container
   # with no network at all; Windows and macOS on fresh GitHub-hosted runners.
+  sandbox-gvisor:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: gVisor runsc (release 20261102, checked against its SHA-512)
+        run: |
+          base=https://storage.googleapis.com/gvisor/releases/release/20261102/x86_64
+          curl -sSfO "$base/gvisor.tar.bz2" && curl -sSfO "$base/gvisor.tar.bz2.sha512"
+          echo "2e6671bb2d033b871c5811ab57e16ac570988b0e0054c525f911cfaf191bab3ca4efb08e0a98daa4b9e7d248f9e5776ef2ef2f8a6b82d829646a42924c98bb05  gvisor.tar.bz2" | sha512sum -c
+          mkdir -p "$RUNNER_TEMP/gvisor" && tar -xjf gvisor.tar.bz2 -C "$RUNNER_TEMP/gvisor"
+      - run: pip install -e '.[dev]'
+      - name: A dropper-shaped script runs in gVisor with no network and a fake DNS/HTTP sink
+        run: sudo env "PATH=$PATH" QALAA_TEST_RUNSC="$RUNNER_TEMP/gvisor/runsc" python -m pytest -q tests/test_detonation.py
+
   attack-linux:
     runs-on: ubuntu-latest
     steps:

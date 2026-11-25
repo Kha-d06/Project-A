@@ -356,6 +356,7 @@ export const MAX_APK_BYTES = 100 * 1024 * 1024;
 export function FileScanForm({ reportBase }: { reportBase: string }) {
   const { t } = useI18n();
   const [virustotalConsent, setVirustotalConsent] = useState(false);
+  const [runInSandbox, setRunInSandbox] = useState(false);
   return (
     <UploadScanForm
       reportBase={reportBase}
@@ -363,14 +364,22 @@ export function FileScanForm({ reportBase }: { reportBase: string }) {
       submitLabel={t.scan.file.submit}
       maxBytes={MAX_FILE_BYTES}
       hint={t.scan.file.hint(formatBytes(MAX_FILE_BYTES))}
-      start={(file) => api.scans.file(file, { virustotalConsent })}
+      start={(file) => api.scans.file(file, { virustotalConsent, runInSandbox })}
       extra={
-        <ConsentCheckbox
-          checked={virustotalConsent}
-          onChange={setVirustotalConsent}
-          label={t.scan.file.vtConsent}
-          hint={t.scan.file.vtConsentHint}
-        />
+        <>
+          <ConsentCheckbox
+            checked={virustotalConsent}
+            onChange={setVirustotalConsent}
+            label={t.scan.file.vtConsent}
+            hint={t.scan.file.vtConsentHint}
+          />
+          <ConsentCheckbox
+            checked={runInSandbox}
+            onChange={setRunInSandbox}
+            label={t.scan.file.sandbox}
+            hint={t.scan.file.sandboxHint}
+          />
+        </>
       }
     />
   );

@@ -161,6 +161,16 @@ The background service checks newly started programs against process-creation ru
 - On Linux the person can install a small root helper (`qalaa-procwatchd.py`, one pkexec prompt, a systemd unit with `NoNewPrivileges` and `ProtectSystem=strict`). It subscribes to the kernel's netlink process connector, so every program start is reported, however short, and polling stops while it's connected. It only reports: it never blocks or changes anything, drops events while Qalaa isn't running, and forwards at most 500 a second over a socket only the person and root can open (mode 0600). A CI step runs it as root and checks it sees a command that lasts milliseconds.
 - Alerts keep the rule, the program and its parent, and a command line shortened to 300 characters with passwords, tokens and long random strings masked. One alert per rule and program per 10 minutes. The person can dismiss it or stop the program; Qalaa first checks the process still runs the same command.
 
+## Sandbox runs (Wave 4.C)
+
+When the person ticks "Also run it in an isolated sandbox", an uploaded Linux program or shell, Python or Perl script is run in gVisor (`app/sandbox/detonation.py`). Windows and macOS programs are never run, and the report says so.
+
+- `runsc --network=none`: only loopback exists. A fake DNS server inside the sandbox answers every name with 127.0.0.1 and a fake web server answers every request with an empty page (`app/sandbox/sink.py`), so the report can list the names and URLs a downloader wanted without anything leaving the server.
+- A read-only root file system; only a 32 MB `/tmp` is writable. The sample is copied into a read-only mount. `noNewPrivileges`, an OCI memory limit (256 MB), a process limit (64), one CPU, a 30-second run inside and a hard kill from outside.
+- gVisor's own syscall trace, written outside the sandbox, shows programs started, files opened for writing (including refused attempts on system files), network connections and deletions.
+- Findings are behaviours seen (downloads, direct IP connections, start-up and SSH-key changes attempted, self-deletion, debugger checks, dropped executables). They never say "known malware" by themselves, and the report states that a quiet run isn't proof: malware can wait, check for a real network, or target Windows.
+- It is off unless `SENTINEL_DETONATION_RUNSC` and `SENTINEL_DETONATION_ROOTFS` (a read-only root file system for the sandbox) are set. runsc needs root, so run it on a dedicated worker host, not in the shared API container. gVisor is pinned to release 20261102 and checked against its published SHA-512 in CI, where a dropper-shaped test script runs for real.
+
 ## Known gaps
 
 - Admin and moderator actions are not yet protected by a second confirmation step.

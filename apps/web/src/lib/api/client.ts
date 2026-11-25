@@ -301,8 +301,11 @@ export const api = {
         method: "POST",
         json: { content, ai_consent: options.aiConsent ?? false, sender: options.sender?.trim() || undefined },
       }),
-    file: (file: File, options: { virustotalConsent?: boolean } = {}) =>
-      uploadScan("/scans/file", file, options.virustotalConsent ? { virustotal_consent: "true" } : {}),
+    file: (file: File, options: { virustotalConsent?: boolean; runInSandbox?: boolean } = {}) =>
+      uploadScan("/scans/file", file, {
+        ...(options.virustotalConsent ? { virustotal_consent: "true" } : {}),
+        ...(options.runInSandbox ? { run_in_sandbox: "true" } : {}),
+      }),
     qr: (image: File) => uploadScan("/scans/qr", image),
     apk: (file: File) => uploadScan("/scans/apk", file),
     screenshot: (image: File, options: { aiConsent?: boolean } = {}) =>

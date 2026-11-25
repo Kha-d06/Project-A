@@ -81,7 +81,19 @@ describe("FileScanForm", () => {
     await userEvent.click(screen.getByRole("button", { name: "Scan file" }));
     const init = fetchMock.mock.calls[0]?.[1];
     expect(init?.body).toBeInstanceOf(FormData);
+    expect((init?.body as FormData).get("run_in_sandbox")).toBeNull();
     expect(router.push).toHaveBeenCalled();
+  });
+
+  it("asks for a sandbox run only when the box is ticked", async () => {
+    const fetchMock = mockFetch(jsonResponse(makeScan({ scan_type: "file" }), 202));
+    render(<FileScanForm reportBase="/scans" />);
+    await userEvent.upload(screen.getByLabelText("File to scan"), new File(["#!/bin/sh\necho hi"], "install.sh"));
+    await userEvent.click(screen.getByRole("checkbox", { name: /isolated sandbox/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Scan file" }));
+    const body = fetchMock.mock.calls[0]?.[1]?.body as FormData;
+    expect(body.get("run_in_sandbox")).toBe("true");
+    expect(body.get("virustotal_consent")).toBeNull();
   });
 });
 

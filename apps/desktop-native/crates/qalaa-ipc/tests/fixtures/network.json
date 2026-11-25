@@ -1,0 +1,134 @@
+{
+  "status": {
+    "scanning": false,
+    "progress": null,
+    "scan": {
+      "startedAt": "2026-11-25T18:00:00.000Z",
+      "finishedAt": "2026-11-25T18:00:00.000Z",
+      "cidr": "192.168.1.0/24",
+      "gateway": "192.168.1.1",
+      "interface": "wlan0",
+      "wifi": {
+        "ssid": "Home",
+        "risk": "ok"
+      },
+      "devices": [
+        {
+          "ip": "192.168.1.1",
+          "mac": "aa:bb:cc:00:00:01",
+          "vendor": "Netgear",
+          "hostname": null,
+          "role": "router",
+          "services": [
+            {
+              "port": 80,
+              "name": "http",
+              "banner": null
+            }
+          ],
+          "trusted": false,
+          "firstSeen": "2026-11-25T12:00:00.000Z",
+          "key": "mac:aa:bb:cc:00:00:01"
+        },
+        {
+          "ip": "192.168.1.20",
+          "mac": "aa:bb:cc:00:00:20",
+          "vendor": null,
+          "hostname": "my-laptop",
+          "role": "self",
+          "services": [],
+          "trusted": false,
+          "firstSeen": "2026-11-25T12:00:00.000Z",
+          "key": "mac:aa:bb:cc:00:00:20"
+        },
+        {
+          "ip": "192.168.1.40",
+          "mac": "aa:bb:cc:00:00:40",
+          "vendor": "Samsung",
+          "hostname": "living-room-tv",
+          "role": "device",
+          "services": [],
+          "trusted": false,
+          "firstSeen": "2026-11-25T12:00:00.000Z",
+          "key": "mac:aa:bb:cc:00:00:40"
+        }
+      ],
+      "router": {
+        "ip": "192.168.1.1",
+        "adminHttp": true,
+        "hint": "Netgear",
+        "portForwards": [
+          {
+            "external": 8080,
+            "internal": "192.168.1.30:80",
+            "protocol": "TCP",
+            "description": "camera"
+          }
+        ],
+        "upnp": true,
+        "dns": [
+          {
+            "address": "192.168.1.1",
+            "known": false
+          }
+        ]
+      },
+      "findings": [
+        {
+          "severity": "critical",
+          "rule": "default_login",
+          "title": "ipcam accepts a factory default login",
+          "detail": "Change the admin password on the camera.",
+          "device": "192.168.1.30"
+        }
+      ],
+      "capabilities": {
+        "neighbours": "ok",
+        "mdns": "ok"
+      },
+      "newDevices": [
+        "mac:aa:bb:cc:00:00:40"
+      ]
+    },
+    "changes": {
+      "comparedWith": "2026-11-25T12:00:00.000Z",
+      "newDevices": [
+        "mac:aa:bb:cc:00:00:40"
+      ],
+      "gone": [
+        {
+          "key": "mac:aa:bb:cc:00:00:30",
+          "ip": "192.168.1.30",
+          "name": "ipcam"
+        }
+      ],
+      "newRisks": [
+        {
+          "severity": "critical",
+          "rule": "default_login",
+          "title": "ipcam accepts a factory default login",
+          "detail": "Change the admin password on the camera.",
+          "device": "192.168.1.30"
+        }
+      ]
+    },
+    "watch": {
+      "on": true,
+      "everyHours": 6,
+      "nextAt": "2026-11-26T00:00:00.000Z"
+    }
+  },
+  "credentials": {
+    "ip": "192.168.1.1",
+    "results": [
+      {
+        "device": "192.168.1.1",
+        "service": "http",
+        "defaultAccepted": false,
+        "user": null,
+        "tried": 5,
+        "stopped": null
+      }
+    ]
+  }
+}

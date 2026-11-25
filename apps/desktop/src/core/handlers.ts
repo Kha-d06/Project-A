@@ -15,6 +15,7 @@ import type { SafeDnsService } from "./safe-dns-service";
 import type { SafePayService } from "./safepay-service";
 import type { SandboxService } from "./sandbox-service";
 import type { ScanEngineService } from "./scan-engine-service";
+import type { NetworkService } from "./network-service";
 import type { ProtectionService } from "./protection-service";
 import type { ScanService } from "./scan-service";
 import { IpcError } from "./protocol";
@@ -52,6 +53,8 @@ export interface CoreHost {
   scans?: ScanService;
   /** Real-time protection: watching, ransomware, on-access, CFA, terminal, Wi-Fi and updates. */
   protection?: ProtectionService;
+  /** The home network scanner, its inventory, changes and default-password check. */
+  network?: NetworkService;
 }
 
 export type Handler = (params: unknown) => Promise<unknown>;
@@ -73,7 +76,7 @@ export function toggleChanges(params: unknown): Partial<Record<HomeToggle["key"]
 
 /** Events pushed to every client (the native window and the Guardian pet). */
 export type Emit = (
-  event: "home.changed" | "scan.started" | "scan.progress" | "scan.finished" | "threat.blocked" | "alert" | "clipboard.armed" | "clipboard.cleared" | "safepay.started" | "safepay.ended",
+  event: "home.changed" | "scan.started" | "scan.progress" | "scan.finished" | "network.progress" | "network.scanned" | "threat.blocked" | "alert" | "clipboard.armed" | "clipboard.cleared" | "safepay.started" | "safepay.ended",
   payload: unknown,
 ) => void;
 
@@ -114,6 +117,14 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       await changed();
       return totals;
     },
+    "network.get": async () => requireNetwork(host).status(),
+    "network.scan": async () => {
+      const status = await requireNetwork(host).scan();
+      await changed();
+      return status;
+    },
+    "network.trust": async (params) => requireNetwork(host).trust(params),
+    "network.credentials": async (params) => requireNetwork(host).checkCredentials(params),
     "protection.get": async () => requireProtection(host).status(),
     "protection.system": async () => requireProtection(host).system(),
     "protection.realtime": async (params) => {
@@ -250,6 +261,11 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       return status;
     },
   };
+}
+
+function requireNetwork(host: CoreHost): NetworkService {
+  if (!host.network) throw new IpcError("unavailable", "The home network scanner needs the background service.");
+  return host.network;
 }
 
 function requireProtection(host: CoreHost): ProtectionService {

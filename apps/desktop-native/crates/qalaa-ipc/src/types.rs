@@ -460,3 +460,146 @@ pub struct SystemChecks {
     pub updates: Option<UpdatesStatus>,
     pub checked_at: String,
 }
+
+/// A service found listening on a device. Mirrors engine/network/types.ts.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NetService {
+    pub port: u16,
+    pub name: String,
+    pub banner: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetDevice {
+    /// Inventory key, for marking the device as known.
+    pub key: String,
+    pub ip: String,
+    pub mac: Option<String>,
+    pub vendor: Option<String>,
+    pub hostname: Option<String>,
+    /// "router", "self" or "device".
+    pub role: String,
+    pub services: Vec<NetService>,
+    pub trusted: bool,
+    pub first_seen: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NetFinding {
+    /// "critical", "high", "medium", "low" or "info".
+    pub severity: String,
+    pub rule: String,
+    pub title: String,
+    pub detail: String,
+    /// The device (IP) it's about, or `None` for the whole network.
+    pub device: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PortForward {
+    pub external: u16,
+    pub internal: String,
+    pub protocol: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DnsServer {
+    pub address: String,
+    pub known: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RouterInfo {
+    pub ip: Option<String>,
+    pub admin_http: bool,
+    pub hint: Option<String>,
+    pub port_forwards: Vec<PortForward>,
+    pub upnp: bool,
+    pub dns: Vec<DnsServer>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NetWifi {
+    pub ssid: Option<String>,
+    pub risk: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkScan {
+    pub started_at: String,
+    pub finished_at: String,
+    pub cidr: Option<String>,
+    pub gateway: Option<String>,
+    pub interface: Option<String>,
+    pub wifi: Option<NetWifi>,
+    pub devices: Vec<NetDevice>,
+    pub router: Option<RouterInfo>,
+    pub findings: Vec<NetFinding>,
+    /// Which steps could run: "ok", "unsupported" or "unavailable" per step.
+    pub capabilities: std::collections::BTreeMap<String, String>,
+    pub new_devices: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GoneDevice {
+    pub key: String,
+    pub ip: String,
+    pub name: Option<String>,
+}
+
+/// What changed since the previous scan.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkChanges {
+    pub compared_with: Option<String>,
+    pub new_devices: Vec<String>,
+    pub gone: Vec<GoneDevice>,
+    pub new_risks: Vec<NetFinding>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkWatch {
+    pub on: bool,
+    pub every_hours: u32,
+    pub next_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NetworkProgress {
+    pub done: u32,
+    pub total: u32,
+    pub phase: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NetworkStatus {
+    pub scanning: bool,
+    pub progress: Option<NetworkProgress>,
+    pub scan: Option<NetworkScan>,
+    pub changes: Option<NetworkChanges>,
+    pub watch: NetworkWatch,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CredentialCheck {
+    pub device: String,
+    /// "http", "telnet" or "ftp" (with the port, as the service reports it).
+    pub service: String,
+    /// A factory default login was accepted.
+    pub default_accepted: bool,
+    pub user: Option<String>,
+    pub tried: u32,
+    pub stopped: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CredentialChecks {
+    pub ip: String,
+    pub results: Vec<CredentialCheck>,
+}

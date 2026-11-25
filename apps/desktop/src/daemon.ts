@@ -22,6 +22,7 @@ import { CredentialGuardService, pollMs as credentialPollMs } from "./core/crede
 import { KeyboardService } from "./core/keyboard-service";
 import { ListenerService } from "./core/listener-service";
 import { ScanEngineService } from "./core/scan-engine-service";
+import { NetworkService } from "./core/network-service";
 import { ProtectionService, onAccessIdentity } from "./core/protection-service";
 import { HISTORY_LIMIT, ScanService } from "./core/scan-service";
 import { SandboxService } from "./core/sandbox-service";
@@ -48,6 +49,9 @@ import { RansomwareMonitor } from "./engine/ransomware";
 import { scanFile } from "./engine/scanner";
 import { disableTerminal, enableTerminal, terminalStatus } from "./engine/shell-init";
 import { pendingUpdates, wifiStatus } from "./engine/system";
+import { checkHttp, checkLineService } from "./engine/network/credentials";
+import { loadInventory, saveInventory } from "./engine/network/inventory";
+import { scanNetwork } from "./engine/network/scan";
 import { FolderWatcher } from "./engine/watcher";
 import { deepCheck } from "./engine/tools";
 import { fetchSignatures, lookupHash } from "./engine/server";
@@ -66,7 +70,7 @@ async function mtime(file: string): Promise<string | null> {
   }
 }
 
-export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService; safePay: SafePayService; aliases: AliasService; brokers: BrokerService; scanEngine: ScanEngineService; behaviour: BehaviourService; protection: ProtectionService }> {
+export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService; safePay: SafePayService; aliases: AliasService; brokers: BrokerService; scanEngine: ScanEngineService; behaviour: BehaviourService; protection: ProtectionService; network: NetworkService }> {
   const settingsFile = join(dataDir, "settings.json");
   const historyFile = join(dataDir, "history.json");
   let settings = await loadSettings(settingsFile, defaultSettings(join(homedir(), "Downloads"), [], hostname().slice(0, 80) || "This computer"));
@@ -190,6 +194,20 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     wifi: () => wifiStatus(),
     updates: () => pendingUpdates(),
   });
+  const inventoryFile = join(dataDir, "network-devices.json");
+  // Test hook, as in the classic app: scan an explicit host list instead of the live network.
+  const forceHosts = process.env.QALAA_TEST_NETWORK_HOST?.split(",").map((h) => h.trim()).filter(Boolean);
+  const network = new NetworkService({
+    scanFile: join(dataDir, "network-scan.json"),
+    loadInventory: () => loadInventory(inventoryFile),
+    saveInventory: (inventory) => saveInventory(inventoryFile, inventory),
+    scanNetwork: (onProgress) => scanNetwork({ forceHosts: forceHosts?.length ? forceHosts : undefined, onProgress }),
+    checkHttp: (ip, port) => checkHttp(ip, port),
+    checkLineService: (ip, port, service) => checkLineService(ip, port, service),
+    watchOn: () => settings.networkWatch,
+    emit,
+  });
+  await network.load();
   const history = () => scans.results();
 
   return {
@@ -208,6 +226,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     brokers,
     scans,
     protection,
+    network,
     async homeInput(): Promise<HomeInput> {
       const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       return {
@@ -220,7 +239,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
         cloudLookup: settings.cloudLookup,
         signatures: { count: signatures.size, updatedAt: signatures.meta?.updatedAt ?? null, error: signatureError },
         lastScanAt: history()[0]?.scannedAt ?? null,
-        lastNetworkScanAt: await mtime(join(dataDir, "network-devices.json")),
+        lastNetworkScanAt: network.lastScanAt() ?? (await mtime(join(dataDir, "network-devices.json"))),
         lastBackupAt: settings.lastBackup?.at ?? null,
         lastBackupError: settings.lastBackupError,
         backupConfigured: settings.backupFolders.length > 0 && Boolean(settings.backupDestination),
@@ -279,6 +298,8 @@ export async function runDaemon(env: NodeJS.ProcessEnv = process.env) {
   setInterval(checkListeners, 60_000).unref();
   // Real-time protection: new-file watching, ransomware watch and decoys, on-access.
   await host.protection.start().catch((error: unknown) => console.error(`Protection did not start: ${String(error)}`));
+  // Watch my network: the scheduled rescan, checked hourly, runs when the last scan is 6 hours old.
+  setInterval(() => void host.network.tick().catch(() => undefined), 60 * 60_000).unref();
   // Behaviour rules: new programs every second or two (the first look only records what runs).
   const behaviourCap = host.behaviour.capability();
   if (host.behaviour.isSupported()) {

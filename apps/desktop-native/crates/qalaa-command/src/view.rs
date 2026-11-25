@@ -2,8 +2,8 @@
 //! no window, so it is tested directly.
 
 use qalaa_ipc::{
-    BehaviourStatus, BrokerStatus, CheckStatus, CredentialStatus, DeepCheck, HomeModel, ListenerStatus, PostureState, ProtectionStatus,
-    QuarantineItem, SandboxRun, ScanDetails, ScanStatus, SystemChecks,
+    BehaviourStatus, BrokerStatus, CheckStatus, CredentialChecks, CredentialStatus, DeepCheck, HomeModel, ListenerStatus, NetworkStatus,
+    PostureState, ProtectionStatus, QuarantineItem, SandboxRun, ScanDetails, ScanStatus, SystemChecks,
 };
 
 use crate::strings::{t, Lang};
@@ -196,6 +196,10 @@ pub fn palette_entries(view: Option<&HomeView>, lang: Lang) -> Vec<PaletteEntry>
         PaletteEntry {
             id: "page.protection".into(),
             title: t(lang, "nav.protection").into(),
+        },
+        PaletteEntry {
+            id: "page.network".into(),
+            title: t(lang, "nav.network").into(),
         },
         PaletteEntry {
             id: "page.ports".into(),
@@ -845,9 +849,317 @@ pub fn system_view(checks: &SystemChecks, lang: Lang) -> Vec<(String, String)> {
     vec![wifi, updates]
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeviceCardView {
+    pub key: String,
+    pub ip: String,
+    pub title: String,
+    pub detail: String,
+    /// "new", "known", "router", "self" or "" (seen before, not marked).
+    pub badge: String,
+    pub trusted: bool,
+    /// Has a login service (web page, Telnet, FTP) the default-password check can try.
+    pub can_check: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NetworkPageView {
+    pub summary: String,
+    /// What changed since the previous scan, as (title, detail).
+    pub changes: Vec<(String, String)>,
+    pub devices: Vec<DeviceCardView>,
+    /// (title, detail, severity), most serious first.
+    pub findings: Vec<(String, String, String)>,
+    pub scanning: bool,
+}
+
+/// "Scanning the network… 120/254".
+pub fn network_progress_text(done: u32, total: u32, phase: &str, lang: Lang) -> String {
+    let key = if phase == "sweep" { "net.finding" } else { "net.checking" };
+    format!("{} {done}/{total}", t(lang, key))
+}
+
+pub fn network_view(status: &NetworkStatus, now: i64, lang: Lang) -> NetworkPageView {
+    let Some(scan) = &status.scan else {
+        return NetworkPageView {
+            summary: if let Some(p) = &status.progress {
+                network_progress_text(p.done, p.total, &p.phase, lang)
+            } else {
+                t(lang, "net.never").to_owned()
+            },
+            changes: vec![],
+            devices: vec![],
+            findings: vec![],
+            scanning: status.scanning,
+        };
+    };
+    let fresh: Vec<&str> = status
+        .changes
+        .as_ref()
+        .map(|c| c.new_devices.iter().map(String::as_str).collect())
+        .unwrap_or_default();
+    let devices = scan
+        .devices
+        .iter()
+        .map(|d| {
+            let badge = if d.role == "router" {
+                "router"
+            } else if d.role == "self" {
+                "self"
+            } else if d.trusted {
+                "known"
+            } else if fresh.contains(&d.key.as_str()) {
+                "new"
+            } else {
+                ""
+            };
+            let mut parts = vec![d.ip.clone()];
+            if let Some(v) = &d.vendor {
+                parts.push(v.clone());
+            }
+            if !d.services.is_empty() {
+                parts.push(
+                    d.services
+                        .iter()
+                        .map(|s| format!("{} {}", s.name, s.port))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                );
+            }
+            if !badge.is_empty() {
+                parts.push(t(lang, &format!("net.badge.{badge}")).to_owned());
+            }
+            if let Some(first) = &d.first_seen {
+                parts.push(format!("{} {}", t(lang, "net.first_seen"), relative(Some(first), now, lang)));
+            }
+            DeviceCardView {
+                key: d.key.clone(),
+                ip: d.ip.clone(),
+                title: d
+                    .hostname
+                    .clone()
+                    .or_else(|| d.vendor.clone())
+                    .unwrap_or_else(|| t(lang, "net.unnamed").to_owned()),
+                detail: parts.join(" · "),
+                badge: badge.into(),
+                trusted: d.trusted,
+                can_check: d.services.iter().any(|s| matches!(s.port, 80 | 8080 | 23 | 2323 | 21)),
+            }
+        })
+        .collect();
+    let rank = |s: &str| match s {
+        "critical" => 0,
+        "high" => 1,
+        "medium" => 2,
+        "low" => 3,
+        _ => 4,
+    };
+    let mut findings: Vec<(String, String, String)> = scan
+        .findings
+        .iter()
+        .map(|f| {
+            let severity = match t(lang, &format!("sev.{}", f.severity)) {
+                "?" => f.severity.clone(),
+                s => s.to_owned(),
+            };
+            (format!("[{severity}] {}", f.title), f.detail.clone(), f.severity.clone())
+        })
+        .collect();
+    findings.sort_by_key(|f| rank(&f.2));
+    let mut changes = Vec::new();
+    if let Some(c) = &status.changes {
+        if c.compared_with.is_some() {
+            let names = |keys: &[String]| -> String {
+                keys.iter()
+                    .filter_map(|k| scan.devices.iter().find(|d| &d.key == k))
+                    .map(|d| d.hostname.clone().or_else(|| d.vendor.clone()).unwrap_or_else(|| d.ip.clone()))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            if !c.new_devices.is_empty() {
+                changes.push((
+                    fill(lang, "net.changes_new", &[("n", c.new_devices.len().to_string())]),
+                    names(&c.new_devices),
+                ));
+            }
+            if !c.gone.is_empty() {
+                changes.push((
+                    fill(lang, "net.changes_gone", &[("n", c.gone.len().to_string())]),
+                    c.gone
+                        .iter()
+                        .map(|g| g.name.clone().unwrap_or_else(|| g.ip.clone()))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                ));
+            }
+            if !c.new_risks.is_empty() {
+                changes.push((
+                    fill(lang, "net.changes_risks", &[("n", c.new_risks.len().to_string())]),
+                    c.new_risks.iter().map(|r| r.title.clone()).collect::<Vec<_>>().join("; "),
+                ));
+            }
+            if changes.is_empty() {
+                changes.push((t(lang, "net.no_changes").to_owned(), String::new()));
+            }
+        }
+    }
+    let mut summary = if let Some(p) = &status.progress {
+        network_progress_text(p.done, p.total, &p.phase, lang)
+    } else {
+        fill(
+            lang,
+            "net.summary",
+            &[
+                ("n", scan.devices.len().to_string()),
+                ("cidr", scan.cidr.clone().unwrap_or_default()),
+                ("when", relative(Some(&scan.finished_at), now, lang)),
+            ],
+        )
+    };
+    if status.watch.on {
+        if let Some(next) = &status.watch.next_at {
+            summary.push_str(" · ");
+            summary.push_str(&fill(
+                lang,
+                "net.next",
+                &[("when", next.get(11..16).unwrap_or_default().to_owned())],
+            ));
+        }
+    }
+    NetworkPageView {
+        summary,
+        changes,
+        devices,
+        findings,
+        scanning: status.scanning,
+    }
+}
+
+/// The default-password check's result. Never "secure": a refused login means only that.
+pub fn credential_text(checks: &CredentialChecks, lang: Lang) -> String {
+    checks
+        .results
+        .iter()
+        .map(|r| {
+            if r.default_accepted {
+                fill(
+                    lang,
+                    "net.cred_accepted",
+                    &[("service", r.service.clone()), ("user", r.user.clone().unwrap_or_default())],
+                )
+            } else if let Some(why) = &r.stopped {
+                fill(lang, "net.cred_stopped", &[("service", r.service.clone()), ("why", why.clone())])
+            } else {
+                fill(
+                    lang,
+                    "net.cred_refused",
+                    &[("service", r.service.clone()), ("n", r.tried.to_string())],
+                )
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn network_fixture() -> serde_json::Value {
+        serde_json::from_str(include_str!("../../qalaa-ipc/tests/fixtures/network.json")).expect("fixture")
+    }
+
+    #[test]
+    fn network_page_shows_devices_changes_and_findings() {
+        let json = network_fixture();
+        let status: qalaa_ipc::NetworkStatus = serde_json::from_value(json["status"].clone()).expect("status");
+        let now = parse_iso("2026-11-25T19:00:00Z").expect("time");
+        let view = network_view(&status, now, Lang::En);
+        assert_eq!(
+            view.summary,
+            "3 devices on 192.168.1.0/24, scanned 1 hour ago · next scan at 00:00 UTC"
+        );
+        let badges: Vec<&str> = view.devices.iter().map(|d| d.badge.as_str()).collect();
+        assert_eq!(badges, ["router", "self", "new"]);
+        assert_eq!(view.devices[2].title, "living-room-tv");
+        assert!(view.devices[0].can_check, "the router has a web admin page");
+        assert!(!view.devices[2].can_check);
+        assert_eq!(view.changes[0], ("1 new device(s)".to_owned(), "living-room-tv".to_owned()));
+        assert_eq!(view.changes[1], ("1 device(s) not seen this time".to_owned(), "ipcam".to_owned()));
+        assert_eq!(view.changes[2].0, "1 new risk(s)");
+        assert!(view.findings[0].0.starts_with("[critical]"));
+        // Arabic falls back to the engine's English finding text, with an Arabic severity.
+        let ar = network_view(&status, now, Lang::Ar);
+        assert!(ar.findings[0].0.starts_with("[حرج]"));
+        for text in [&view.summary, &ar.summary] {
+            assert!(!text.to_lowercase().contains("safe"));
+        }
+    }
+
+    #[test]
+    fn never_scanned_and_first_scan_say_so() {
+        let empty = qalaa_ipc::NetworkStatus {
+            scanning: false,
+            progress: None,
+            scan: None,
+            changes: None,
+            watch: qalaa_ipc::NetworkWatch {
+                on: false,
+                every_hours: 6,
+                next_at: None,
+            },
+        };
+        assert_eq!(network_view(&empty, 0, Lang::En).summary, "Not scanned yet.");
+        let running = qalaa_ipc::NetworkStatus {
+            scanning: true,
+            progress: Some(qalaa_ipc::NetworkProgress {
+                done: 40,
+                total: 254,
+                phase: "sweep".into(),
+            }),
+            ..empty
+        };
+        assert_eq!(network_view(&running, 0, Lang::En).summary, "Finding devices… 40/254");
+    }
+
+    #[test]
+    fn default_password_results_never_say_secure() {
+        let checks = qalaa_ipc::CredentialChecks {
+            ip: "192.168.1.30".into(),
+            results: vec![
+                qalaa_ipc::CredentialCheck {
+                    device: "192.168.1.30".into(),
+                    service: "telnet".into(),
+                    default_accepted: true,
+                    user: Some("admin".into()),
+                    tried: 2,
+                    stopped: None,
+                },
+                qalaa_ipc::CredentialCheck {
+                    device: "192.168.1.30".into(),
+                    service: "http".into(),
+                    default_accepted: false,
+                    user: None,
+                    tried: 5,
+                    stopped: None,
+                },
+                qalaa_ipc::CredentialCheck {
+                    device: "192.168.1.30".into(),
+                    service: "ftp".into(),
+                    default_accepted: false,
+                    user: None,
+                    tried: 1,
+                    stopped: Some("locked out".into()),
+                },
+            ],
+        };
+        let text = credential_text(&checks, Lang::En);
+        assert_eq!(
+            text,
+            "telnet: a factory default login works (user \"admin\"). Change that password now.\nhttp: none of the 5 common default logins worked.\nftp: the check stopped (locked out)."
+        );
+        assert!(!text.to_lowercase().contains("secure"));
+    }
 
     fn protection_fixture() -> serde_json::Value {
         serde_json::from_str(include_str!("../../qalaa-ipc/tests/fixtures/protection.json")).expect("fixture")

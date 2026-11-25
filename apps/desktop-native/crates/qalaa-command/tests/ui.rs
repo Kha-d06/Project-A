@@ -478,6 +478,48 @@ fn command_centre_interface() {
     assert_eq!(labelled(&app, "Audit only").len(), 1);
     assert!(labelled(&app, "Check terminal commands").is_empty());
 
+    // --- Home network: devices, changes, mark as known, consent before the password check.
+    let net_json: serde_json::Value =
+        serde_json::from_str(include_str!("../../qalaa-ipc/tests/fixtures/network.json")).expect("network fixture");
+    let net_status: qalaa_ipc::NetworkStatus = serde_json::from_value(net_json["status"].clone()).expect("network status");
+    let net_now = qalaa_command::view::parse_iso("2026-11-25T19:00:00Z").expect("time");
+    qalaa_command::set_network(&app, &qalaa_command::view::network_view(&net_status, net_now, Lang::En));
+    app.set_page("network".into());
+    let net_calls = Rc::new(RefCell::new(Vec::<String>::new()));
+    {
+        let calls = Rc::clone(&net_calls);
+        app.on_net_scan(move || calls.borrow_mut().push("scan".to_owned()));
+    }
+    {
+        let calls = Rc::clone(&net_calls);
+        app.on_net_trust(move |key, trusted| calls.borrow_mut().push(format!("trust {key} {trusted}")));
+    }
+    {
+        let calls = Rc::clone(&net_calls);
+        app.on_net_check(move |ip| calls.borrow_mut().push(format!("check {ip}")));
+    }
+    assert!(!labelled(&app, "1 new device(s)").is_empty());
+    labelled(&app, "Scan my network")[0].invoke_accessible_default_action();
+    labelled(&app, "This is mine: living-room-tv")[0].invoke_accessible_default_action();
+    // The router and this computer can't be marked; they're always known.
+    assert!(labelled(&app, "This is mine: my-laptop").is_empty());
+    // No password check without consent.
+    let check = labelled(&app, "Try default passwords: Netgear");
+    assert_eq!(check[0].accessible_enabled(), Some(false));
+    app.set_net_consent(true);
+    labelled(&app, "Try default passwords: Netgear")[0].invoke_accessible_default_action();
+    assert_eq!(
+        *net_calls.borrow(),
+        vec![
+            "scan".to_owned(),
+            "trust mac:aa:bb:cc:00:00:40 true".to_owned(),
+            "check 192.168.1.1".to_owned()
+        ]
+    );
+    app.set_net_scanning(true);
+    assert_eq!(labelled(&app, "Scan my network")[0].accessible_enabled(), Some(false));
+    app.set_net_scanning(false);
+
     // --- About carries the Slint credit the royalty-free licence requires.
     app.set_page("about".into());
     assert!(ElementHandle::find_by_element_type_name(&app, "AboutSlint").count() >= 1);
@@ -493,4 +535,5 @@ fn command_centre_interface() {
     // The new pages are in the Arabic rail too.
     assert!(!labelled(&arabic, "فحص").is_empty());
     assert!(!labelled(&arabic, "الحجر").is_empty());
+    assert!(!labelled(&arabic, "الشبكة المنزلية").is_empty());
 }

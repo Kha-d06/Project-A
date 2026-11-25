@@ -1,4 +1,4 @@
-import { Button, Switch, LineEdit, ScrollView, AboutSlint } from "std-widgets.slint";
+import { Button, Switch, LineEdit, ScrollView, AboutSlint, CheckBox } from "std-widgets.slint";
 import { Theme } from "tokens.slint";
 import { PostureRing } from "ring.slint";
 
@@ -15,6 +15,8 @@ export struct BehRow { id: string, title: string, detail: string, state: string 
 export struct ScanRow { path: string, title: string, detail: string, verdict: string, can-quarantine: bool, quarantined: bool }
 export struct QuarRow { id: string, title: string, detail: string }
 export struct DeepRow { title: string, detail: string }
+export struct NetDevRow { key: string, ip: string, title: string, detail: string, badge: string, trusted: bool, can-check: bool }
+export struct FindingRow { title: string, detail: string, severity: string }
 export struct PortRow { key: string, port: int, title: string, detail: string, fresh: bool, blocked: bool, exposed: bool }
 export struct Labels {
     title: string, home: string, about: string, score: string, checks: string, actions: string,
@@ -38,6 +40,8 @@ export struct Labels {
     prot-folder-add: string, prot-folder-remove: string, prot-halted: string, prot-halted-intro: string, prot-resume: string,
     prot-kill: string, prot-cfa-enable: string, prot-cfa-audit: string, prot-cfa-disable: string, prot-cfa-add: string,
     prot-cfa-allow: string, prot-cfa-hint: string, prot-system: string, prot-system-check: string,
+    network: string, net-title: string, net-intro: string, net-scan: string, net-changes: string, net-devices: string,
+    net-findings: string, net-no-findings: string, net-trust: string, net-untrust: string, net-consent: string, net-check: string,
 }
 
 component Card inherits Rectangle {
@@ -106,6 +110,7 @@ component NavRail inherits VerticalLayout {
     Button { text: labels.scan; checkable: true; checked: page == "scan"; clicked => { page = "scan"; } }
     Button { text: labels.quarantine; checkable: true; checked: page == "quarantine"; clicked => { page = "quarantine"; } }
     Button { text: labels.protection; checkable: true; checked: page == "protection"; clicked => { page = "protection"; } }
+    Button { text: labels.network; checkable: true; checked: page == "network"; clicked => { page = "network"; } }
     Button { text: labels.ports; checkable: true; checked: page == "ports"; clicked => { page = "ports"; } }
     Button { text: labels.credentials; checkable: true; checked: page == "credentials"; clicked => { page = "credentials"; } }
     Button { text: labels.behaviour; checkable: true; checked: page == "behaviour"; clicked => { page = "behaviour"; } }
@@ -154,6 +159,13 @@ export component App inherits Window {
     in property <[DeepRow]> prot-system-rows;
     in property <bool> show-cfa: false;
     in-out property <string> prot-path;
+    in property <string> net-summary;
+    in property <[DeepRow]> net-change-rows;
+    in property <[NetDevRow]> net-devices;
+    in property <[FindingRow]> net-finding-rows;
+    in property <bool> net-scanning: false;
+    in-out property <bool> net-consent: false;
+    in-out property <string> net-cred-text;
     in property <[CredRow]> credential-rows;
     in property <[BehRow]> behaviour-rows;
     in property <string> beh-note;
@@ -209,6 +221,9 @@ export component App inherits Window {
     callback prot-halted-action(string, string);
     callback prot-cfa(string, string);
     callback prot-system();
+    callback net-scan();
+    callback net-trust(string, bool);
+    callback net-check(string);
     changed page => { page-changed(page); }
 
     changed rtl => { Theme.rtl = rtl; }
@@ -864,6 +879,102 @@ export component App inherits Window {
                             HorizontalLayout {
                                 alignment: Theme.rtl ? end : start;
                                 Button { text: labels.prot-system-check; enabled: !busy; clicked => { root.prot-system(); } }
+                            }
+                        }
+                    }
+
+                    if connected && page == "network": Card {
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 12px;
+                            Heading { text: labels.net-title; font-size: 20px; }
+                            Muted { text: labels.net-intro; }
+                            Text {
+                                text: net-summary;
+                                color: net-scanning ? Theme.active : Theme.ink;
+                                wrap: word-wrap;
+                                horizontal-alignment: Theme.rtl ? right : left;
+                                accessible-role: text;
+                                accessible-label: net-summary;
+                            }
+                            HorizontalLayout {
+                                alignment: Theme.rtl ? end : start;
+                                Button { text: labels.net-scan; primary: true; enabled: !busy && !net-scanning; clicked => { root.net-scan(); } }
+                            }
+                            if net-change-rows.length > 0: Heading { text: labels.net-changes; }
+                            for row in net-change-rows: VerticalLayout {
+                                accessible-role: list-item;
+                                accessible-label: row.title;
+                                Text { text: row.title; color: Theme.ink; font-weight: 600; wrap: word-wrap; horizontal-alignment: Theme.rtl ? right : left; }
+                                if row.detail != "": Muted { text: row.detail; }
+                            }
+                        }
+                    }
+
+                    if connected && page == "network" && net-devices.length > 0: Card {
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 10px;
+                            Heading { text: labels.net-findings; }
+                            if net-finding-rows.length == 0: Muted { text: labels.net-no-findings; }
+                            for row in net-finding-rows: VerticalLayout {
+                                accessible-role: list-item;
+                                accessible-label: row.title;
+                                Text {
+                                    text: row.title;
+                                    font-weight: 600;
+                                    wrap: word-wrap;
+                                    color: row.severity == "critical" || row.severity == "high" ? Theme.blocked : row.severity == "medium" ? Theme.attention : Theme.ink;
+                                    horizontal-alignment: Theme.rtl ? right : left;
+                                }
+                                if row.detail != "": Muted { text: row.detail; }
+                            }
+                        }
+                    }
+
+                    if connected && page == "network" && net-devices.length > 0: Card {
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 10px;
+                            Heading { text: labels.net-devices; }
+                            CheckBox { text: labels.net-consent; checked <=> root.net-consent; accessible-label: labels.net-consent; }
+                            if net-cred-text != "": Rectangle {
+                                border-color: Theme.active;
+                                border-width: 1px;
+                                border-radius: 8px;
+                                accessible-role: groupbox;
+                                accessible-label: net-cred-text;
+                                Text { x: 12px; width: parent.width - 24px; text: net-cred-text; color: Theme.ink; wrap: word-wrap; horizontal-alignment: Theme.rtl ? right : left; }
+                                min-height: 40px;
+                            }
+                            for row in net-devices: Rectangle {
+                                border-color: row.badge == "new" ? Theme.attention : Theme.line;
+                                border-width: 1px;
+                                border-radius: 8px;
+                                accessible-role: groupbox;
+                                accessible-label: row.title + ": " + row.detail;
+                                VerticalLayout {
+                                    padding: 12px;
+                                    spacing: 6px;
+                                    Text { text: row.title; font-weight: 600; color: row.badge == "new" ? Theme.attention : Theme.ink; horizontal-alignment: Theme.rtl ? right : left; }
+                                    Muted { text: row.detail; }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: Theme.rtl ? end : start;
+                                        if row.badge != "router" && row.badge != "self": Button {
+                                            text: row.trusted ? labels.net-untrust : labels.net-trust;
+                                            accessible-label: (row.trusted ? labels.net-untrust : labels.net-trust) + ": " + row.title;
+                                            enabled: !busy;
+                                            clicked => { root.net-trust(row.key, !row.trusted); }
+                                        }
+                                        if row.can-check: Button {
+                                            text: labels.net-check;
+                                            accessible-label: labels.net-check + ": " + row.title;
+                                            enabled: !busy && root.net-consent;
+                                            clicked => { root.net-check(row.ip); }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

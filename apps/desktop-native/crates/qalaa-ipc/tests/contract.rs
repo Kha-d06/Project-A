@@ -134,3 +134,25 @@ fn decodes_the_protection_fixture_written_by_the_typescript_tests() {
         assert_eq!(value.expect("encodes"), json[key], "{key} round-trips");
     }
 }
+
+#[test]
+fn decodes_the_network_fixture_written_by_the_typescript_tests() {
+    use qalaa_ipc::{CredentialChecks, NetworkStatus};
+    let json: serde_json::Value = serde_json::from_str(include_str!("fixtures/network.json")).expect("json");
+    let status: NetworkStatus = serde_json::from_value(json["status"].clone()).expect("status decodes");
+    let scan = status.scan.as_ref().expect("scan");
+    assert_eq!(scan.devices.len(), 3);
+    assert_eq!(scan.devices[0].role, "router");
+    assert_eq!(scan.router.as_ref().map(|r| r.port_forwards.len()), Some(1));
+    let changes = status.changes.as_ref().expect("changes");
+    assert_eq!(changes.gone[0].ip, "192.168.1.30");
+    assert_eq!(changes.new_risks[0].severity, "critical");
+    let checks: CredentialChecks = serde_json::from_value(json["credentials"].clone()).expect("credentials decode");
+    assert!(!checks.results[0].default_accepted);
+    for (key, value) in [
+        ("status", serde_json::to_value(&status)),
+        ("credentials", serde_json::to_value(&checks)),
+    ] {
+        assert_eq!(value.expect("encodes"), json[key], "{key} round-trips");
+    }
+}

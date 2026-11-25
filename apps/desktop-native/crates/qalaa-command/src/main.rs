@@ -7,16 +7,18 @@ use std::thread;
 
 use qalaa_command::strings::{t, Lang};
 use qalaa_command::view::{
-    alias_notice, brokers_view, clipboard_text, content_protected, credentials_view, deep_view, filter_palette, home_view, inspector_text,
-    palette_entries, ports_view, progress_text, protection_view, quarantine_view, scan_view, system_view, PaletteEntry,
+    alias_notice, brokers_view, clipboard_text, content_protected, credential_text, credentials_view, deep_view, filter_palette, home_view,
+    inspector_text, network_progress_text, network_view, palette_entries, ports_view, progress_text, protection_view, quarantine_view,
+    scan_view, system_view, PaletteEntry,
 };
 use qalaa_command::{
-    apply_home, now_secs, set_behaviour, set_brokers, set_credentials, set_deep, set_language, set_offline, set_palette, set_ports,
-    set_protection, set_protection_system, set_quarantine, set_sandbox, set_scan, App,
+    apply_home, now_secs, set_behaviour, set_brokers, set_credentials, set_deep, set_language, set_network, set_offline, set_palette,
+    set_ports, set_protection, set_protection_system, set_quarantine, set_sandbox, set_scan, App,
 };
 use qalaa_ipc::{
-    BehaviourStatus, BrokerStatus, Client, CredentialStatus, DeepCheck, HomeModel, IpcError, ListenerStatus, Message, ProtectionStatus,
-    QuarantineItem, QuarantineList, SandboxList, SandboxRun, ScanDetails, ScanStatus, Stream, SystemChecks,
+    BehaviourStatus, BrokerStatus, Client, CredentialChecks, CredentialStatus, DeepCheck, HomeModel, IpcError, ListenerStatus, Message,
+    NetworkStatus, ProtectionStatus, QuarantineItem, QuarantineList, SandboxList, SandboxRun, ScanDetails, ScanStatus, Stream,
+    SystemChecks,
 };
 use serde_json::json;
 use slint::winit_030::WinitWindowAccessor;
@@ -159,6 +161,41 @@ fn protection_system(app: &App, state: &Arc<State>) {
             set_protection_system(app, &system_view(&checks, lang));
         },
     );
+}
+
+fn network_page(app: &App, state: &Arc<State>) {
+    on_client(
+        app,
+        state,
+        |c| c.call::<NetworkStatus>("network.get", None),
+        |app, lang, status| {
+            set_network(app, &network_view(&status, now_secs(), lang));
+        },
+    );
+}
+
+/// A network scan or a default-password check takes a while: its own connection, like a file scan.
+fn network_long<T: Send + 'static>(
+    app: &App,
+    state: &Arc<State>,
+    work: impl FnOnce(&mut Client<Stream>) -> Result<T, IpcError> + Send + 'static,
+    done: impl FnOnce(&App, Lang, T) + Send + 'static,
+) {
+    let weak = app.as_weak();
+    let state = Arc::clone(state);
+    app.set_net_scanning(true);
+    thread::spawn(move || {
+        let result = connect().and_then(|mut c| work(&mut c)).map_err(|e| e.to_string());
+        let lang = state.lang;
+        let _ = weak.upgrade_in_event_loop(move |app| {
+            app.set_net_scanning(false);
+            match result {
+                Ok(value) => done(&app, lang, value),
+                Err(message) => app.set_notice(message.into()),
+            }
+            network_page(&app, &state);
+        });
+    });
 }
 
 fn quarantine_page(app: &App, state: &Arc<State>) {
@@ -428,6 +465,34 @@ fn listen(app: &App, state: &Arc<State>) {
                     });
                     continue;
                 }
+                if event.name == "network.progress" {
+                    let n = |key: &str| {
+                        u32::try_from(event.payload.get(key).and_then(serde_json::Value::as_u64).unwrap_or(0)).unwrap_or(u32::MAX)
+                    };
+                    let (done, total) = (n("done"), n("total"));
+                    let phase = event
+                        .payload
+                        .get("phase")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("sweep")
+                        .to_owned();
+                    let lang = state.lang;
+                    let _ = weak.upgrade_in_event_loop(move |app| {
+                        app.set_net_scanning(true);
+                        app.set_net_summary(network_progress_text(done, total, &phase, lang).into());
+                    });
+                    continue;
+                }
+                if event.name == "network.scanned"
+                    || (event.name == "alert" && event.payload.get("kind").and_then(serde_json::Value::as_str) == Some("network"))
+                {
+                    let _ = weak.upgrade_in_event_loop(|app| {
+                        if app.get_page() == "network" {
+                            app.invoke_page_changed("network".into());
+                        }
+                    });
+                    continue;
+                }
                 if event.name == "scan.finished" || event.name == "threat.blocked" {
                     let _ = weak.upgrade_in_event_loop(|app| {
                         let page = app.get_page();
@@ -522,6 +587,16 @@ fn main() -> Result<(), slint::PlatformError> {
                         .as_ref()
                         .and_then(|p| p.get("view"))
                         .and_then(serde_json::Value::as_str)
+                        == Some("network") =>
+                {
+                    app.set_page("network".into());
+                }
+                "view.open"
+                    if command
+                        .params
+                        .as_ref()
+                        .and_then(|p| p.get("view"))
+                        .and_then(serde_json::Value::as_str)
                         == Some("quarantine") =>
                 {
                     app.set_page("quarantine".into());
@@ -606,6 +681,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 "page.scan" => app.set_page("scan".into()),
                 "page.quarantine" => app.set_page("quarantine".into()),
                 "page.protection" => app.set_page("protection".into()),
+                "page.network" => app.set_page("network".into()),
                 "page.about" => app.set_page("about".into()),
                 "page.ports" => app.set_page("ports".into()),
                 "page.credentials" => app.set_page("credentials".into()),
@@ -679,6 +755,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 "brokers" => brokers(&app, &state, "brokers.get", None),
                 "scan" => scan_page(&app, &state),
                 "quarantine" => quarantine_page(&app, &state),
+                "network" => network_page(&app, &state),
                 "protection" => {
                     protection(&app, &state, "protection.get", None);
                     protection_system(&app, &state);
@@ -1014,6 +1091,53 @@ fn main() -> Result<(), slint::PlatformError> {
             if let Some(app) = weak.upgrade() {
                 protection_system(&app, &state);
             }
+        });
+    }
+
+    // --- Home network ---------------------------------------------------------------
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_net_scan(move || {
+            if let Some(app) = weak.upgrade() {
+                app.set_net_cred_text("".into());
+                network_long(
+                    &app,
+                    &state,
+                    |c| c.call::<NetworkStatus>("network.scan", None),
+                    |_app, _lang, _status| {},
+                );
+            }
+        });
+    }
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_net_trust(move |key, trusted| {
+            let Some(app) = weak.upgrade() else { return };
+            let params = json!({ "key": key.as_str(), "trusted": trusted });
+            on_client(
+                &app,
+                &state,
+                move |c| c.call::<NetworkStatus>("network.trust", Some(params)),
+                |app, lang, status| {
+                    set_network(app, &network_view(&status, now_secs(), lang));
+                },
+            );
+        });
+    }
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_net_check(move |ip| {
+            let Some(app) = weak.upgrade() else { return };
+            // The checkbox is the consent; the service refuses without it.
+            let params = json!({ "ip": ip.as_str(), "consent": app.get_net_consent() });
+            network_long(
+                &app,
+                &state,
+                move |c| c.call::<CredentialChecks>("network.credentials", Some(params)),
+                |app, lang, checks| {
+                    app.set_net_cred_text(credential_text(&checks, lang).into());
+                },
+            );
         });
     }
 

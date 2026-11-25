@@ -17,8 +17,8 @@ use slint::{ModelRc, SharedString, VecModel};
 
 use crate::strings::{t, Lang};
 use crate::view::{
-    BehaviourView, BrokerView, CredentialView, HomeView, PaletteEntry, PortView, ProtectionPageView, QuarantineView, SandboxView,
-    ScanPageView,
+    BehaviourView, BrokerView, CredentialView, HomeView, NetworkPageView, PaletteEntry, PortView, ProtectionPageView, QuarantineView,
+    SandboxView, ScanPageView,
 };
 
 pub fn labels(lang: Lang) -> Labels {
@@ -126,6 +126,18 @@ pub fn labels(lang: Lang) -> Labels {
         prot_cfa_hint: s("prot.cfa_hint"),
         prot_system: s("prot.system"),
         prot_system_check: s("prot.system_check"),
+        network: s("nav.network"),
+        net_title: s("net.title"),
+        net_intro: s("net.intro"),
+        net_scan: s("net.scan"),
+        net_changes: s("net.changes"),
+        net_devices: s("net.devices"),
+        net_findings: s("net.findings"),
+        net_no_findings: s("net.no_findings"),
+        net_trust: s("net.trust"),
+        net_untrust: s("net.untrust"),
+        net_consent: s("net.consent"),
+        net_check: s("net.check"),
     }
 }
 
@@ -355,4 +367,34 @@ fn pairs(rows: &[(String, String)]) -> Vec<DeepRow> {
             detail: detail.clone().into(),
         })
         .collect()
+}
+
+pub fn set_network(app: &App, view: &NetworkPageView) {
+    app.set_net_summary(view.summary.clone().into());
+    app.set_net_scanning(view.scanning);
+    app.set_net_change_rows(ModelRc::from(Rc::new(VecModel::from(pairs(&view.changes)))));
+    let devices: Vec<NetDevRow> = view
+        .devices
+        .iter()
+        .map(|d| NetDevRow {
+            key: d.key.clone().into(),
+            ip: d.ip.clone().into(),
+            title: d.title.clone().into(),
+            detail: d.detail.clone().into(),
+            badge: d.badge.clone().into(),
+            trusted: d.trusted,
+            can_check: d.can_check,
+        })
+        .collect();
+    app.set_net_devices(ModelRc::from(Rc::new(VecModel::from(devices))));
+    let findings: Vec<FindingRow> = view
+        .findings
+        .iter()
+        .map(|(title, detail, severity)| FindingRow {
+            title: title.clone().into(),
+            detail: detail.clone().into(),
+            severity: severity.clone().into(),
+        })
+        .collect();
+    app.set_net_finding_rows(ModelRc::from(Rc::new(VecModel::from(findings))));
 }

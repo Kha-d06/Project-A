@@ -56,6 +56,8 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y -q autoconf bison flex gcc g++ libprotobuf-dev libnl-route-3-dev libtool make pkg-config protobuf-compiler
           git clone --depth 1 --branch 3.4 https://github.com/google/nsjail.git
+          # Newer compilers add warnings that nsjail's -Werror turns into build failures.
+          sed -i 's/-Werror//' nsjail/Makefile
           make -C nsjail -j"$(nproc)"
           sudo install -m 0755 nsjail/nsjail /usr/local/bin/nsjail
       - name: Allow unprivileged user namespaces (Ubuntu restricts them through AppArmor)

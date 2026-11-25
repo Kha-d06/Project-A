@@ -21,6 +21,8 @@ export interface Settings {
   theme: ThemeSetting;
   /** Optional: block well-known advertising and analytics trackers on other sites. */
   blockTrackers: boolean;
+  /** Optional: block ads and trackers with EasyList and EasyPrivacy (compiled into the extension). */
+  blockAds: boolean;
   /** Optional: mark dangerous results on Google, Bing and DuckDuckGo search pages. */
   searchBadges: boolean;
   /** From the linked account: domains a family or organisation group asked to block,
@@ -57,6 +59,7 @@ export const DEFAULT_SETTINGS: Settings = {
   language: "auto",
   theme: "system",
   blockTrackers: false,
+  blockAds: false,
   searchBadges: false,
   familyBlocklist: [],
   familyGroups: [],

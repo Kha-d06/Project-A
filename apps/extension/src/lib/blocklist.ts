@@ -15,6 +15,11 @@
  *   5      a family or organisation group's list, when the user applies it
  *   6-9    SafeSearch (family rule; see safesearch.ts)
  *   10     family screen time, while browsing is not allowed (see screentime.ts)
+ *   11     the user's allow list, exempting those sites from the ad and tracker lists
+ *
+ * Static rulesets "easylist" and "easyprivacy" (compiled at build time from
+ * EasyList and EasyPrivacy, CC BY-SA 3.0) are switched on with "Block ads and
+ * trackers" and off while checks are paused.
  *   1000+  session allowances from "Continue anyway"
  */
 import { fetchBlocklist } from "./api";
@@ -28,6 +33,8 @@ export const RULE_USER_BLOCK = 2;
 export const RULE_USER_ALLOW = 3;
 export const RULE_TRACKERS = 4;
 export const RULE_FAMILY = 5;
+export const RULE_LIST_ALLOW = 11;
+export const AD_RULESETS = ["easylist", "easyprivacy"];
 const TRACKER_TYPES = ["script", "xmlhttprequest", "image", "ping", "sub_frame"] as chrome.declarativeNetRequest.ResourceType[];
 const SESSION_RULE_BASE = 1000;
 const STORE_KEY = "blocklist";
@@ -90,6 +97,15 @@ export function buildRules(settings: Settings, serverHosts: string[], safeSearch
     });
   }
   if (settings.allowlist.length) rules.push(rule(RULE_USER_ALLOW, 2, "allow", settings.allowlist));
+  if (settings.blockAds && settings.allowlist.length) {
+    // allowAllRequests on the page itself turns the ad lists off for everything that page loads.
+    rules.push({
+      id: RULE_LIST_ALLOW,
+      priority: 5,
+      action: { type: "allowAllRequests" as chrome.declarativeNetRequest.RuleActionType },
+      condition: { requestDomains: settings.allowlist, resourceTypes: FRAME_TYPES },
+    });
+  }
   return rules;
 }
 
@@ -97,9 +113,30 @@ export async function applyRules(settings: Settings): Promise<void> {
   if (!hasDnr()) return;
   const list = await storedBlocklist();
   await chrome.declarativeNetRequest.updateDynamicRules({
-    removeRuleIds: [RULE_SERVER, RULE_USER_BLOCK, RULE_USER_ALLOW, RULE_TRACKERS, RULE_FAMILY, RULE_SCREEN_TIME, ...SAFE_SEARCH_RULE_IDS],
+    removeRuleIds: [RULE_SERVER, RULE_USER_BLOCK, RULE_USER_ALLOW, RULE_TRACKERS, RULE_FAMILY, RULE_SCREEN_TIME, RULE_LIST_ALLOW, ...SAFE_SEARCH_RULE_IDS],
     addRules: buildRules(settings, list?.hosts ?? [], settings.safeSearch && (await hasSafeSearchAccess())),
   });
+  await applyAdRulesets(settings);
+}
+
+/** The ad and tracker rulesets this build includes (an offline build may have none). */
+export function bundledAdRulesets(manifest: chrome.runtime.Manifest = chrome.runtime.getManifest()): string[] {
+  const resources = (manifest as { declarative_net_request?: { rule_resources?: { id: string }[] } }).declarative_net_request?.rule_resources ?? [];
+  return resources.map((r) => r.id).filter((id) => AD_RULESETS.includes(id));
+}
+
+/** Which rulesets should be on: the bundled ones while ad blocking is on and checks aren't paused. */
+export function adRulesetsFor(settings: Settings, bundled: string[]): { enable: string[]; disable: string[] } {
+  const on = settings.blockAds && !settings.paused;
+  return on ? { enable: bundled, disable: [] } : { enable: [], disable: bundled };
+}
+
+async function applyAdRulesets(settings: Settings): Promise<void> {
+  if (!chrome.declarativeNetRequest?.updateEnabledRulesets) return;
+  const bundled = bundledAdRulesets();
+  if (!bundled.length) return;
+  const { enable, disable } = adRulesetsFor(settings, bundled);
+  await chrome.declarativeNetRequest.updateEnabledRulesets({ enableRulesetIds: enable, disableRulesetIds: disable });
 }
 
 /** Downloads the list if it is missing or older than REFRESH_MINUTES. */

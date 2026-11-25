@@ -3,6 +3,7 @@ import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { buildFilterRulesets } from "./filter-lists.mjs";
 import { createManifest } from "./manifest.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -53,7 +54,8 @@ await build({
 });
 
 await cp(join(root, "static"), out, { recursive: true });
-const manifest = createManifest({ version, serverOrigin, browser });
+const ruleResources = await buildFilterRulesets(root, out);
+const manifest = createManifest({ version, serverOrigin, browser, ruleResources });
 if (testBuild) {
   manifest.permissions.push(...manifest.optional_permissions);
   manifest.host_permissions.push(...manifest.optional_host_permissions);

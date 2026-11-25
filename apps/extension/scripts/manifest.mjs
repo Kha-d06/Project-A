@@ -5,7 +5,7 @@
  * browser: "chrome" (also Microsoft Edge and other Chromium browsers) or
  * "firefox" (experimental: built but not yet tested in Firefox).
  */
-export function createManifest({ version, serverOrigin, browser = "chrome" }) {
+export function createManifest({ version, serverOrigin, browser = "chrome", ruleResources = [] }) {
   const manifest = {
     manifest_version: 3,
     name: "__MSG_extName__",
@@ -29,6 +29,8 @@ export function createManifest({ version, serverOrigin, browser = "chrome" }) {
     optional_permissions: ["scripting", "cookies", "privacy"],
     host_permissions: [`${serverOrigin}/*`],
     optional_host_permissions: ["http://*/*", "https://*/*"],
+    // EasyList / EasyPrivacy compiled at build time, off until the person turns ad blocking on.
+    ...(ruleResources.length ? { declarative_net_request: { rule_resources: ruleResources } } : {}),
     content_security_policy: {
       extension_pages: "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
     },

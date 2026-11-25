@@ -249,6 +249,10 @@ jobs:
           node test/e2e-assistant.mjs
       - name: Browser test of fingerprint noise
         run: node test/e2e-fingerprint.mjs
+      - name: Browser test of the EasyList / EasyPrivacy rulesets compiled at build time
+        run: |
+          test -s dist/chrome/rules/easylist.json && test -s dist/chrome/rules/easyprivacy.json
+          node test/e2e-adblock.mjs
 
   desktop:
     runs-on: ubuntu-latest

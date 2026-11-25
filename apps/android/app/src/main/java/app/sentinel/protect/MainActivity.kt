@@ -45,6 +45,7 @@ class MainActivity : Activity() {
 
     private companion object {
         const val PICK_FILES = 1
+        const val VPN_CONSENT = 2
         const val GOOD = 0xFF1D6B52.toInt()
         const val WARN = 0xFFA15C07.toInt()
         const val BAD = 0xFFB42318.toInt()
@@ -52,6 +53,20 @@ class MainActivity : Activity() {
 
     private val lang get() = engine.lang
     private fun t(key: String) = Strings.get(lang, key)
+
+    private fun startSafeDns() {
+        val consent = android.net.VpnService.prepare(this)
+        if (consent != null) startActivityForResult(consent, VPN_CONSENT) else onVpnConsent(true)
+    }
+
+    private fun onVpnConsent(granted: Boolean) {
+        if (!granted) {
+            android.widget.Toast.makeText(this, t("dns_refused"), android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
+        startService(Intent(this, DnsVpnService::class.java))
+        content.postDelayed({ render() }, 500)
+    }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -163,6 +178,22 @@ class MainActivity : Activity() {
         if (!engine.hasFileAccess()) {
             content.addView(card(text(t("file_access_hint"), 14f), button(t("file_access")) { requestFileAccess() }))
         }
+
+        // Safe DNS (a DNS-only VPN): Android asks for permission the first time.
+        content.addView(
+            card(
+                text(t("dns_title"), 18f, bold = true),
+                text(if (DnsVpnService.running) Strings.format(lang, "dns_running", engine.blockedDomains().size) else t("dns_hint"), 13f),
+                if (DnsVpnService.running) {
+                    button(t("dns_off")) {
+                        startService(Intent(this, DnsVpnService::class.java).setAction(DnsVpnService.ACTION_STOP))
+                        content.postDelayed({ render() }, 300)
+                    }
+                } else {
+                    button(t("dns_on")) { startSafeDns() }
+                },
+            ),
+        )
 
         engine.lastReport?.let { report ->
             val attention = report.appsNeedingAttention.size + report.filesNeedingAttention.size
@@ -348,6 +379,10 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == VPN_CONSENT) {
+            onVpnConsent(resultCode == RESULT_OK)
+            return
+        }
         if (requestCode != PICK_FILES || resultCode != RESULT_OK || data == null) return
         val uris = buildList {
             data.data?.let { add(it) }

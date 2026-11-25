@@ -41,6 +41,16 @@
             android:name="asset_statements"
             android:resource="@string/asset_statements" />
 
+        <!-- Safe DNS: a VPN that routes only a virtual DNS server into the app (no other traffic). -->
+        <service
+            android:name="app.sentinel.protect.DnsVpnService"
+            android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
+
         <activity
             android:name="app.sentinel.protect.MainActivity"
             android:exported="true"

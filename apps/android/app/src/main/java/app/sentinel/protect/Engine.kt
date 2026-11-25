@@ -99,6 +99,7 @@ class Engine private constructor(private val context: Context) : RemoteHost {
 
     private val prefs = context.getSharedPreferences("sentinel", Context.MODE_PRIVATE)
     private val hashFile = File(context.filesDir, "hash-list.json")
+    private val domainFile = File(context.filesDir, "domain-list.json")
     private val quarantineDir = File(context.filesDir, "quarantine").apply { mkdirs() }
     private val lock = Any()
     @Volatile var lastReport: ScanReport? = null
@@ -146,7 +147,25 @@ class Engine private constructor(private val context: Context) : RemoteHost {
         knownMalware = HashList.parse(response.body)
         hashFile.writeText(response.body)
         prefs.edit().putLong("signatures_at", System.currentTimeMillis()).apply()
+        // The same downloaded domain list as the desktop's Safe DNS; failures keep the last copy.
+        runCatching {
+            val domains = HttpTransport.send("GET", Protocol.api(serverUrl, "/intelligence/domain-list"), null, null)
+            if (domains.status == 200 && parseDomains(domains.body).isNotEmpty()) domainFile.writeText(domains.body)
+        }
     }
+
+    // --- Safe DNS --------------------------------------------------------------------
+
+    private fun parseDomains(json: String): List<String> = runCatching {
+        val hosts = org.json.JSONObject(json).getJSONArray("hosts")
+        (0 until hosts.length()).map { hosts.getString(it) }
+    }.getOrDefault(emptyList())
+
+    /** Known malware and phishing domains, from the last downloaded list. */
+    fun blockedDomains(): List<String> = runCatching { parseDomains(domainFile.readText()) }.getOrDefault(emptyList())
+
+    /** Names the person allowed (none yet; kept so the filter's allow path is used from day one). */
+    fun allowedDomains(): List<String> = emptyList()
 
     fun signaturesAge(): Long = System.currentTimeMillis() - prefs.getLong("signatures_at", 0)
 

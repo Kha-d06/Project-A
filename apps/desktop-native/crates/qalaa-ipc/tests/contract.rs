@@ -167,3 +167,16 @@ fn decodes_the_vpn_fixture_written_by_the_typescript_tests() {
     assert_eq!(status.auto_connected_on.as_deref(), Some("Cafe"));
     assert_eq!(serde_json::to_value(&status).expect("encodes"), json["status"]);
 }
+
+#[test]
+fn decodes_the_posture_fixture_written_by_the_typescript_tests() {
+    use qalaa_ipc::PostureStatus;
+    let json: serde_json::Value = serde_json::from_str(include_str!("fixtures/posture.json")).expect("json");
+    let status: PostureStatus = serde_json::from_value(json["status"].clone()).expect("status decodes");
+    assert_eq!(status.posture.as_ref().and_then(|p| p.score), Some(100));
+    assert_eq!(status.encryption.as_ref().map(|e| e.state.as_str()), Some("on"));
+    assert!(status.startup.iter().any(|s| s.is_new));
+    assert_eq!(status.integrity.changes[0].kind, "modified");
+    assert_eq!(status.usb.new_keyboards, 1);
+    assert_eq!(serde_json::to_value(&status).expect("encodes"), json["status"]);
+}

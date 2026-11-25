@@ -16,6 +16,7 @@ import type { SafePayService } from "./safepay-service";
 import type { SandboxService } from "./sandbox-service";
 import type { ScanEngineService } from "./scan-engine-service";
 import type { NetworkService } from "./network-service";
+import type { PostureService } from "./posture-service";
 import type { VpnService } from "./vpn-service";
 import type { ProtectionService } from "./protection-service";
 import type { ScanService } from "./scan-service";
@@ -58,6 +59,8 @@ export interface CoreHost {
   network?: NetworkService;
   /** The self-hosted WireGuard VPN, kill switch, split tunnelling and auto-connect. */
   vpn?: VpnService;
+  /** Posture score, startup programs, file integrity and USB keyboards. */
+  posture?: PostureService;
 }
 
 export type Handler = (params: unknown) => Promise<unknown>;
@@ -120,6 +123,16 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       await changed();
       return totals;
     },
+    "posture.get": async () => requirePosture(host).status(),
+    "posture.check": async () => requirePosture(host).check(),
+    "posture.startup_ack": async () => requirePosture(host).acknowledgeStartup(),
+    "posture.startup_off": async (params) => requirePosture(host).startupOff(params),
+    "posture.startup_on": async (params) => requirePosture(host).startupOn(params),
+    "posture.integrity_check": async () => requirePosture(host).integrityCheck(),
+    "posture.integrity_accept": async (params) => requirePosture(host).integrityAccept(params),
+    "posture.integrity_add": async (params) => requirePosture(host).integrityAdd(params),
+    "posture.integrity_remove": async (params) => requirePosture(host).integrityRemove(params),
+    "posture.integrity_reset": async () => requirePosture(host).integrityReset(),
     "vpn.get": async () => requireVpn(host).status(),
     "vpn.setup": async () => requireVpn(host).setup(),
     "vpn.connect": async () => requireVpn(host).connect(),
@@ -270,6 +283,11 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       return status;
     },
   };
+}
+
+function requirePosture(host: CoreHost): PostureService {
+  if (!host.posture) throw new IpcError("unavailable", "Security posture needs the background service.");
+  return host.posture;
 }
 
 function requireVpn(host: CoreHost): VpnService {

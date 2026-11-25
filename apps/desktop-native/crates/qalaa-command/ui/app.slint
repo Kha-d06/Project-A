@@ -17,6 +17,7 @@ export struct QuarRow { id: string, title: string, detail: string }
 export struct DeepRow { title: string, detail: string }
 export struct NetDevRow { key: string, ip: string, title: string, detail: string, badge: string, trusted: bool, can-check: bool }
 export struct FindingRow { title: string, detail: string, severity: string }
+export struct StartupRow { id: string, title: string, detail: string, is-new: bool, can-off: bool }
 export struct PortRow { key: string, port: int, title: string, detail: string, fresh: bool, blocked: bool, exposed: bool }
 export struct Labels {
     title: string, home: string, about: string, score: string, checks: string, actions: string,
@@ -45,6 +46,9 @@ export struct Labels {
     vpn: string, vpn-title: string, vpn-intro: string, vpn-connect: string, vpn-disconnect: string, vpn-split: string,
     vpn-split-full: string, vpn-split-exclude: string, vpn-split-only: string, vpn-range: string, vpn-range-add: string,
     vpn-trusted: string, vpn-trusted-name: string, vpn-trusted-add: string, vpn-remove: string,
+    posture: string, pos-title: string, pos-intro: string, pos-check: string, pos-startup: string, pos-ack: string,
+    pos-off: string, pos-on: string, pos-disabled: string, pos-integrity: string, pos-integrity-intro: string,
+    pos-accept: string, pos-remove: string, pos-path: string, pos-add: string, pos-reset: string, pos-usb: string,
 }
 
 component Card inherits Rectangle {
@@ -113,6 +117,7 @@ component NavRail inherits VerticalLayout {
     Button { text: labels.scan; checkable: true; checked: page == "scan"; clicked => { page = "scan"; } }
     Button { text: labels.quarantine; checkable: true; checked: page == "quarantine"; clicked => { page = "quarantine"; } }
     Button { text: labels.protection; checkable: true; checked: page == "protection"; clicked => { page = "protection"; } }
+    Button { text: labels.posture; checkable: true; checked: page == "posture"; clicked => { page = "posture"; } }
     Button { text: labels.network; checkable: true; checked: page == "network"; clicked => { page = "network"; } }
     Button { text: labels.vpn; checkable: true; checked: page == "vpn"; clicked => { page = "vpn"; } }
     Button { text: labels.ports; checkable: true; checked: page == "ports"; clicked => { page = "ports"; } }
@@ -183,6 +188,16 @@ export component App inherits Window {
     in property <[string]> vpn-trusted-names;
     in-out property <string> vpn-range-input;
     in-out property <string> vpn-trusted-input;
+    in property <string> pos-score-text;
+    in property <[FindingRow]> pos-checks;
+    in property <[StartupRow]> pos-startup;
+    in property <bool> pos-any-new: false;
+    in property <[QuarRow]> pos-disabled;
+    in property <[string]> pos-paths;
+    in property <[QuarRow]> pos-changes;
+    in property <string> pos-usb-text;
+    in property <bool> pos-checking: false;
+    in-out property <string> pos-path-input;
     in property <[CredRow]> credential-rows;
     in property <[BehRow]> behaviour-rows;
     in property <string> beh-note;
@@ -247,6 +262,8 @@ export component App inherits Window {
     callback vpn-split(string);
     callback vpn-range(string, bool);
     callback vpn-trust(string, bool);
+    callback pos-check();
+    callback pos-action(string, string);
     changed page => { page-changed(page); }
 
     changed rtl => { Theme.rtl = rtl; }
@@ -1078,6 +1095,110 @@ export component App inherits Window {
                                 spacing: 8px;
                                 LineEdit { placeholder-text: labels.vpn-trusted-name; accessible-label: labels.vpn-trusted-name; text <=> root.vpn-trusted-input; }
                                 Button { text: labels.vpn-trusted-add; enabled: !busy && root.vpn-trusted-input != ""; clicked => { root.vpn-trust(root.vpn-trusted-input, true); } }
+                            }
+                        }
+                    }
+
+                    if connected && page == "posture": Card {
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 12px;
+                            Heading { text: labels.pos-title; font-size: 20px; }
+                            Muted { text: labels.pos-intro; }
+                            Text { text: pos-score-text; font-size: 16px; font-weight: 600; color: Theme.ink; horizontal-alignment: Theme.rtl ? right : left; accessible-role: text; accessible-label: pos-score-text; }
+                            HorizontalLayout {
+                                alignment: Theme.rtl ? end : start;
+                                Button { text: labels.pos-check; primary: true; enabled: !busy && !pos-checking; clicked => { root.pos-check(); } }
+                            }
+                            for row in pos-checks: VerticalLayout {
+                                accessible-role: list-item;
+                                accessible-label: row.title;
+                                Text {
+                                    text: row.title;
+                                    wrap: word-wrap;
+                                    font-weight: 600;
+                                    color: row.severity == "fail" ? Theme.blocked : row.severity == "warn" ? Theme.attention : row.severity == "pass" ? Theme.protected : Theme.muted;
+                                    horizontal-alignment: Theme.rtl ? right : left;
+                                }
+                                if row.detail != "": Muted { text: row.detail; }
+                            }
+                            Muted { text: labels.pos-usb + ": " + pos-usb-text; }
+                        }
+                    }
+
+                    if connected && page == "posture": Card {
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 10px;
+                            Heading { text: labels.pos-startup; }
+                            for row in pos-startup: Rectangle {
+                                border-color: row.is-new ? Theme.attention : Theme.line;
+                                border-width: 1px;
+                                border-radius: 8px;
+                                accessible-role: groupbox;
+                                accessible-label: row.title + ": " + row.detail;
+                                VerticalLayout {
+                                    padding: 12px;
+                                    spacing: 6px;
+                                    Text { text: row.title; font-weight: 600; color: row.is-new ? Theme.attention : Theme.ink; horizontal-alignment: Theme.rtl ? right : left; }
+                                    Muted { text: row.detail; }
+                                    if row.can-off: HorizontalLayout {
+                                        alignment: Theme.rtl ? end : start;
+                                        Button { text: labels.pos-off; accessible-label: labels.pos-off + ": " + row.title; enabled: !busy; clicked => { root.pos-action("startup_off", row.id); } }
+                                    }
+                                }
+                            }
+                            if pos-any-new: HorizontalLayout {
+                                alignment: Theme.rtl ? end : start;
+                                Button { text: labels.pos-ack; enabled: !busy; clicked => { root.pos-action("startup_ack", ""); } }
+                            }
+                            if pos-disabled.length > 0: Heading { text: labels.pos-disabled; }
+                            for row in pos-disabled: HorizontalLayout {
+                                spacing: 8px;
+                                VerticalLayout {
+                                    Text { text: row.title; color: Theme.ink; horizontal-alignment: Theme.rtl ? right : left; }
+                                    Muted { text: row.detail; }
+                                }
+                                Button { text: labels.pos-on; accessible-label: labels.pos-on + ": " + row.title; enabled: !busy; clicked => { root.pos-action("startup_on", row.id); } }
+                            }
+                        }
+                    }
+
+                    if connected && page == "posture": Card {
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 10px;
+                            Heading { text: labels.pos-integrity; }
+                            Muted { text: labels.pos-integrity-intro; }
+                            for row in pos-changes: Rectangle {
+                                border-color: Theme.blocked;
+                                border-width: 1px;
+                                border-radius: 8px;
+                                accessible-role: groupbox;
+                                accessible-label: row.title;
+                                HorizontalLayout {
+                                    padding: 12px;
+                                    spacing: 8px;
+                                    VerticalLayout {
+                                        Text { text: row.title; color: Theme.blocked; font-weight: 600; wrap: word-wrap; horizontal-alignment: Theme.rtl ? right : left; }
+                                        Muted { text: row.detail; }
+                                    }
+                                    Button { text: labels.pos-accept; accessible-label: labels.pos-accept + ": " + row.id; enabled: !busy; clicked => { root.pos-action("integrity_accept", row.id); } }
+                                }
+                            }
+                            for path in pos-paths: HorizontalLayout {
+                                spacing: 8px;
+                                Muted { text: path; vertical-alignment: center; }
+                                Button { text: labels.pos-remove; accessible-label: labels.pos-remove + ": " + path; enabled: !busy; clicked => { root.pos-action("integrity_remove", path); } }
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                LineEdit { placeholder-text: labels.pos-path; accessible-label: labels.pos-path; text <=> root.pos-path-input; }
+                                Button { text: labels.pos-add; enabled: !busy && root.pos-path-input != ""; clicked => { root.pos-action("integrity_add", root.pos-path-input); } }
+                            }
+                            HorizontalLayout {
+                                alignment: Theme.rtl ? end : start;
+                                Button { text: labels.pos-reset; enabled: !busy; clicked => { root.pos-action("integrity_reset", ""); } }
                             }
                         }
                     }

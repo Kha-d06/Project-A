@@ -8,17 +8,17 @@ use std::thread;
 use qalaa_command::strings::{t, Lang};
 use qalaa_command::view::{
     alias_notice, brokers_view, clipboard_text, content_protected, credential_text, credentials_view, deep_view, filter_palette, home_view,
-    inspector_text, network_progress_text, network_view, palette_entries, ports_view, progress_text, protection_view, quarantine_view,
-    scan_view, system_view, vpn_view, PaletteEntry,
+    inspector_text, network_progress_text, network_view, palette_entries, ports_view, posture_view, progress_text, protection_view,
+    quarantine_view, scan_view, system_view, vpn_view, PaletteEntry,
 };
 use qalaa_command::{
     apply_home, now_secs, set_behaviour, set_brokers, set_credentials, set_deep, set_language, set_network, set_offline, set_palette,
-    set_ports, set_protection, set_protection_system, set_quarantine, set_sandbox, set_scan, set_vpn, App,
+    set_ports, set_posture, set_protection, set_protection_system, set_quarantine, set_sandbox, set_scan, set_vpn, App,
 };
 use qalaa_ipc::{
     BehaviourStatus, BrokerStatus, Client, CredentialChecks, CredentialStatus, DeepCheck, HomeModel, IpcError, ListenerStatus, Message,
-    NetworkStatus, ProtectionStatus, QuarantineItem, QuarantineList, SandboxList, SandboxRun, ScanDetails, ScanStatus, Stream,
-    SystemChecks, VpnStatus,
+    NetworkStatus, PostureStatus, ProtectionStatus, QuarantineItem, QuarantineList, SandboxList, SandboxRun, ScanDetails, ScanStatus,
+    Stream, SystemChecks, VpnStatus,
 };
 use serde_json::json;
 use slint::winit_030::WinitWindowAccessor;
@@ -218,6 +218,37 @@ fn edited(model: slint::ModelRc<slint::SharedString>, item: &str, add: bool) -> 
         items.push(item.to_owned());
     }
     items
+}
+
+/// Calls a posture.* method and shows the Security posture page. A full check takes a few
+/// seconds, so it runs on its own connection.
+fn posture(app: &App, state: &Arc<State>, method: &'static str, params: Option<serde_json::Value>) {
+    if method == "posture.check" {
+        let weak = app.as_weak();
+        let lang = state.lang;
+        app.set_pos_checking(true);
+        thread::spawn(move || {
+            let result = connect()
+                .and_then(|mut c| c.call::<PostureStatus>("posture.check", None))
+                .map_err(|e| e.to_string());
+            let _ = weak.upgrade_in_event_loop(move |app| {
+                app.set_pos_checking(false);
+                match result {
+                    Ok(status) => set_posture(&app, &posture_view(&status, now_secs(), lang)),
+                    Err(message) => app.set_notice(message.into()),
+                }
+            });
+        });
+        return;
+    }
+    on_client(
+        app,
+        state,
+        move |c| c.call::<PostureStatus>(method, params),
+        |app, lang, status| {
+            set_posture(app, &posture_view(&status, now_secs(), lang));
+        },
+    );
 }
 
 fn quarantine_page(app: &App, state: &Arc<State>) {
@@ -495,6 +526,14 @@ fn listen(app: &App, state: &Arc<State>) {
                     });
                     continue;
                 }
+                if event.name == "alert" && event.payload.get("kind").and_then(serde_json::Value::as_str) == Some("integrity") {
+                    let _ = weak.upgrade_in_event_loop(|app| {
+                        if app.get_page() == "posture" {
+                            app.invoke_page_changed("posture".into());
+                        }
+                    });
+                    continue;
+                }
                 if event.name == "network.progress" {
                     let n = |key: &str| {
                         u32::try_from(event.payload.get(key).and_then(serde_json::Value::as_u64).unwrap_or(0)).unwrap_or(u32::MAX)
@@ -713,6 +752,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 "page.protection" => app.set_page("protection".into()),
                 "page.network" => app.set_page("network".into()),
                 "page.vpn" => app.set_page("vpn".into()),
+                "page.posture" => app.set_page("posture".into()),
                 "page.about" => app.set_page("about".into()),
                 "page.ports" => app.set_page("ports".into()),
                 "page.credentials" => app.set_page("credentials".into()),
@@ -788,6 +828,11 @@ fn main() -> Result<(), slint::PlatformError> {
                 "quarantine" => quarantine_page(&app, &state),
                 "network" => network_page(&app, &state),
                 "vpn" => vpn(&app, &state, "vpn.get", None),
+                // Shows what's known at once, then runs a fresh check.
+                "posture" => {
+                    posture(&app, &state, "posture.get", None);
+                    posture(&app, &state, "posture.check", None);
+                }
                 "protection" => {
                     protection(&app, &state, "protection.get", None);
                     protection_system(&app, &state);
@@ -1228,6 +1273,37 @@ fn main() -> Result<(), slint::PlatformError> {
             let names = edited(app.get_vpn_trusted_names(), name.trim(), add);
             app.set_vpn_trusted_input("".into());
             vpn(&app, &state, "vpn.guard", Some(json!({ "trusted": names })));
+        });
+    }
+
+    // --- Security posture ---------------------------------------------------------------
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_pos_check(move || {
+            if let Some(app) = weak.upgrade() {
+                posture(&app, &state, "posture.check", None);
+            }
+        });
+    }
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_pos_action(move |action, value| {
+            let Some(app) = weak.upgrade() else { return };
+            let value = value.trim().to_owned();
+            let (method, params) = match action.as_str() {
+                "startup_ack" => ("posture.startup_ack", None),
+                "startup_off" => ("posture.startup_off", Some(json!({ "id": value }))),
+                "startup_on" => ("posture.startup_on", Some(json!({ "id": value }))),
+                "integrity_accept" => ("posture.integrity_accept", Some(json!({ "path": value }))),
+                "integrity_remove" => ("posture.integrity_remove", Some(json!({ "path": value }))),
+                "integrity_add" => {
+                    app.set_pos_path_input("".into());
+                    ("posture.integrity_add", Some(json!({ "path": value })))
+                }
+                "integrity_reset" => ("posture.integrity_reset", None),
+                _ => return,
+            };
+            posture(&app, &state, method, params);
         });
     }
 

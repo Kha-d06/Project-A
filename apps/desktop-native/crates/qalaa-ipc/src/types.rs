@@ -626,3 +626,107 @@ pub struct VpnStatus {
     pub trusted: Vec<String>,
     pub auto_connected_on: Option<String>,
 }
+
+/// One posture check (`posture.get`). Mirrors engine/posture.ts.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PostureCheck {
+    pub id: String,
+    pub title: String,
+    /// "pass", "fail", "warn" or "unknown" (couldn't run; not counted in the score).
+    pub status: String,
+    pub detail: Option<String>,
+    pub fix: Option<String>,
+    /// Whole numbers in every engine check.
+    pub weight: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PostureReport {
+    /// `None` when no check could run.
+    pub score: Option<u32>,
+    pub checks: Vec<PostureCheck>,
+    pub checked_at: String,
+}
+
+/// Firewall or disk encryption: "on", "off", "partial" or "unknown".
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StateDetail {
+    pub state: String,
+    pub detail: Option<String>,
+    pub source: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartupEntry {
+    pub id: String,
+    pub name: String,
+    pub command: String,
+    pub location: String,
+    pub program: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    pub warnings: Vec<String>,
+    pub is_new: bool,
+    pub can_switch_off: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DisabledStartup {
+    pub id: String,
+    pub name: String,
+    pub command: String,
+    pub location: String,
+    pub method: String,
+    pub data: std::collections::BTreeMap<String, String>,
+    pub at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FileState {
+    pub path: String,
+    /// `None`: the file doesn't exist or can't be read.
+    pub sha256: Option<String>,
+    pub size: Option<u64>,
+    pub mtime: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct IntegrityChange {
+    pub path: String,
+    /// "modified", "deleted" or "created".
+    pub kind: String,
+    pub before: FileState,
+    pub after: FileState,
+    pub at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IntegrityState {
+    pub paths: Vec<String>,
+    pub baseline: std::collections::BTreeMap<String, FileState>,
+    pub changes: Vec<IntegrityChange>,
+    pub last_check: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsbSummary {
+    pub new_keyboards: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PostureStatus {
+    pub posture: Option<PostureReport>,
+    pub firewall: Option<StateDetail>,
+    pub encryption: Option<StateDetail>,
+    pub startup: Vec<StartupEntry>,
+    pub disabled_startup: Vec<DisabledStartup>,
+    pub startup_baseline_set: bool,
+    pub integrity: IntegrityState,
+    pub usb: UsbSummary,
+    pub checking: bool,
+}

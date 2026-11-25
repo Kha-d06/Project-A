@@ -574,6 +574,46 @@ fn command_centre_interface() {
     qalaa_command::set_vpn(&app, &qalaa_command::view::vpn_view(&vpn_status, Lang::En));
     assert!(labelled(&app, "Add range").is_empty());
 
+    // --- Security posture: score, checks, startup review, protected files.
+    let pos_json: serde_json::Value =
+        serde_json::from_str(include_str!("../../qalaa-ipc/tests/fixtures/posture.json")).expect("posture fixture");
+    let pos_status: qalaa_ipc::PostureStatus = serde_json::from_value(pos_json["status"].clone()).expect("posture status");
+    let pos_now = qalaa_command::view::parse_iso("2026-11-25T13:00:00Z").expect("time");
+    qalaa_command::set_posture(&app, &qalaa_command::view::posture_view(&pos_status, pos_now, Lang::En));
+    app.set_page("posture".into());
+    let pos_calls = Rc::new(RefCell::new(Vec::<String>::new()));
+    {
+        let calls = Rc::clone(&pos_calls);
+        app.on_pos_check(move || calls.borrow_mut().push("check".to_owned()));
+    }
+    {
+        let calls = Rc::clone(&pos_calls);
+        app.on_pos_action(move |action, value| calls.borrow_mut().push(format!("{action} {value}")));
+    }
+    assert!(!labelled(&app, "Security posture 100/100, checked 1 hour ago").is_empty());
+    assert!(!labelled(&app, "Secure Boot — couldn't check").is_empty());
+    labelled(&app, "Check now")[0].invoke_accessible_default_action();
+    labelled(&app, "Switch off: miner")[0].invoke_accessible_default_action();
+    labelled(&app, "These are all expected")[0].invoke_accessible_default_action();
+    labelled(&app, "Switch back on: syncthing")[0].invoke_accessible_default_action();
+    labelled(&app, "This change is expected: /etc/hosts")[0].invoke_accessible_default_action();
+    app.set_pos_path_input("/home/me/.ssh/authorized_keys".into());
+    labelled(&app, "Watch this file")[0].invoke_accessible_default_action();
+    assert_eq!(
+        *pos_calls.borrow(),
+        vec![
+            "check".to_owned(),
+            "startup_off miner".to_owned(),
+            "startup_ack ".to_owned(),
+            "startup_on syncthing".to_owned(),
+            "integrity_accept /etc/hosts".to_owned(),
+            "integrity_add /home/me/.ssh/authorized_keys".to_owned(),
+        ]
+    );
+    app.set_pos_checking(true);
+    assert_eq!(labelled(&app, "Check now")[0].accessible_enabled(), Some(false));
+    app.set_pos_checking(false);
+
     // --- About carries the Slint credit the royalty-free licence requires.
     app.set_page("about".into());
     assert!(ElementHandle::find_by_element_type_name(&app, "AboutSlint").count() >= 1);

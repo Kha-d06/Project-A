@@ -23,6 +23,7 @@ import { KeyboardService } from "./core/keyboard-service";
 import { ListenerService } from "./core/listener-service";
 import { ScanEngineService } from "./core/scan-engine-service";
 import { NetworkService } from "./core/network-service";
+import { PostureService } from "./core/posture-service";
 import { VpnService } from "./core/vpn-service";
 import { ProtectionService, onAccessIdentity } from "./core/protection-service";
 import { HISTORY_LIMIT, ScanService } from "./core/scan-service";
@@ -53,6 +54,11 @@ import { pendingUpdates, wifiStatus } from "./engine/system";
 import { checkHttp, checkLineService } from "./engine/network/credentials";
 import { loadInventory, saveInventory } from "./engine/network/inventory";
 import { scanNetwork } from "./engine/network/scan";
+import { diskEncryption } from "./engine/encryption";
+import { IntegrityMonitor } from "./engine/integrity";
+import { posture } from "./engine/posture";
+import { firewallStatus, startupItems } from "./engine/security";
+import { canSwitchOff, switchOffStartup, switchOnStartup, type DisabledStartup } from "./engine/tools";
 import * as vpn from "./engine/vpn";
 import * as vpnGuard from "./engine/vpn-guard";
 import { FolderWatcher } from "./engine/watcher";
@@ -73,7 +79,7 @@ async function mtime(file: string): Promise<string | null> {
   }
 }
 
-export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService; safePay: SafePayService; aliases: AliasService; brokers: BrokerService; scanEngine: ScanEngineService; behaviour: BehaviourService; protection: ProtectionService; network: NetworkService; vpn: VpnService }> {
+export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService; safePay: SafePayService; aliases: AliasService; brokers: BrokerService; scanEngine: ScanEngineService; behaviour: BehaviourService; protection: ProtectionService; network: NetworkService; vpn: VpnService; posture: PostureService; integrity: IntegrityMonitor }> {
   const settingsFile = join(dataDir, "settings.json");
   const historyFile = join(dataDir, "history.json");
   let settings = await loadSettings(settingsFile, defaultSettings(join(homedir(), "Downloads"), [], hostname().slice(0, 80) || "This computer"));
@@ -188,6 +194,9 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     },
     observeOpen: (pid, path) => void credentials.observe(pid, path).catch(() => undefined),
     cfa: { status: () => cfa.cfaStatus(), apply: (action, path) => cfa.cfaApply(action, path) },
+    acceptChanged: async (files) => {
+      for (const file of files) if (integrity.state.paths.includes(file)) await integrity.accept(file).catch(() => undefined);
+    },
     terminal: {
       status: () => terminalStatus(),
       // The qalaa command runs on this service's own Node runtime; cli.js is built beside daemon.js.
@@ -211,6 +220,34 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     emit,
   });
   await network.load();
+  // File integrity (hosts, authorized_keys, shell profiles…): watched by the service itself now.
+  const integrity = new IntegrityMonitor(join(dataDir, "integrity.json"), (changes) => {
+    emit("alert", { kind: "integrity", files: changes.map((c) => c.path).slice(0, 5), count: changes.length });
+  });
+  await integrity.load();
+  const disabledStartupFile = join(dataDir, "startup-disabled.json");
+  const postureService = new PostureService({
+    platform: process.platform,
+    posture: (facts) => posture(facts),
+    firewall: () => firewallStatus(),
+    encryption: () => diskEncryption(),
+    pendingUpdates: async () => (await pendingUpdates())?.updates.length ?? null,
+    ports: () => listeningPorts(),
+    startup: () => startupItems(),
+    canSwitchOff: (item) => canSwitchOff(item),
+    switchOff: (item) => switchOffStartup(item),
+    switchOn: (entry) => switchOnStartup(entry),
+    knownStartup: () => settings.knownStartup,
+    async saveKnownStartup(ids) {
+      settings = { ...settings, knownStartup: ids };
+      await saveSettings(settingsFile, settings);
+    },
+    loadDisabled: async () => JSON.parse(await readFile(disabledStartupFile, "utf8")) as DisabledStartup[],
+    saveDisabled: (entries) => writeFile(disabledStartupFile, JSON.stringify(entries)),
+    integrity,
+    newKeyboards: () => keyboards.newCount(),
+  });
+  await postureService.load();
   const vpnService = new VpnService({
     platform: process.platform,
     tunnelFile: join(dataDir, `${vpn.CONNECTION_NAME}.conf`),
@@ -262,6 +299,8 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     protection,
     network,
     vpn: vpnService,
+    posture: postureService,
+    integrity,
     async homeInput(): Promise<HomeInput> {
       const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       return {
@@ -337,6 +376,8 @@ export async function runDaemon(env: NodeJS.ProcessEnv = process.env) {
   setInterval(() => void host.network.tick().catch(() => undefined), 60 * 60_000).unref();
   // VPN auto-connect on untrusted Wi-Fi, when it's on.
   host.vpn.applyAutoConnect();
+  // File integrity: watch the protected files (and a 10-minute sweep).
+  host.integrity.start();
   // Behaviour rules: new programs every second or two (the first look only records what runs).
   const behaviourCap = host.behaviour.capability();
   if (host.behaviour.isSupported()) {

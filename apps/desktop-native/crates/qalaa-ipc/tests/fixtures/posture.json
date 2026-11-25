@@ -1,0 +1,131 @@
+{
+  "status": {
+    "posture": {
+      "score": 100,
+      "checks": [
+        {
+          "id": "firewall",
+          "title": "Firewall",
+          "status": "pass",
+          "detail": "",
+          "fix": null,
+          "weight": 2
+        },
+        {
+          "id": "tpm",
+          "title": "TPM 2.0",
+          "status": "pass",
+          "detail": "",
+          "fix": null,
+          "weight": 2
+        },
+        {
+          "id": "secure_boot",
+          "title": "Secure Boot",
+          "status": "unknown",
+          "detail": "Couldn't read the firmware setting",
+          "fix": null,
+          "weight": 2
+        },
+        {
+          "id": "encryption",
+          "title": "Disk encryption",
+          "status": "pass",
+          "detail": "LUKS",
+          "fix": null,
+          "weight": 3
+        }
+      ],
+      "checkedAt": "2026-11-25T12:00:00.000Z"
+    },
+    "firewall": {
+      "state": "on",
+      "detail": "ufw active",
+      "source": "ufw"
+    },
+    "encryption": {
+      "state": "on",
+      "detail": "LUKS2 on /",
+      "source": "lsblk"
+    },
+    "startup": [
+      {
+        "id": "updater",
+        "name": "updater",
+        "command": "/usr/bin/updater",
+        "location": "systemd user services",
+        "program": "/usr/bin/updater",
+        "source": "updater.service",
+        "warnings": [
+          "Downloads and runs a script at every start"
+        ],
+        "isNew": false,
+        "canSwitchOff": true
+      },
+      {
+        "id": "miner",
+        "name": "miner",
+        "command": "/usr/bin/miner",
+        "location": "systemd user services",
+        "program": "/usr/bin/miner",
+        "source": "miner.service",
+        "warnings": [
+          "Starts a program from a temporary or Downloads folder"
+        ],
+        "isNew": true,
+        "canSwitchOff": true
+      }
+    ],
+    "disabledStartup": [
+      {
+        "id": "syncthing",
+        "name": "syncthing",
+        "command": "/usr/bin/syncthing",
+        "location": "systemd user services",
+        "at": "2026-11-25T12:00:00Z",
+        "method": "systemd-user",
+        "data": {
+          "unit": "syncthing.service"
+        }
+      }
+    ],
+    "startupBaselineSet": true,
+    "integrity": {
+      "paths": [
+        "/etc/hosts"
+      ],
+      "baseline": {
+        "/etc/hosts": {
+          "path": "/etc/hosts",
+          "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "size": 220,
+          "mtime": "2026-11-01T00:00:00.000Z"
+        }
+      },
+      "changes": [
+        {
+          "path": "/etc/hosts",
+          "kind": "modified",
+          "before": {
+            "path": "/etc/hosts",
+            "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "size": 220,
+            "mtime": "2026-11-01T00:00:00.000Z"
+          },
+          "after": {
+            "path": "/etc/hosts",
+            "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "size": 260,
+            "mtime": "2026-11-25T11:00:00.000Z"
+          },
+          "at": "2026-11-25T12:00:00.000Z"
+        }
+      ],
+      "lastCheck": "2026-11-25T12:00:00.000Z"
+    },
+    "usb": {
+      "newKeyboards": 1
+    },
+    "checking": false
+  }
+}

@@ -17,8 +17,8 @@ use slint::{ModelRc, SharedString, VecModel};
 
 use crate::strings::{t, Lang};
 use crate::view::{
-    BehaviourView, BrokerView, CredentialView, HomeView, NetworkPageView, PaletteEntry, PortView, ProtectionPageView, QuarantineView,
-    SandboxView, ScanPageView, VpnPageView,
+    BehaviourView, BrokerView, CredentialView, HomeView, NetworkPageView, PaletteEntry, PortView, PosturePageView, ProtectionPageView,
+    QuarantineView, SandboxView, ScanPageView, VpnPageView,
 };
 
 pub fn labels(lang: Lang) -> Labels {
@@ -153,6 +153,23 @@ pub fn labels(lang: Lang) -> Labels {
         vpn_trusted_name: s("vpn.trusted_name"),
         vpn_trusted_add: s("vpn.trusted_add"),
         vpn_remove: s("vpn.remove"),
+        posture: s("nav.posture"),
+        pos_title: s("pos.title"),
+        pos_intro: s("pos.intro"),
+        pos_check: s("pos.check"),
+        pos_startup: s("pos.startup"),
+        pos_ack: s("pos.ack"),
+        pos_off: s("pos.off"),
+        pos_on: s("pos.on"),
+        pos_disabled: s("pos.disabled"),
+        pos_integrity: s("pos.integrity"),
+        pos_integrity_intro: s("pos.integrity_intro"),
+        pos_accept: s("pos.accept"),
+        pos_remove: s("pos.remove"),
+        pos_path: s("pos.path"),
+        pos_add: s("pos.add"),
+        pos_reset: s("pos.reset"),
+        pos_usb: s("pos.usb"),
     }
 }
 
@@ -442,4 +459,49 @@ pub fn set_vpn(app: &App, view: &VpnPageView) {
     };
     app.set_vpn_ranges(strings(&view.ranges));
     app.set_vpn_trusted_names(strings(&view.trusted));
+}
+
+pub fn set_posture(app: &App, view: &PosturePageView) {
+    app.set_pos_score_text(view.score_text.clone().into());
+    app.set_pos_checking(view.checking);
+    let checks: Vec<FindingRow> = view
+        .checks
+        .iter()
+        .map(|(title, detail, status)| FindingRow {
+            title: title.clone().into(),
+            detail: detail.clone().into(),
+            severity: status.clone().into(),
+        })
+        .collect();
+    app.set_pos_checks(ModelRc::from(Rc::new(VecModel::from(checks))));
+    let startup: Vec<StartupRow> = view
+        .startup
+        .iter()
+        .map(|s| StartupRow {
+            id: s.id.clone().into(),
+            title: s.title.clone().into(),
+            detail: s.detail.clone().into(),
+            is_new: s.is_new,
+            can_off: s.can_off,
+        })
+        .collect();
+    app.set_pos_startup(ModelRc::from(Rc::new(VecModel::from(startup))));
+    app.set_pos_any_new(view.any_new_startup);
+    let rows = |items: &[QuarantineView]| -> ModelRc<QuarRow> {
+        ModelRc::from(Rc::new(VecModel::from(
+            items
+                .iter()
+                .map(|r| QuarRow {
+                    id: r.id.clone().into(),
+                    title: r.title.clone().into(),
+                    detail: r.detail.clone().into(),
+                })
+                .collect::<Vec<_>>(),
+        )))
+    };
+    app.set_pos_disabled(rows(&view.disabled));
+    app.set_pos_changes(rows(&view.changes));
+    let paths: Vec<SharedString> = view.paths.iter().map(|p| p.clone().into()).collect();
+    app.set_pos_paths(ModelRc::from(Rc::new(VecModel::from(paths))));
+    app.set_pos_usb_text(view.usb.clone().into());
 }

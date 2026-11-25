@@ -3,7 +3,7 @@
 
 use qalaa_ipc::{
     BehaviourStatus, BrokerStatus, CheckStatus, CredentialChecks, CredentialStatus, DeepCheck, HomeModel, ListenerStatus, NetworkStatus,
-    PostureState, ProtectionStatus, QuarantineItem, SandboxRun, ScanDetails, ScanStatus, SystemChecks, VpnStatus,
+    PostureState, PostureStatus, ProtectionStatus, QuarantineItem, SandboxRun, ScanDetails, ScanStatus, SystemChecks, VpnStatus,
 };
 
 use crate::strings::{t, Lang};
@@ -204,6 +204,10 @@ pub fn palette_entries(view: Option<&HomeView>, lang: Lang) -> Vec<PaletteEntry>
         PaletteEntry {
             id: "page.vpn".into(),
             title: t(lang, "nav.vpn").into(),
+        },
+        PaletteEntry {
+            id: "page.posture".into(),
+            title: t(lang, "nav.posture").into(),
         },
         PaletteEntry {
             id: "page.ports".into(),
@@ -1143,9 +1147,163 @@ pub fn vpn_view(status: &VpnStatus, lang: Lang) -> VpnPageView {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct StartupRowView {
+    pub id: String,
+    pub title: String,
+    pub detail: String,
+    pub is_new: bool,
+    pub can_off: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PosturePageView {
+    pub score_text: String,
+    /// (title, detail, status) with status "pass", "fail", "warn" or "unknown"; failures first.
+    pub checks: Vec<(String, String, String)>,
+    pub startup: Vec<StartupRowView>,
+    pub any_new_startup: bool,
+    pub disabled: Vec<QuarantineView>,
+    pub paths: Vec<String>,
+    /// Integrity changes waiting to be accepted: id is the path.
+    pub changes: Vec<QuarantineView>,
+    pub usb: String,
+    pub checking: bool,
+}
+
+pub fn posture_view(status: &PostureStatus, now: i64, lang: Lang) -> PosturePageView {
+    let score_text = match &status.posture {
+        None => t(lang, "pos.never").to_owned(),
+        Some(p) => match p.score {
+            Some(score) => fill(
+                lang,
+                "pos.score",
+                &[("score", score.to_string()), ("when", relative(Some(&p.checked_at), now, lang))],
+            ),
+            None => t(lang, "pos.no_score").to_owned(),
+        },
+    };
+    let rank = |s: &str| match s {
+        "fail" => 0,
+        "warn" => 1,
+        "unknown" => 2,
+        _ => 3,
+    };
+    let mut checks: Vec<(String, String, String)> = status
+        .posture
+        .as_ref()
+        .map(|p| {
+            p.checks
+                .iter()
+                .map(|c| {
+                    let word = match t(lang, &format!("pos.status.{}", c.status)) {
+                        "?" => c.status.clone(),
+                        s => s.to_owned(),
+                    };
+                    let mut detail = c.detail.clone().unwrap_or_default();
+                    if let Some(fix) = c.fix.as_ref().filter(|_| c.status == "fail" || c.status == "warn") {
+                        if !detail.is_empty() {
+                            detail.push_str(" · ");
+                        }
+                        detail.push_str(fix);
+                    }
+                    (format!("{} — {word}", c.title), detail, c.status.clone())
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    checks.sort_by_key(|c| rank(&c.2));
+    let startup = status
+        .startup
+        .iter()
+        .map(|s| {
+            let mut parts = vec![s.location.clone(), s.command.chars().take(160).collect::<String>()];
+            parts.extend(s.warnings.iter().cloned());
+            if s.is_new {
+                parts.push(t(lang, "pos.new").to_owned());
+            }
+            StartupRowView {
+                id: s.id.clone(),
+                title: s.name.clone(),
+                detail: parts.join(" · "),
+                is_new: s.is_new,
+                can_off: s.can_switch_off,
+            }
+        })
+        .collect();
+    let disabled = status
+        .disabled_startup
+        .iter()
+        .map(|d| QuarantineView {
+            id: d.id.clone(),
+            title: d.name.clone(),
+            detail: format!("{} · {} {}", d.location, t(lang, "pos.off_since"), relative(Some(&d.at), now, lang)),
+        })
+        .collect();
+    let changes = status
+        .integrity
+        .changes
+        .iter()
+        .map(|c| {
+            let kind = match t(lang, &format!("pos.change.{}", c.kind)) {
+                "?" => c.kind.clone(),
+                s => s.to_owned(),
+            };
+            QuarantineView {
+                id: c.path.clone(),
+                title: format!("{} — {kind}", c.path),
+                detail: relative(Some(&c.at), now, lang),
+            }
+        })
+        .collect();
+    let usb = if status.usb.new_keyboards > 0 {
+        fill(lang, "pos.usb_new", &[("n", status.usb.new_keyboards.to_string())])
+    } else {
+        t(lang, "pos.usb_none").to_owned()
+    };
+    PosturePageView {
+        score_text,
+        checks,
+        any_new_startup: status.startup.iter().any(|s| s.is_new),
+        startup,
+        disabled,
+        paths: status.integrity.paths.clone(),
+        changes,
+        usb,
+        checking: status.checking,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn posture_page_puts_failures_first_and_marks_new_startup() {
+        let json: serde_json::Value = serde_json::from_str(include_str!("../../qalaa-ipc/tests/fixtures/posture.json")).expect("fixture");
+        let status: qalaa_ipc::PostureStatus = serde_json::from_value(json["status"].clone()).expect("status");
+        let now = parse_iso("2026-11-25T13:00:00Z").expect("time");
+        let view = posture_view(&status, now, Lang::En);
+        assert_eq!(view.score_text, "Security posture 100/100, checked 1 hour ago");
+        // The check that couldn't run is listed, after the ones that could, and says so.
+        assert_eq!(
+            view.checks[0].2, "unknown",
+            "no failures in the fixture, so the unknown check leads"
+        );
+        assert!(view.checks.iter().any(|c| c.0 == "Secure Boot — couldn't check"));
+        assert!(view.any_new_startup);
+        assert!(view
+            .startup
+            .iter()
+            .find(|s| s.id == "miner")
+            .is_some_and(|s| s.is_new && s.detail.ends_with("new since your last review")));
+        assert_eq!(view.disabled[0].id, "syncthing");
+        assert_eq!(view.changes[0].title, "/etc/hosts — changed");
+        assert_eq!(view.usb, "1 new keyboard-like USB device since your last review.");
+        let mut none = status.clone();
+        none.posture = None;
+        assert_eq!(posture_view(&none, now, Lang::En).score_text, "Not checked yet.");
+    }
 
     #[test]
     fn vpn_page_follows_the_tunnel_state_and_platform() {

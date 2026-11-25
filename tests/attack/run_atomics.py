@@ -228,7 +228,16 @@ def run_one(atomic: Atomic, service: Service) -> tuple[str, str]:
     q = atomic.qalaa
     service.drain()
     if "before" in q:
-        service.call(q["before"]["method"], q["before"].get("params"))
+        before = q["before"]
+        service.call(before["method"], before.get("params"), timeout=60)
+        # Wait for a look that actually completed, so what was there before the
+        # attack is recorded as the baseline (a failed first look records nothing).
+        if before.get("ready_method"):
+            for _ in range(20):
+                if (service.call(before["ready_method"], timeout=60) or {}).get(before.get("ready_field", "checkedAt")):
+                    break
+                time.sleep(1)
+                service.call(before["method"], before.get("params"), timeout=60)
     log = Path(service.env["HOME"]) / f"atomic-{atomic.guid}.log"
     proc = start(atomic, service.env, log)
     expected = q.get("expect") or q.get("expect_none")
@@ -257,6 +266,12 @@ def run_one(atomic: Atomic, service: Service) -> tuple[str, str]:
         # atomic from a missed detection.
         output = log.read_text(encoding="utf-8", errors="replace")[-600:] if log.exists() else ""
         state = ""
+        if (expected.get("match") or {}).get("kind") == "credential":
+            try:
+                incidents = service.call("credentials.get").get("incidents", [])
+                state = f"; credential incidents: {[(i.get('program'), i.get('file')) for i in incidents][:8]}"
+            except Exception as exc:  # noqa: BLE001 - diagnostics only
+                state = f"; credentials.get failed: {exc}"
         if (expected.get("match") or {}).get("kind") == "listener":
             try:
                 ports = service.call("listeners.get").get("listeners", [])

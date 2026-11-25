@@ -13,7 +13,7 @@ atomic_tests:
       port: { description: Port to open, type: integer, default: 48731 }
       hold: { description: Seconds to keep listening, type: integer, default: 30 }
     qalaa:
-      before: { method: listeners.check }
+      before: { method: listeners.check, ready_method: listeners.get, ready_field: checkedAt }
       trigger: { method: listeners.check, after_seconds: 3 }
       expect:
         event: alert

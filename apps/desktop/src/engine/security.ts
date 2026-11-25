@@ -264,7 +264,8 @@ export async function listeningPorts(platform = process.platform): Promise<Liste
       const [netstat, tasks] = await Promise.all([run("netstat", ["-ano", "-p", "TCP"]), run("tasklist", ["/fo", "csv", "/nh"]).catch(() => "")]);
       return parseNetstat(netstat, tasks);
     }
-    if (platform === "darwin") return parseLsof(await run("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN"]));
+    // A cold lsof on a busy Mac can take more than 15 seconds (seen on CI).
+    if (platform === "darwin") return parseLsof(await run("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN"], 30_000));
     return await linuxListeningPorts();
   } catch {
     return null;

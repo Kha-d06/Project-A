@@ -10,7 +10,7 @@ atomic_tests:
       command: |
         # One dump lasts milliseconds; a 15-second process snapshot only catches
         # one running, so it is repeated back to back for a minute.
-        ( end=$((SECONDS + 60)); while [ "$SECONDS" -lt "$end" ]; do /usr/bin/security dump-keychain /Library/Keychains/System.keychain >/dev/null 2>&1; done ) &
+        ( n=0; end=$((SECONDS + 60)); while [ "$SECONDS" -lt "$end" ]; do /usr/bin/security dump-keychain /Library/Keychains/System.keychain >/dev/null || echo "dump failed ($?)"; n=$((n+1)); done; echo "$n dumps" ) &
         echo $! > "$HOME/atomic.pid"
       cleanup_command: |
         pkill -P "$(cat "$HOME/atomic.pid")" 2>/dev/null; kill "$(cat "$HOME/atomic.pid")" 2>/dev/null; rm -f "$HOME/atomic.pid"

@@ -8,7 +8,9 @@ atomic_tests:
     executor:
       name: sh
       command: |
-        bash -c 'history -c; sleep 6' &
+        # The trailing ':' keeps bash itself running: bash replaces itself with
+        # the last command of -c otherwise, and the command line becomes 'sleep 6'.
+        bash -c 'history -c; sleep 6; :' &
         echo $! > "$HOME/atomic.pid"
       cleanup_command: |
         kill "$(cat "$HOME/atomic.pid")" 2>/dev/null; rm -f "$HOME/atomic.pid"
@@ -17,3 +19,9 @@ atomic_tests:
         event: alert
         match: { kind: behaviour, rule: clear_shell_history, technique: T1070.003 }
       within_seconds: 15
+
+  - name: history -c typed into an interactive shell
+    auto_generated_guid: 7c3f2e5a-9f4d-4a0c-9e32-4d5e6f7a0002
+    supported_platforms: [linux, macos]
+    executor: { name: sh, command: "true" }
+    qalaa: { status: gap, note: "history is a shell built-in: typed at a prompt it starts no program, so process rules can't see it. Deleting or linking the history file away (rm, ln -sf /dev/null) is seen." }

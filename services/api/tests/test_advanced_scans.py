@@ -160,7 +160,7 @@ def test_shortcut_launching_powershell_matches_yara(client: TestClient) -> None:
     lnk = b"\x4c\x00\x00\x00" + b"\x00" * 60 + "powershell.exe -w hidden".encode("utf-16-le")
     scan = upload(client, "file", "invoice.lnk", lnk)
     match = next(f for f in scan["findings"] if f["category"] == "yara_match")
-    assert match["evidence"]["rule"] == "SENTINEL_Shortcut_Launches_Interpreter"
+    assert match["evidence"]["rule"] == "SUSP_LNK_Launches_Interpreter"
     assert scan["risk"] == "suspicious"
 
 

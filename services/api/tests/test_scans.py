@@ -342,7 +342,7 @@ def test_download_and_execute_script(client: TestClient) -> None:
     scan = scan_file(client, "setup.ps1", script)
     match = next(f for f in scan["findings"] if f["category"] == "yara_match")
     assert match["title"] == "Downloads and immediately runs code from the internet"
-    assert match["evidence"]["rule"] == "SENTINEL_Download_And_Execute"
+    assert match["evidence"]["rule"] == "SUSP_Download_And_Execute"
     assert any(c["key"] == "yara" and c["status"] == "completed" for c in scan["checks"])
 
 

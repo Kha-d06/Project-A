@@ -1,0 +1,4 @@
+{
+  "_comment": "Files known to trigger rules by mistake: SHA-256 -> why. Rule matches on these exact files are not reported. Operators can add more in allowlist.json in SENTINEL_YARA_RULES_DIR.",
+  "sha256": {}
+}

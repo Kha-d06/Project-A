@@ -1,5 +1,6 @@
 """YARA signature matching on uploaded samples."""
 
+import json
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -78,3 +79,40 @@ def yara_check(path: Path, outcome: Outcome, rule_set: RuleSet | None = None) ->
             + (f"{len(matches)} matched." if matches else "none matched."),
         )
     )
+
+
+def _read_allowlist(path: Path) -> dict[str, str]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    entries = data.get("sha256", {}) if isinstance(data, dict) else {}
+    return {
+        str(k).lower(): str(v)
+        for k, v in entries.items()
+        if isinstance(k, str) and len(k) == 64 and all(c in "0123456789abcdefABCDEF" for c in k)
+    }
+
+
+@lru_cache
+def load_allowlist() -> dict[str, str]:
+    """Known false positives: SHA-256 -> reason (built in, plus the operator's own)."""
+    allowed = _read_allowlist(BUILT_IN_RULES / "allowlist.json")
+    custom_dir = get_settings().yara_rules_dir
+    if custom_dir:
+        allowed.update(_read_allowlist(custom_dir / "allowlist.json"))
+    return allowed
+
+
+def apply_allowlist(outcome: Outcome, sha256: str) -> None:
+    """Drops rule matches on a file listed as a known false positive, and says so."""
+    reason = load_allowlist().get(sha256.lower())
+    if reason is None:
+        return
+    before = len(outcome.findings)
+    outcome.findings = [f for f in outcome.findings if f.category != "yara_match"]
+    if len(outcome.findings) != before:
+        outcome.limitations.append(
+            f"Signature rule matches on this exact file are not shown: it is a known false "
+            f"positive ({reason})."
+        )

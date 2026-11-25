@@ -14,7 +14,13 @@ from app.analyzers.file_types import FileType, extension_of
 from app.analyzers.office_macros import macro_findings
 from app.analyzers.pe_info import pe_findings
 from app.analyzers.types import Check, FindingData, Outcome, Severity
-from app.analyzers.yara_scan import SCAN_TIMEOUT_SECONDS, RuleSet, load_rules, yara_check
+from app.analyzers.yara_scan import (
+    SCAN_TIMEOUT_SECONDS,
+    RuleSet,
+    apply_allowlist,
+    load_rules,
+    yara_check,
+)
 from app.core.config import get_settings
 from app.intel import providers
 from app.intel.feeds import MALWAREBAZAAR, THREATFOX
@@ -652,6 +658,7 @@ def analyze_file(payload: dict[str, Any], db: Session) -> Outcome:
     outcome.findings += _name_findings(filename, detected)
     # Everything that parses the file's contents runs in a separate, jailed process.
     merge_into(outcome, run_static_inspection(path, filename))
+    apply_allowlist(outcome, sha256)
     hash_reputation_check(db, sha256, outcome)
     antivirus_check(path, outcome)
     if payload.get("virustotal_consent"):

@@ -1,4 +1,10 @@
-"""Fixed-window rate limiting.
+"""Sliding-window rate limiting.
+
+Each limit counts requests in fixed windows, but judges a request by the
+current window's count plus the previous window's count weighted by how much
+of it still overlaps the last `window_seconds`. Plain fixed windows let a
+client send the whole allowance at the end of one window and again at the
+start of the next: twice the limit within seconds.
 
 These limits protect shared infrastructure and third-party quotas. They apply to
 everyone equally and are not tied to any plan or payment.
@@ -111,10 +117,25 @@ def rejection_counts(limit_names: list[str], hours: int = 24) -> dict[str, int]:
     return totals
 
 
+def _now() -> float:
+    return time.time()
+
+
+def sliding_count(previous: int, current: int, elapsed_fraction: float) -> float:
+    """Requests in the last window: all of this window, the overlapping part of the last."""
+    return current + previous * (1.0 - elapsed_fraction)
+
+
 def enforce(limit: RateLimit, subject: str) -> None:
-    key = f"ratelimit:{limit.name}:{subject}"
+    window = limit.window_seconds
+    now = _now()
+    index = int(now // window)
+    base = f"ratelimit:{limit.name}:{subject}"
+    store = get_counter_store()
     try:
-        count, retry_after = get_counter_store().increment(key, limit.window_seconds)
+        # Kept for two windows so the next window can still weigh it.
+        current, _ = store.increment(f"{base}:{index}", window * 2)
+        previous = store.peek(f"{base}:{index - 1}")
     except redis.RedisError as exc:
         # Failing open would remove abuse protection exactly when the system is degraded.
         raise ApiError(
@@ -122,6 +143,9 @@ def enforce(limit: RateLimit, subject: str) -> None:
             "rate_limiter_unavailable",
             "The service is temporarily unable to accept requests. Please try again shortly.",
         ) from exc
+    elapsed = (now - index * window) / window
+    count = sliding_count(previous, current, elapsed)
+    retry_after = max(1, int((index + 1) * window - now))
     if count > limit.max_requests * get_settings().rate_limit_multiplier:
         record_rejection(limit.name)
         raise ApiError(

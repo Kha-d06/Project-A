@@ -42,6 +42,9 @@ export struct Labels {
     prot-cfa-allow: string, prot-cfa-hint: string, prot-system: string, prot-system-check: string,
     network: string, net-title: string, net-intro: string, net-scan: string, net-changes: string, net-devices: string,
     net-findings: string, net-no-findings: string, net-trust: string, net-untrust: string, net-consent: string, net-check: string,
+    vpn: string, vpn-title: string, vpn-intro: string, vpn-connect: string, vpn-disconnect: string, vpn-split: string,
+    vpn-split-full: string, vpn-split-exclude: string, vpn-split-only: string, vpn-range: string, vpn-range-add: string,
+    vpn-trusted: string, vpn-trusted-name: string, vpn-trusted-add: string, vpn-remove: string,
 }
 
 component Card inherits Rectangle {
@@ -111,6 +114,7 @@ component NavRail inherits VerticalLayout {
     Button { text: labels.quarantine; checkable: true; checked: page == "quarantine"; clicked => { page = "quarantine"; } }
     Button { text: labels.protection; checkable: true; checked: page == "protection"; clicked => { page = "protection"; } }
     Button { text: labels.network; checkable: true; checked: page == "network"; clicked => { page = "network"; } }
+    Button { text: labels.vpn; checkable: true; checked: page == "vpn"; clicked => { page = "vpn"; } }
     Button { text: labels.ports; checkable: true; checked: page == "ports"; clicked => { page = "ports"; } }
     Button { text: labels.credentials; checkable: true; checked: page == "credentials"; clicked => { page = "credentials"; } }
     Button { text: labels.behaviour; checkable: true; checked: page == "behaviour"; clicked => { page = "behaviour"; } }
@@ -166,6 +170,19 @@ export component App inherits Window {
     in property <bool> net-scanning: false;
     in-out property <bool> net-consent: false;
     in-out property <string> net-cred-text;
+    in property <string> vpn-state-text;
+    in property <string> vpn-hint;
+    in property <bool> vpn-can-setup: false;
+    in property <string> vpn-setup-label;
+    in property <bool> vpn-can-connect: false;
+    in property <bool> vpn-connected: false;
+    in property <[ToggleRow]> vpn-toggles;
+    in property <string> vpn-split-mode: "full";
+    in property <string> vpn-split-hint;
+    in property <[string]> vpn-ranges;
+    in property <[string]> vpn-trusted-names;
+    in-out property <string> vpn-range-input;
+    in-out property <string> vpn-trusted-input;
     in property <[CredRow]> credential-rows;
     in property <[BehRow]> behaviour-rows;
     in property <string> beh-note;
@@ -224,6 +241,12 @@ export component App inherits Window {
     callback net-scan();
     callback net-trust(string, bool);
     callback net-check(string);
+    callback vpn-setup();
+    callback vpn-connect(bool);
+    callback vpn-toggle(string, bool);
+    callback vpn-split(string);
+    callback vpn-range(string, bool);
+    callback vpn-trust(string, bool);
     changed page => { page-changed(page); }
 
     changed rtl => { Theme.rtl = rtl; }
@@ -975,6 +998,86 @@ export component App inherits Window {
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+
+                    if connected && page == "vpn": Card {
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 12px;
+                            Heading { text: labels.vpn-title; font-size: 20px; }
+                            Muted { text: labels.vpn-intro; }
+                            Text {
+                                text: vpn-state-text;
+                                font-weight: 600;
+                                color: vpn-connected ? Theme.protected : Theme.ink;
+                                horizontal-alignment: Theme.rtl ? right : left;
+                                accessible-role: text;
+                                accessible-label: vpn-state-text;
+                            }
+                            if vpn-hint != "": Muted { text: vpn-hint; }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: Theme.rtl ? end : start;
+                                if vpn-can-connect: Button {
+                                    text: vpn-connected ? labels.vpn-disconnect : labels.vpn-connect;
+                                    primary: !vpn-connected;
+                                    enabled: !busy;
+                                    clicked => { root.vpn-connect(!vpn-connected); }
+                                }
+                                if vpn-can-setup: Button { text: vpn-setup-label; enabled: !busy; clicked => { root.vpn-setup(); } }
+                            }
+                            for toggle in vpn-toggles: VerticalLayout {
+                                spacing: 0px;
+                                Switch {
+                                    text: toggle.label;
+                                    checked: toggle.on;
+                                    enabled: toggle.available && !busy;
+                                    accessible-label: toggle.label;
+                                    toggled => { root.vpn-toggle(toggle.key, self.checked); }
+                                }
+                                if toggle.hint != "": Muted { text: toggle.hint; font-size: 12px; }
+                            }
+                        }
+                    }
+
+                    if connected && page == "vpn": Card {
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 10px;
+                            Heading { text: labels.vpn-split; }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: Theme.rtl ? end : start;
+                                Button { text: labels.vpn-split-full; checkable: true; checked: vpn-split-mode == "full"; enabled: !busy; clicked => { root.vpn-split("full"); } }
+                                Button { text: labels.vpn-split-exclude; checkable: true; checked: vpn-split-mode == "exclude"; enabled: !busy; clicked => { root.vpn-split("exclude"); } }
+                                Button { text: labels.vpn-split-only; checkable: true; checked: vpn-split-mode == "only"; enabled: !busy; clicked => { root.vpn-split("only"); } }
+                            }
+                            Muted { text: vpn-split-hint; }
+                            if vpn-split-mode != "full": VerticalLayout {
+                                spacing: 6px;
+                                for range in vpn-ranges: HorizontalLayout {
+                                    spacing: 8px;
+                                    Muted { text: range; vertical-alignment: center; }
+                                    Button { text: labels.vpn-remove; accessible-label: labels.vpn-remove + ": " + range; enabled: !busy; clicked => { root.vpn-range(range, false); } }
+                                }
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    LineEdit { placeholder-text: labels.vpn-range; accessible-label: labels.vpn-range; text <=> root.vpn-range-input; }
+                                    Button { text: labels.vpn-range-add; enabled: !busy && root.vpn-range-input != ""; clicked => { root.vpn-range(root.vpn-range-input, true); } }
+                                }
+                            }
+                            Heading { text: labels.vpn-trusted; }
+                            for name in vpn-trusted-names: HorizontalLayout {
+                                spacing: 8px;
+                                Muted { text: name; vertical-alignment: center; }
+                                Button { text: labels.vpn-remove; accessible-label: labels.vpn-remove + ": " + name; enabled: !busy; clicked => { root.vpn-trust(name, false); } }
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                LineEdit { placeholder-text: labels.vpn-trusted-name; accessible-label: labels.vpn-trusted-name; text <=> root.vpn-trusted-input; }
+                                Button { text: labels.vpn-trusted-add; enabled: !busy && root.vpn-trusted-input != ""; clicked => { root.vpn-trust(root.vpn-trusted-input, true); } }
                             }
                         }
                     }

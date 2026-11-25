@@ -16,6 +16,7 @@ import type { SafePayService } from "./safepay-service";
 import type { SandboxService } from "./sandbox-service";
 import type { ScanEngineService } from "./scan-engine-service";
 import type { NetworkService } from "./network-service";
+import type { VpnService } from "./vpn-service";
 import type { ProtectionService } from "./protection-service";
 import type { ScanService } from "./scan-service";
 import { IpcError } from "./protocol";
@@ -55,6 +56,8 @@ export interface CoreHost {
   protection?: ProtectionService;
   /** The home network scanner, its inventory, changes and default-password check. */
   network?: NetworkService;
+  /** The self-hosted WireGuard VPN, kill switch, split tunnelling and auto-connect. */
+  vpn?: VpnService;
 }
 
 export type Handler = (params: unknown) => Promise<unknown>;
@@ -117,6 +120,12 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       await changed();
       return totals;
     },
+    "vpn.get": async () => requireVpn(host).status(),
+    "vpn.setup": async () => requireVpn(host).setup(),
+    "vpn.connect": async () => requireVpn(host).connect(),
+    "vpn.disconnect": async () => requireVpn(host).disconnect(),
+    "vpn.killswitch": async (params) => requireVpn(host).setKillSwitch(params),
+    "vpn.guard": async (params) => requireVpn(host).setGuard(params),
     "network.get": async () => requireNetwork(host).status(),
     "network.scan": async () => {
       const status = await requireNetwork(host).scan();
@@ -261,6 +270,11 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       return status;
     },
   };
+}
+
+function requireVpn(host: CoreHost): VpnService {
+  if (!host.vpn) throw new IpcError("unavailable", "The VPN needs the background service.");
+  return host.vpn;
 }
 
 function requireNetwork(host: CoreHost): NetworkService {

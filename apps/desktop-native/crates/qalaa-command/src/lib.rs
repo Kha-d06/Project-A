@@ -18,7 +18,7 @@ use slint::{ModelRc, SharedString, VecModel};
 use crate::strings::{t, Lang};
 use crate::view::{
     BehaviourView, BrokerView, CredentialView, HomeView, NetworkPageView, PaletteEntry, PortView, ProtectionPageView, QuarantineView,
-    SandboxView, ScanPageView,
+    SandboxView, ScanPageView, VpnPageView,
 };
 
 pub fn labels(lang: Lang) -> Labels {
@@ -138,6 +138,21 @@ pub fn labels(lang: Lang) -> Labels {
         net_untrust: s("net.untrust"),
         net_consent: s("net.consent"),
         net_check: s("net.check"),
+        vpn: s("nav.vpn"),
+        vpn_title: s("vpn.title"),
+        vpn_intro: s("vpn.intro"),
+        vpn_connect: s("vpn.connect"),
+        vpn_disconnect: s("vpn.disconnect"),
+        vpn_split: s("vpn.split"),
+        vpn_split_full: s("vpn.split.full"),
+        vpn_split_exclude: s("vpn.split.exclude"),
+        vpn_split_only: s("vpn.split.only"),
+        vpn_range: s("vpn.range"),
+        vpn_range_add: s("vpn.range_add"),
+        vpn_trusted: s("vpn.trusted"),
+        vpn_trusted_name: s("vpn.trusted_name"),
+        vpn_trusted_add: s("vpn.trusted_add"),
+        vpn_remove: s("vpn.remove"),
     }
 }
 
@@ -397,4 +412,34 @@ pub fn set_network(app: &App, view: &NetworkPageView) {
         })
         .collect();
     app.set_net_finding_rows(ModelRc::from(Rc::new(VecModel::from(findings))));
+}
+
+pub fn set_vpn(app: &App, view: &VpnPageView) {
+    app.set_vpn_state_text(view.state_text.clone().into());
+    app.set_vpn_hint(view.hint.clone().into());
+    app.set_vpn_can_setup(view.can_setup);
+    app.set_vpn_setup_label(view.setup_label.clone().into());
+    app.set_vpn_can_connect(view.can_connect);
+    app.set_vpn_connected(view.connected);
+    let toggles: Vec<ToggleRow> = view
+        .toggles
+        .iter()
+        .map(|t| ToggleRow {
+            key: t.key.clone().into(),
+            label: t.label.clone().into(),
+            hint: t.hint.clone().into(),
+            on: t.on,
+            available: t.available,
+        })
+        .collect();
+    app.set_vpn_toggles(ModelRc::from(Rc::new(VecModel::from(toggles))));
+    app.set_vpn_split_mode(view.split_mode.clone().into());
+    app.set_vpn_split_hint(view.split_hint.clone().into());
+    let strings = |items: &[String]| -> ModelRc<SharedString> {
+        ModelRc::from(Rc::new(VecModel::from(
+            items.iter().map(|s| SharedString::from(s.as_str())).collect::<Vec<_>>(),
+        )))
+    };
+    app.set_vpn_ranges(strings(&view.ranges));
+    app.set_vpn_trusted_names(strings(&view.trusted));
 }

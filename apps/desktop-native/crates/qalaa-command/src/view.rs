@@ -3,7 +3,7 @@
 
 use qalaa_ipc::{
     BehaviourStatus, BrokerStatus, CheckStatus, CredentialChecks, CredentialStatus, DeepCheck, HomeModel, ListenerStatus, NetworkStatus,
-    PostureState, ProtectionStatus, QuarantineItem, SandboxRun, ScanDetails, ScanStatus, SystemChecks,
+    PostureState, ProtectionStatus, QuarantineItem, SandboxRun, ScanDetails, ScanStatus, SystemChecks, VpnStatus,
 };
 
 use crate::strings::{t, Lang};
@@ -200,6 +200,10 @@ pub fn palette_entries(view: Option<&HomeView>, lang: Lang) -> Vec<PaletteEntry>
         PaletteEntry {
             id: "page.network".into(),
             title: t(lang, "nav.network").into(),
+        },
+        PaletteEntry {
+            id: "page.vpn".into(),
+            title: t(lang, "nav.vpn").into(),
         },
         PaletteEntry {
             id: "page.ports".into(),
@@ -1061,9 +1065,118 @@ pub fn credential_text(checks: &CredentialChecks, lang: Lang) -> String {
         .join("\n")
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct VpnPageView {
+    pub state_text: String,
+    /// What to do next, or why something isn't available here.
+    pub hint: String,
+    pub can_setup: bool,
+    pub setup_label: String,
+    pub can_connect: bool,
+    pub connected: bool,
+    /// killswitch, allowlan, autoconnect.
+    pub toggles: Vec<ToggleView>,
+    pub split_mode: String,
+    pub split_hint: String,
+    pub ranges: Vec<String>,
+    pub trusted: Vec<String>,
+}
+
+pub fn vpn_view(status: &VpnStatus, lang: Lang) -> VpnPageView {
+    let state_text = match t(lang, &format!("vpn.state.{}", status.state)) {
+        "?" => status.state.clone(),
+        s => s.to_owned(),
+    };
+    let hint = if !status.linked && !status.saved {
+        t(lang, "vpn.hint_link").to_owned()
+    } else if !status.saved {
+        t(lang, "vpn.hint_setup").to_owned()
+    } else if status.state == "unsupported" {
+        t(lang, "vpn.hint_unsupported").to_owned()
+    } else if let Some(network) = &status.auto_connected_on {
+        fill(lang, "vpn.hint_auto", &[("network", network.clone())])
+    } else {
+        String::new()
+    };
+    let guard_hint = |key: &str| {
+        if status.guard_capable {
+            t(lang, key).to_owned()
+        } else {
+            t(lang, "vpn.linux_only").to_owned()
+        }
+    };
+    let toggles = vec![
+        ToggleView {
+            key: "killswitch".into(),
+            label: t(lang, "vpn.killswitch").into(),
+            hint: guard_hint("vpn.killswitch_hint"),
+            on: status.kill_switch,
+            available: status.guard_capable,
+        },
+        ToggleView {
+            key: "allowlan".into(),
+            label: t(lang, "vpn.allowlan").into(),
+            hint: t(lang, "vpn.allowlan_hint").into(),
+            on: status.allow_lan,
+            available: status.guard_capable,
+        },
+        ToggleView {
+            key: "autoconnect".into(),
+            label: t(lang, "vpn.autoconnect").into(),
+            hint: guard_hint("vpn.autoconnect_hint"),
+            on: status.auto_connect,
+            available: status.guard_capable,
+        },
+    ];
+    VpnPageView {
+        state_text: format!("{} {state_text}", t(lang, "vpn.state")),
+        hint,
+        can_setup: status.linked,
+        setup_label: t(lang, if status.saved { "vpn.setup_again" } else { "vpn.setup" }).to_owned(),
+        can_connect: status.saved && matches!(status.state.as_str(), "connected" | "disconnected"),
+        connected: status.state == "connected",
+        toggles,
+        split_mode: status.split_mode.clone(),
+        split_hint: t(lang, &format!("vpn.split.{}_hint", status.split_mode)).to_owned(),
+        ranges: status.split_cidrs.clone(),
+        trusted: status.trusted.clone(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn vpn_page_follows_the_tunnel_state_and_platform() {
+        let json: serde_json::Value = serde_json::from_str(include_str!("../../qalaa-ipc/tests/fixtures/vpn.json")).expect("fixture");
+        let status: qalaa_ipc::VpnStatus = serde_json::from_value(json["status"].clone()).expect("status");
+        let view = vpn_view(&status, Lang::En);
+        assert_eq!(view.state_text, "Tunnel: connected");
+        assert_eq!(view.hint, "Turned on automatically on \"Cafe\".");
+        assert!(view.connected && view.can_connect && view.can_setup);
+        assert_eq!(view.setup_label, "Set up again (new key)");
+        assert_eq!(view.ranges, ["192.168.50.0/24"]);
+        assert!(view.toggles.iter().all(|t| t.available));
+
+        let mut mac = status.clone();
+        mac.platform = "darwin".into();
+        mac.guard_capable = false;
+        let view = vpn_view(&mac, Lang::Ar);
+        assert!(view
+            .toggles
+            .iter()
+            .filter(|t| t.key != "allowlan")
+            .all(|t| !t.available && t.hint.contains("لينكس")));
+
+        let mut fresh = status;
+        fresh.linked = false;
+        fresh.saved = false;
+        fresh.state = "not_imported".into();
+        let view = vpn_view(&fresh, Lang::En);
+        assert!(!view.can_setup && !view.can_connect);
+        assert!(view.hint.starts_with("Link this computer"));
+    }
 
     fn network_fixture() -> serde_json::Value {
         serde_json::from_str(include_str!("../../qalaa-ipc/tests/fixtures/network.json")).expect("fixture")

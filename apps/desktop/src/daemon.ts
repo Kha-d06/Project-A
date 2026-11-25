@@ -23,6 +23,7 @@ import { KeyboardService } from "./core/keyboard-service";
 import { ListenerService } from "./core/listener-service";
 import { ScanEngineService } from "./core/scan-engine-service";
 import { NetworkService } from "./core/network-service";
+import { VpnService } from "./core/vpn-service";
 import { ProtectionService, onAccessIdentity } from "./core/protection-service";
 import { HISTORY_LIMIT, ScanService } from "./core/scan-service";
 import { SandboxService } from "./core/sandbox-service";
@@ -52,6 +53,8 @@ import { pendingUpdates, wifiStatus } from "./engine/system";
 import { checkHttp, checkLineService } from "./engine/network/credentials";
 import { loadInventory, saveInventory } from "./engine/network/inventory";
 import { scanNetwork } from "./engine/network/scan";
+import * as vpn from "./engine/vpn";
+import * as vpnGuard from "./engine/vpn-guard";
 import { FolderWatcher } from "./engine/watcher";
 import { deepCheck } from "./engine/tools";
 import { fetchSignatures, lookupHash } from "./engine/server";
@@ -70,7 +73,7 @@ async function mtime(file: string): Promise<string | null> {
   }
 }
 
-export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService; safePay: SafePayService; aliases: AliasService; brokers: BrokerService; scanEngine: ScanEngineService; behaviour: BehaviourService; protection: ProtectionService; network: NetworkService }> {
+export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService; safePay: SafePayService; aliases: AliasService; brokers: BrokerService; scanEngine: ScanEngineService; behaviour: BehaviourService; protection: ProtectionService; network: NetworkService; vpn: VpnService }> {
   const settingsFile = join(dataDir, "settings.json");
   const historyFile = join(dataDir, "history.json");
   let settings = await loadSettings(settingsFile, defaultSettings(join(homedir(), "Downloads"), [], hostname().slice(0, 80) || "This computer"));
@@ -208,6 +211,37 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     emit,
   });
   await network.load();
+  const vpnService = new VpnService({
+    platform: process.platform,
+    tunnelFile: join(dataDir, `${vpn.CONNECTION_NAME}.conf`),
+    // The account the classic app (or a future native sign-in) linked, in the same data folder.
+    account: () => loadAccount(join(dataDir, "account.json")),
+    settings: () => settings,
+    async saveSettings(changes) {
+      settings = { ...settings, ...changes };
+      await saveSettings(settingsFile, settings);
+    },
+    tunnel: {
+      state: () => vpn.tunnelState(),
+      keyPair: () => vpn.generateKeyPair(),
+      requestPeer: (account, publicKey) => vpn.requestPeer(account, publicKey),
+      build: (config, privateKey) => vpn.buildConfig(config, privateKey),
+      save: (text) => vpn.saveTunnel(dataDir, text),
+      importFile: (file) => vpn.importTunnel(file),
+      connect: () => vpn.connectTunnel(),
+      disconnect: () => vpn.disconnectTunnel(),
+    },
+    guard: {
+      capable: () => vpnGuard.killSwitchCapable(),
+      applySplit: (config, mode, cidrs) => vpnGuard.applySplitTunnel(config, mode, cidrs),
+      killSwitchScript: (host, allowLan) => vpnGuard.killSwitchScript(vpnGuard.killSwitchRules(vpn.CONNECTION_NAME, host, allowLan)),
+      removeKillSwitchScript: () => vpnGuard.removeKillSwitchScript(),
+      shouldAutoConnect: (wifi, policy) => vpnGuard.shouldAutoConnect(wifi, policy),
+    },
+    elevate: (script) => runElevated({ command: "pkexec", args: ["sh", "-c", script] }),
+    wifi: () => wifiStatus(),
+    emit,
+  });
   const history = () => scans.results();
 
   return {
@@ -227,6 +261,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     scans,
     protection,
     network,
+    vpn: vpnService,
     async homeInput(): Promise<HomeInput> {
       const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       return {
@@ -300,6 +335,8 @@ export async function runDaemon(env: NodeJS.ProcessEnv = process.env) {
   await host.protection.start().catch((error: unknown) => console.error(`Protection did not start: ${String(error)}`));
   // Watch my network: the scheduled rescan, checked hourly, runs when the last scan is 6 hours old.
   setInterval(() => void host.network.tick().catch(() => undefined), 60 * 60_000).unref();
+  // VPN auto-connect on untrusted Wi-Fi, when it's on.
+  host.vpn.applyAutoConnect();
   // Behaviour rules: new programs every second or two (the first look only records what runs).
   const behaviourCap = host.behaviour.capability();
   if (host.behaviour.isSupported()) {

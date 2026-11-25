@@ -9,16 +9,16 @@ use qalaa_command::strings::{t, Lang};
 use qalaa_command::view::{
     alias_notice, brokers_view, clipboard_text, content_protected, credential_text, credentials_view, deep_view, filter_palette, home_view,
     inspector_text, network_progress_text, network_view, palette_entries, ports_view, progress_text, protection_view, quarantine_view,
-    scan_view, system_view, PaletteEntry,
+    scan_view, system_view, vpn_view, PaletteEntry,
 };
 use qalaa_command::{
     apply_home, now_secs, set_behaviour, set_brokers, set_credentials, set_deep, set_language, set_network, set_offline, set_palette,
-    set_ports, set_protection, set_protection_system, set_quarantine, set_sandbox, set_scan, App,
+    set_ports, set_protection, set_protection_system, set_quarantine, set_sandbox, set_scan, set_vpn, App,
 };
 use qalaa_ipc::{
     BehaviourStatus, BrokerStatus, Client, CredentialChecks, CredentialStatus, DeepCheck, HomeModel, IpcError, ListenerStatus, Message,
     NetworkStatus, ProtectionStatus, QuarantineItem, QuarantineList, SandboxList, SandboxRun, ScanDetails, ScanStatus, Stream,
-    SystemChecks,
+    SystemChecks, VpnStatus,
 };
 use serde_json::json;
 use slint::winit_030::WinitWindowAccessor;
@@ -196,6 +196,28 @@ fn network_long<T: Send + 'static>(
             network_page(&app, &state);
         });
     });
+}
+
+/// Calls a vpn.* method (or just vpn.get) and shows the VPN page.
+fn vpn(app: &App, state: &Arc<State>, method: &'static str, params: Option<serde_json::Value>) {
+    on_client(
+        app,
+        state,
+        move |c| c.call::<VpnStatus>(method, params),
+        |app, lang, status| {
+            set_vpn(app, &vpn_view(&status, lang));
+        },
+    );
+}
+
+/// The page's list with one item added or removed, for the vpn.guard call.
+fn edited(model: slint::ModelRc<slint::SharedString>, item: &str, add: bool) -> Vec<String> {
+    use slint::Model;
+    let mut items: Vec<String> = model.iter().map(|s| s.to_string()).filter(|s| s != item).collect();
+    if add {
+        items.push(item.to_owned());
+    }
+    items
 }
 
 fn quarantine_page(app: &App, state: &Arc<State>) {
@@ -465,6 +487,14 @@ fn listen(app: &App, state: &Arc<State>) {
                     });
                     continue;
                 }
+                if event.name == "alert" && event.payload.get("kind").and_then(serde_json::Value::as_str) == Some("vpn") {
+                    let _ = weak.upgrade_in_event_loop(|app| {
+                        if app.get_page() == "vpn" {
+                            app.invoke_page_changed("vpn".into());
+                        }
+                    });
+                    continue;
+                }
                 if event.name == "network.progress" {
                     let n = |key: &str| {
                         u32::try_from(event.payload.get(key).and_then(serde_json::Value::as_u64).unwrap_or(0)).unwrap_or(u32::MAX)
@@ -682,6 +712,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 "page.quarantine" => app.set_page("quarantine".into()),
                 "page.protection" => app.set_page("protection".into()),
                 "page.network" => app.set_page("network".into()),
+                "page.vpn" => app.set_page("vpn".into()),
                 "page.about" => app.set_page("about".into()),
                 "page.ports" => app.set_page("ports".into()),
                 "page.credentials" => app.set_page("credentials".into()),
@@ -756,6 +787,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 "scan" => scan_page(&app, &state),
                 "quarantine" => quarantine_page(&app, &state),
                 "network" => network_page(&app, &state),
+                "vpn" => vpn(&app, &state, "vpn.get", None),
                 "protection" => {
                     protection(&app, &state, "protection.get", None);
                     protection_system(&app, &state);
@@ -1138,6 +1170,64 @@ fn main() -> Result<(), slint::PlatformError> {
                     app.set_net_cred_text(credential_text(&checks, lang).into());
                 },
             );
+        });
+    }
+
+    // --- VPN ---------------------------------------------------------------------------
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_vpn_setup(move || {
+            if let Some(app) = weak.upgrade() {
+                vpn(&app, &state, "vpn.setup", None);
+            }
+        });
+    }
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_vpn_connect(move |connect| {
+            if let Some(app) = weak.upgrade() {
+                vpn(&app, &state, if connect { "vpn.connect" } else { "vpn.disconnect" }, None);
+            }
+        });
+    }
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_vpn_toggle(move |key, on| {
+            let Some(app) = weak.upgrade() else { return };
+            match key.as_str() {
+                "killswitch" => vpn(&app, &state, "vpn.killswitch", Some(json!({ "on": on }))),
+                "allowlan" => vpn(&app, &state, "vpn.guard", Some(json!({ "allowLan": on }))),
+                "autoconnect" => vpn(&app, &state, "vpn.guard", Some(json!({ "autoConnect": on }))),
+                _ => {}
+            }
+        });
+    }
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_vpn_split(move |mode| {
+            if let Some(app) = weak.upgrade() {
+                if matches!(mode.as_str(), "full" | "exclude" | "only") {
+                    vpn(&app, &state, "vpn.guard", Some(json!({ "splitMode": mode.as_str() })));
+                }
+            }
+        });
+    }
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_vpn_range(move |range, add| {
+            let Some(app) = weak.upgrade() else { return };
+            let ranges = edited(app.get_vpn_ranges(), range.trim(), add);
+            app.set_vpn_range_input("".into());
+            vpn(&app, &state, "vpn.guard", Some(json!({ "splitCidrs": ranges })));
+        });
+    }
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_vpn_trust(move |name, add| {
+            let Some(app) = weak.upgrade() else { return };
+            let names = edited(app.get_vpn_trusted_names(), name.trim(), add);
+            app.set_vpn_trusted_input("".into());
+            vpn(&app, &state, "vpn.guard", Some(json!({ "trusted": names })));
         });
     }
 

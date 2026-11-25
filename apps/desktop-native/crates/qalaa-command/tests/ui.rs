@@ -520,6 +520,60 @@ fn command_centre_interface() {
     assert_eq!(labelled(&app, "Scan my network")[0].accessible_enabled(), Some(false));
     app.set_net_scanning(false);
 
+    // --- VPN: connect, kill switch, split tunnelling ranges, trusted networks.
+    let vpn_json: serde_json::Value = serde_json::from_str(include_str!("../../qalaa-ipc/tests/fixtures/vpn.json")).expect("vpn fixture");
+    let mut vpn_status: qalaa_ipc::VpnStatus = serde_json::from_value(vpn_json["status"].clone()).expect("vpn status");
+    vpn_status.state = "disconnected".into();
+    qalaa_command::set_vpn(&app, &qalaa_command::view::vpn_view(&vpn_status, Lang::En));
+    app.set_page("vpn".into());
+    let vpn_calls = Rc::new(RefCell::new(Vec::<String>::new()));
+    {
+        let calls = Rc::clone(&vpn_calls);
+        app.on_vpn_connect(move |on| calls.borrow_mut().push(format!("connect {on}")));
+    }
+    {
+        let calls = Rc::clone(&vpn_calls);
+        app.on_vpn_toggle(move |key, on| calls.borrow_mut().push(format!("{key} {on}")));
+    }
+    {
+        let calls = Rc::clone(&vpn_calls);
+        app.on_vpn_split(move |mode| calls.borrow_mut().push(format!("split {mode}")));
+    }
+    {
+        let calls = Rc::clone(&vpn_calls);
+        app.on_vpn_range(move |range, add| calls.borrow_mut().push(format!("range {range} {add}")));
+    }
+    {
+        let calls = Rc::clone(&vpn_calls);
+        app.on_vpn_trust(move |name, add| calls.borrow_mut().push(format!("trust {name} {add}")));
+    }
+    assert!(!labelled(&app, "Tunnel: not connected").is_empty());
+    labelled(&app, "Connect")[0].invoke_accessible_default_action();
+    labelled(&app, "Kill switch")[0].invoke_accessible_default_action();
+    labelled(&app, "Only these ranges")[0].invoke_accessible_default_action();
+    labelled(&app, "Remove: 192.168.50.0/24")[0].invoke_accessible_default_action();
+    app.set_vpn_range_input("10.0.0.0/8".into());
+    labelled(&app, "Add range")[0].invoke_accessible_default_action();
+    labelled(&app, "Remove: Home")[0].invoke_accessible_default_action();
+    app.set_vpn_trusted_input("Office".into());
+    labelled(&app, "Trust this network")[0].invoke_accessible_default_action();
+    assert_eq!(
+        *vpn_calls.borrow(),
+        vec![
+            "connect true".to_owned(),
+            "killswitch false".to_owned(),
+            "split only".to_owned(),
+            "range 192.168.50.0/24 false".to_owned(),
+            "range 10.0.0.0/8 true".to_owned(),
+            "trust Home false".to_owned(),
+            "trust Office true".to_owned(),
+        ]
+    );
+    // Full tunnel: no range list to edit.
+    vpn_status.split_mode = "full".into();
+    qalaa_command::set_vpn(&app, &qalaa_command::view::vpn_view(&vpn_status, Lang::En));
+    assert!(labelled(&app, "Add range").is_empty());
+
     // --- About carries the Slint credit the royalty-free licence requires.
     app.set_page("about".into());
     assert!(ElementHandle::find_by_element_type_name(&app, "AboutSlint").count() >= 1);

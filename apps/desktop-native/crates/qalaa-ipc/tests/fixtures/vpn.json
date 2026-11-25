@@ -1,0 +1,20 @@
+{
+  "status": {
+    "platform": "linux",
+    "linked": true,
+    "saved": true,
+    "state": "connected",
+    "guardCapable": true,
+    "killSwitch": true,
+    "allowLan": true,
+    "splitMode": "exclude",
+    "splitCidrs": [
+      "192.168.50.0/24"
+    ],
+    "autoConnect": true,
+    "trusted": [
+      "Home"
+    ],
+    "autoConnectedOn": "Cafe"
+  }
+}

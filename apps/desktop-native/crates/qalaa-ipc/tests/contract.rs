@@ -156,3 +156,14 @@ fn decodes_the_network_fixture_written_by_the_typescript_tests() {
         assert_eq!(value.expect("encodes"), json[key], "{key} round-trips");
     }
 }
+
+#[test]
+fn decodes_the_vpn_fixture_written_by_the_typescript_tests() {
+    use qalaa_ipc::VpnStatus;
+    let json: serde_json::Value = serde_json::from_str(include_str!("fixtures/vpn.json")).expect("json");
+    let status: VpnStatus = serde_json::from_value(json["status"].clone()).expect("status decodes");
+    assert_eq!(status.state, "connected");
+    assert_eq!(status.split_mode, "exclude");
+    assert_eq!(status.auto_connected_on.as_deref(), Some("Cafe"));
+    assert_eq!(serde_json::to_value(&status).expect("encodes"), json["status"]);
+}

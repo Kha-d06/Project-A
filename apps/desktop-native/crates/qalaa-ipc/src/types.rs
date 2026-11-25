@@ -603,3 +603,26 @@ pub struct CredentialChecks {
     pub ip: String,
     pub results: Vec<CredentialCheck>,
 }
+
+/// The WireGuard VPN (`vpn.get`). Mirrors core/vpn-service.ts.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VpnStatus {
+    pub platform: String,
+    /// Linked to a Qalaa account (needed to set up a tunnel).
+    pub linked: bool,
+    /// A tunnel file is saved on this computer.
+    pub saved: bool,
+    /// "connected", "disconnected", "not_imported" or "unsupported".
+    pub state: String,
+    /// The kill switch and auto-connect can run here (Linux).
+    pub guard_capable: bool,
+    pub kill_switch: bool,
+    pub allow_lan: bool,
+    /// "full", "exclude" or "only".
+    pub split_mode: String,
+    pub split_cidrs: Vec<String>,
+    pub auto_connect: bool,
+    pub trusted: Vec<String>,
+    pub auto_connected_on: Option<String>,
+}

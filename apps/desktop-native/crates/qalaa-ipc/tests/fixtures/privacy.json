@@ -1,0 +1,42 @@
+{
+  "status": {
+    "platform": "linux",
+    "locks": {
+      "supported": true,
+      "camera": "allowed",
+      "microphone": "blocked"
+    },
+    "watch": {
+      "on": true,
+      "supported": true
+    },
+    "inUse": [
+      {
+        "device": "camera",
+        "app": "zoom"
+      }
+    ],
+    "log": [
+      {
+        "at": "2026-11-25T12:00:00.000Z",
+        "device": "camera",
+        "app": "zoom"
+      }
+    ],
+    "clipboard": {
+      "supported": true,
+      "enabled": true,
+      "ttlSeconds": 30,
+      "armed": {
+        "kind": "api_token",
+        "expiresAt": "2026-11-25T12:00:30.000Z",
+        "remainingMs": 21000
+      }
+    },
+    "web": {
+      "vault": "https://qalaa.example.org/dashboard/passwords",
+      "aliases": "https://qalaa.example.org/dashboard/privacy",
+      "brokers": "https://qalaa.example.org/dashboard/privacy"
+    }
+  }
+}

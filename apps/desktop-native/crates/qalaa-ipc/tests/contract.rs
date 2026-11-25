@@ -180,3 +180,14 @@ fn decodes_the_posture_fixture_written_by_the_typescript_tests() {
     assert_eq!(status.usb.new_keyboards, 1);
     assert_eq!(serde_json::to_value(&status).expect("encodes"), json["status"]);
 }
+
+#[test]
+fn decodes_the_privacy_fixture_written_by_the_typescript_tests() {
+    use qalaa_ipc::PrivacyStatus;
+    let json: serde_json::Value = serde_json::from_str(include_str!("fixtures/privacy.json")).expect("json");
+    let status: PrivacyStatus = serde_json::from_value(json["status"].clone()).expect("status decodes");
+    assert_eq!(status.locks.microphone, "blocked");
+    assert_eq!(status.log[0].app, "zoom");
+    assert!(status.web.as_ref().is_some_and(|w| w.vault.ends_with("/dashboard/passwords")));
+    assert_eq!(serde_json::to_value(&status).expect("encodes"), json["status"]);
+}

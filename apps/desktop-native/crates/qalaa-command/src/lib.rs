@@ -17,8 +17,8 @@ use slint::{ModelRc, SharedString, VecModel};
 
 use crate::strings::{t, Lang};
 use crate::view::{
-    BehaviourView, BrokerView, CredentialView, HomeView, NetworkPageView, PaletteEntry, PortView, PosturePageView, ProtectionPageView,
-    QuarantineView, SandboxView, ScanPageView, VpnPageView,
+    BehaviourView, BrokerView, CredentialView, HomeView, NetworkPageView, PaletteEntry, PortView, PosturePageView, PrivacyPageView,
+    ProtectionPageView, QuarantineView, SandboxView, ScanPageView, VpnPageView,
 };
 
 pub fn labels(lang: Lang) -> Labels {
@@ -170,6 +170,19 @@ pub fn labels(lang: Lang) -> Labels {
         pos_add: s("pos.add"),
         pos_reset: s("pos.reset"),
         pos_usb: s("pos.usb"),
+        privacy: s("nav.privacy"),
+        priv_title: s("priv.title"),
+        priv_intro: s("priv.intro"),
+        priv_block: s("priv.block"),
+        priv_allow: s("priv.allow"),
+        priv_clipboard: s("priv.clipboard"),
+        priv_clear: s("priv.clear"),
+        priv_tools: s("priv.tools"),
+        priv_safepay: s("priv.safepay"),
+        priv_alias: s("priv.alias"),
+        priv_brokers: s("priv.brokers"),
+        priv_vault: s("priv.vault"),
+        priv_aliases_web: s("priv.aliases_web"),
     }
 }
 
@@ -504,4 +517,33 @@ pub fn set_posture(app: &App, view: &PosturePageView) {
     let paths: Vec<SharedString> = view.paths.iter().map(|p| p.clone().into()).collect();
     app.set_pos_paths(ModelRc::from(Rc::new(VecModel::from(paths))));
     app.set_pos_usb_text(view.usb.clone().into());
+}
+
+pub fn set_privacy(app: &App, view: &PrivacyPageView) {
+    let locks: Vec<LockRow> = view
+        .locks
+        .iter()
+        .map(|l| LockRow {
+            device: l.device.clone().into(),
+            title: l.title.clone().into(),
+            detail: l.detail.clone().into(),
+            blocked: l.blocked,
+            available: l.available,
+        })
+        .collect();
+    app.set_priv_locks(ModelRc::from(Rc::new(VecModel::from(locks))));
+    app.set_priv_locks_note(view.locks_note.clone().into());
+    app.set_priv_watch(ToggleRow {
+        key: view.watch.key.clone().into(),
+        label: view.watch.label.clone().into(),
+        hint: view.watch.hint.clone().into(),
+        on: view.watch.on,
+        available: view.watch.available,
+    });
+    app.set_priv_uses(ModelRc::from(Rc::new(VecModel::from(pairs(&view.uses)))));
+    app.set_priv_clip_text(view.clipboard.clone().into());
+    app.set_priv_clip_armed(view.clipboard_armed);
+    app.set_priv_vault_url(view.vault_url.clone().into());
+    app.set_priv_aliases_url(view.aliases_url.clone().into());
+    app.set_priv_web_note(view.web_note.clone().into());
 }

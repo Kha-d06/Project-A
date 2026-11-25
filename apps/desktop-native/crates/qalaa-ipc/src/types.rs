@@ -730,3 +730,69 @@ pub struct PostureStatus {
     pub usb: UsbSummary,
     pub checking: bool,
 }
+
+/// The Privacy hub (`privacy.get`). Mirrors core/privacy-service.ts.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PrivacyLocks {
+    pub supported: bool,
+    /// "blocked", "allowed", "unknown" or "unsupported".
+    pub camera: String,
+    pub microphone: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PrivacyWatch {
+    pub on: bool,
+    pub supported: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DeviceInUse {
+    /// "camera" or "microphone".
+    pub device: String,
+    pub app: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DeviceUseEntry {
+    pub at: String,
+    pub device: String,
+    pub app: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipboardArmed {
+    pub kind: String,
+    pub expires_at: String,
+    pub remaining_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipboardStatus {
+    pub supported: bool,
+    pub enabled: bool,
+    pub ttl_seconds: u32,
+    pub armed: Option<ClipboardArmed>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebLinks {
+    pub vault: String,
+    pub aliases: String,
+    pub brokers: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrivacyStatus {
+    pub platform: String,
+    pub locks: PrivacyLocks,
+    pub watch: PrivacyWatch,
+    pub in_use: Vec<DeviceInUse>,
+    pub log: Vec<DeviceUseEntry>,
+    pub clipboard: Option<ClipboardStatus>,
+    /// https links into the web dashboard; `None` when the server isn't on https.
+    pub web: Option<WebLinks>,
+}

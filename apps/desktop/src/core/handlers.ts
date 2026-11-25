@@ -17,6 +17,7 @@ import type { SandboxService } from "./sandbox-service";
 import type { ScanEngineService } from "./scan-engine-service";
 import type { NetworkService } from "./network-service";
 import type { PostureService } from "./posture-service";
+import type { PrivacyService } from "./privacy-service";
 import type { VpnService } from "./vpn-service";
 import type { ProtectionService } from "./protection-service";
 import type { ScanService } from "./scan-service";
@@ -61,6 +62,8 @@ export interface CoreHost {
   vpn?: VpnService;
   /** Posture score, startup programs, file integrity and USB keyboards. */
   posture?: PostureService;
+  /** Camera and microphone locks and use, clipboard status, web dashboard links. */
+  privacy?: PrivacyService;
 }
 
 export type Handler = (params: unknown) => Promise<unknown>;
@@ -123,6 +126,9 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       await changed();
       return totals;
     },
+    "privacy.get": async () => requirePrivacy(host).status(),
+    "privacy.lock": async (params) => requirePrivacy(host).setLock(params),
+    "privacy.watch": async (params) => requirePrivacy(host).setWatch(params),
     "posture.get": async () => requirePosture(host).status(),
     "posture.check": async () => requirePosture(host).check(),
     "posture.startup_ack": async () => requirePosture(host).acknowledgeStartup(),
@@ -283,6 +289,11 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       return status;
     },
   };
+}
+
+function requirePrivacy(host: CoreHost): PrivacyService {
+  if (!host.privacy) throw new IpcError("unavailable", "The Privacy hub needs the background service.");
+  return host.privacy;
 }
 
 function requirePosture(host: CoreHost): PostureService {

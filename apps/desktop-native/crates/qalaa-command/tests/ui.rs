@@ -614,6 +614,39 @@ fn command_centre_interface() {
     assert_eq!(labelled(&app, "Check now")[0].accessible_enabled(), Some(false));
     app.set_pos_checking(false);
 
+    // --- Privacy: locks, use watch, clipboard, links to the other tools.
+    let priv_json: serde_json::Value =
+        serde_json::from_str(include_str!("../../qalaa-ipc/tests/fixtures/privacy.json")).expect("privacy fixture");
+    let priv_status: qalaa_ipc::PrivacyStatus = serde_json::from_value(priv_json["status"].clone()).expect("privacy status");
+    let priv_now = qalaa_command::view::parse_iso("2026-11-25T12:05:00Z").expect("time");
+    qalaa_command::set_privacy(&app, &qalaa_command::view::privacy_view(&priv_status, priv_now, Lang::En));
+    app.set_page("privacy".into());
+    let priv_calls = Rc::new(RefCell::new(Vec::<String>::new()));
+    {
+        let calls = Rc::clone(&priv_calls);
+        app.on_priv_action(move |action, value| calls.borrow_mut().push(format!("{action} {value}")));
+    }
+    labelled(&app, "Block: Camera")[0].invoke_accessible_default_action();
+    labelled(&app, "Allow: Microphone")[0].invoke_accessible_default_action();
+    labelled(&app, "Tell me when an app uses the camera or microphone")[0].invoke_accessible_default_action();
+    labelled(&app, "Clear now")[0].invoke_accessible_default_action();
+    labelled(&app, "SafePay: a clean browser for banking")[0].invoke_accessible_default_action();
+    labelled(&app, "Data-broker opt-out checklist")[0].invoke_accessible_default_action();
+    labelled(&app, "Password and passkey vault (website)")[0].invoke_accessible_default_action();
+    assert_eq!(
+        *priv_calls.borrow(),
+        vec![
+            "lock:camera true".to_owned(),
+            "lock:microphone false".to_owned(),
+            "watch false".to_owned(),
+            "clear ".to_owned(),
+            "safepay ".to_owned(),
+            "brokers ".to_owned(),
+            "open https://qalaa.example.org/dashboard/passwords".to_owned(),
+        ]
+    );
+    assert!(!labelled(&app, "zoom is using the camera now").is_empty());
+
     // --- About carries the Slint credit the royalty-free licence requires.
     app.set_page("about".into());
     assert!(ElementHandle::find_by_element_type_name(&app, "AboutSlint").count() >= 1);

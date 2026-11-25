@@ -18,6 +18,7 @@ export struct DeepRow { title: string, detail: string }
 export struct NetDevRow { key: string, ip: string, title: string, detail: string, badge: string, trusted: bool, can-check: bool }
 export struct FindingRow { title: string, detail: string, severity: string }
 export struct StartupRow { id: string, title: string, detail: string, is-new: bool, can-off: bool }
+export struct LockRow { device: string, title: string, detail: string, blocked: bool, available: bool }
 export struct PortRow { key: string, port: int, title: string, detail: string, fresh: bool, blocked: bool, exposed: bool }
 export struct Labels {
     title: string, home: string, about: string, score: string, checks: string, actions: string,
@@ -49,6 +50,9 @@ export struct Labels {
     posture: string, pos-title: string, pos-intro: string, pos-check: string, pos-startup: string, pos-ack: string,
     pos-off: string, pos-on: string, pos-disabled: string, pos-integrity: string, pos-integrity-intro: string,
     pos-accept: string, pos-remove: string, pos-path: string, pos-add: string, pos-reset: string, pos-usb: string,
+    privacy: string, priv-title: string, priv-intro: string, priv-block: string, priv-allow: string, priv-clipboard: string,
+    priv-clear: string, priv-tools: string, priv-safepay: string, priv-alias: string, priv-brokers: string, priv-vault: string,
+    priv-aliases-web: string,
 }
 
 component Card inherits Rectangle {
@@ -118,6 +122,7 @@ component NavRail inherits VerticalLayout {
     Button { text: labels.quarantine; checkable: true; checked: page == "quarantine"; clicked => { page = "quarantine"; } }
     Button { text: labels.protection; checkable: true; checked: page == "protection"; clicked => { page = "protection"; } }
     Button { text: labels.posture; checkable: true; checked: page == "posture"; clicked => { page = "posture"; } }
+    Button { text: labels.privacy; checkable: true; checked: page == "privacy"; clicked => { page = "privacy"; } }
     Button { text: labels.network; checkable: true; checked: page == "network"; clicked => { page = "network"; } }
     Button { text: labels.vpn; checkable: true; checked: page == "vpn"; clicked => { page = "vpn"; } }
     Button { text: labels.ports; checkable: true; checked: page == "ports"; clicked => { page = "ports"; } }
@@ -198,6 +203,15 @@ export component App inherits Window {
     in property <string> pos-usb-text;
     in property <bool> pos-checking: false;
     in-out property <string> pos-path-input;
+    in property <[LockRow]> priv-locks;
+    in property <string> priv-locks-note;
+    in property <ToggleRow> priv-watch;
+    in property <[DeepRow]> priv-uses;
+    in property <string> priv-clip-text;
+    in property <bool> priv-clip-armed: false;
+    in property <string> priv-vault-url;
+    in property <string> priv-aliases-url;
+    in property <string> priv-web-note;
     in property <[CredRow]> credential-rows;
     in property <[BehRow]> behaviour-rows;
     in property <string> beh-note;
@@ -264,6 +278,7 @@ export component App inherits Window {
     callback vpn-trust(string, bool);
     callback pos-check();
     callback pos-action(string, string);
+    callback priv-action(string, string);
     changed page => { page-changed(page); }
 
     changed rtl => { Theme.rtl = rtl; }
@@ -1200,6 +1215,77 @@ export component App inherits Window {
                                 alignment: Theme.rtl ? end : start;
                                 Button { text: labels.pos-reset; enabled: !busy; clicked => { root.pos-action("integrity_reset", ""); } }
                             }
+                        }
+                    }
+
+                    if connected && page == "privacy": Card {
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 12px;
+                            Heading { text: labels.priv-title; font-size: 20px; }
+                            Muted { text: labels.priv-intro; }
+                            for lock in priv-locks: HorizontalLayout {
+                                spacing: 10px;
+                                accessible-role: groupbox;
+                                accessible-label: lock.title + ": " + lock.detail;
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    Text { text: lock.title; font-weight: 600; color: Theme.ink; horizontal-alignment: Theme.rtl ? right : left; }
+                                    Muted { text: lock.detail; }
+                                }
+                                Button {
+                                    text: lock.blocked ? labels.priv-allow : labels.priv-block;
+                                    accessible-label: (lock.blocked ? labels.priv-allow : labels.priv-block) + ": " + lock.title;
+                                    enabled: lock.available && !busy;
+                                    clicked => { root.priv-action("lock:" + lock.device, lock.blocked ? "false" : "true"); }
+                                }
+                            }
+                            Muted { text: priv-locks-note; font-size: 12px; }
+                            VerticalLayout {
+                                spacing: 0px;
+                                Switch {
+                                    text: priv-watch.label;
+                                    checked: priv-watch.on;
+                                    enabled: priv-watch.available && !busy;
+                                    accessible-label: priv-watch.label;
+                                    toggled => { root.priv-action("watch", self.checked ? "true" : "false"); }
+                                }
+                                Muted { text: priv-watch.hint; font-size: 12px; }
+                            }
+                            for use in priv-uses: VerticalLayout {
+                                accessible-role: list-item;
+                                accessible-label: use.title;
+                                Text { text: use.title; color: use.detail == "" ? Theme.attention : Theme.ink; horizontal-alignment: Theme.rtl ? right : left; }
+                                if use.detail != "": Muted { text: use.detail; font-size: 12px; }
+                            }
+                        }
+                    }
+
+                    if connected && page == "privacy": Card {
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 10px;
+                            Heading { text: labels.priv-clipboard; }
+                            Text { text: priv-clip-text; color: priv-clip-armed ? Theme.active : Theme.ink; wrap: word-wrap; horizontal-alignment: Theme.rtl ? right : left; accessible-role: text; accessible-label: priv-clip-text; }
+                            if priv-clip-armed: HorizontalLayout {
+                                alignment: Theme.rtl ? end : start;
+                                Button { text: labels.priv-clear; enabled: !busy; clicked => { root.priv-action("clear", ""); } }
+                            }
+                            Heading { text: labels.priv-tools; }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: Theme.rtl ? end : start;
+                                Button { text: labels.priv-safepay; enabled: !busy; clicked => { root.priv-action("safepay", ""); } }
+                                Button { text: labels.priv-alias; enabled: !busy; clicked => { root.priv-action("alias", ""); } }
+                                Button { text: labels.priv-brokers; clicked => { root.priv-action("brokers", ""); } }
+                            }
+                            if priv-vault-url != "": HorizontalLayout {
+                                spacing: 8px;
+                                alignment: Theme.rtl ? end : start;
+                                Button { text: labels.priv-vault; clicked => { root.priv-action("open", priv-vault-url); } }
+                                Button { text: labels.priv-aliases-web; clicked => { root.priv-action("open", priv-aliases-url); } }
+                            }
+                            if priv-web-note != "": Muted { text: priv-web-note; font-size: 12px; }
                         }
                     }
 

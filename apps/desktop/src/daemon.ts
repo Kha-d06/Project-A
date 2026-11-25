@@ -24,6 +24,7 @@ import { ListenerService } from "./core/listener-service";
 import { ScanEngineService } from "./core/scan-engine-service";
 import { NetworkService } from "./core/network-service";
 import { PostureService } from "./core/posture-service";
+import { PrivacyService } from "./core/privacy-service";
 import { VpnService } from "./core/vpn-service";
 import { ProtectionService, onAccessIdentity } from "./core/protection-service";
 import { HISTORY_LIMIT, ScanService } from "./core/scan-service";
@@ -57,7 +58,9 @@ import { scanNetwork } from "./engine/network/scan";
 import { diskEncryption } from "./engine/encryption";
 import { IntegrityMonitor } from "./engine/integrity";
 import { posture } from "./engine/posture";
-import { firewallStatus, startupItems } from "./engine/security";
+import { cameraAndMicrophoneUse, firewallStatus, newUses, startupItems } from "./engine/security";
+import * as privacyBlock from "./engine/privacy-block";
+import { execFile } from "node:child_process";
 import { canSwitchOff, switchOffStartup, switchOnStartup, type DisabledStartup } from "./engine/tools";
 import * as vpn from "./engine/vpn";
 import * as vpnGuard from "./engine/vpn-guard";
@@ -79,7 +82,7 @@ async function mtime(file: string): Promise<string | null> {
   }
 }
 
-export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService; safePay: SafePayService; aliases: AliasService; brokers: BrokerService; scanEngine: ScanEngineService; behaviour: BehaviourService; protection: ProtectionService; network: NetworkService; vpn: VpnService; posture: PostureService; integrity: IntegrityMonitor }> {
+export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService; safePay: SafePayService; aliases: AliasService; brokers: BrokerService; scanEngine: ScanEngineService; behaviour: BehaviourService; protection: ProtectionService; network: NetworkService; vpn: VpnService; posture: PostureService; integrity: IntegrityMonitor; privacy: PrivacyService }> {
   const settingsFile = join(dataDir, "settings.json");
   const historyFile = join(dataDir, "history.json");
   let settings = await loadSettings(settingsFile, defaultSettings(join(homedir(), "Downloads"), [], hostname().slice(0, 80) || "This computer"));
@@ -248,6 +251,41 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     newKeyboards: () => keyboards.newCount(),
   });
   await postureService.load();
+  const privacy = new PrivacyService({
+    platform: process.platform,
+    locks: {
+      supported: () => privacyBlock.privacyBlockSupported(),
+      async state(device) {
+        if (process.platform === "win32") {
+          return new Promise((resolve) =>
+            execFile("reg.exe", privacyBlock.windowsRegQueryArgs(device), { windowsHide: true, timeout: 10_000 }, (_e, out) => resolve(privacyBlock.parseWindowsConsent(String(out)))),
+          );
+        }
+        return privacyBlock.linuxState(device === "camera" ? await privacyBlock.cameraNodes() : await privacyBlock.micNodes());
+      },
+      async set(device, block) {
+        if (process.platform === "win32") {
+          await new Promise<void>((resolve, reject) =>
+            execFile("reg.exe", privacyBlock.windowsRegSetArgs(device, !block), { windowsHide: true, timeout: 10_000 }, (e) => (e ? reject(e) : resolve())),
+          );
+          return;
+        }
+        const nodes = device === "camera" ? await privacyBlock.cameraNodes() : await privacyBlock.micNodes();
+        if (!nodes.length) throw new Error(`No ${device} was found on this computer.`);
+        await runElevated({ command: "pkexec", args: ["sh", "-c", privacyBlock.linuxBlockScript(nodes, block)] });
+      },
+    },
+    deviceUse: () => cameraAndMicrophoneUse(),
+    newUses: (before, now) => newUses(before, now),
+    watchOn: () => settings.privacyWatch,
+    async saveWatch(on) {
+      settings = { ...settings, privacyWatch: on };
+      await saveSettings(settingsFile, settings);
+    },
+    clipboard: () => clipboard.status(),
+    serverUrl: () => settings.serverUrl,
+    emit,
+  });
   const vpnService = new VpnService({
     platform: process.platform,
     tunnelFile: join(dataDir, `${vpn.CONNECTION_NAME}.conf`),
@@ -301,6 +339,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     vpn: vpnService,
     posture: postureService,
     integrity,
+    privacy,
     async homeInput(): Promise<HomeInput> {
       const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       return {
@@ -378,6 +417,8 @@ export async function runDaemon(env: NodeJS.ProcessEnv = process.env) {
   host.vpn.applyAutoConnect();
   // File integrity: watch the protected files (and a 10-minute sweep).
   host.integrity.start();
+  // Who's using the camera or microphone (Linux and Windows), when it's on.
+  host.privacy.applyWatch();
   // Behaviour rules: new programs every second or two (the first look only records what runs).
   const behaviourCap = host.behaviour.capability();
   if (host.behaviour.isSupported()) {

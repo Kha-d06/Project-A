@@ -3,7 +3,8 @@
 
 use qalaa_ipc::{
     BehaviourStatus, BrokerStatus, CheckStatus, CredentialChecks, CredentialStatus, DeepCheck, HomeModel, ListenerStatus, NetworkStatus,
-    PostureState, PostureStatus, ProtectionStatus, QuarantineItem, SandboxRun, ScanDetails, ScanStatus, SystemChecks, VpnStatus,
+    PostureState, PostureStatus, PrivacyStatus, ProtectionStatus, QuarantineItem, SandboxRun, ScanDetails, ScanStatus, SystemChecks,
+    VpnStatus,
 };
 
 use crate::strings::{t, Lang};
@@ -208,6 +209,10 @@ pub fn palette_entries(view: Option<&HomeView>, lang: Lang) -> Vec<PaletteEntry>
         PaletteEntry {
             id: "page.posture".into(),
             title: t(lang, "nav.posture").into(),
+        },
+        PaletteEntry {
+            id: "page.privacy".into(),
+            title: t(lang, "nav.privacy").into(),
         },
         PaletteEntry {
             id: "page.ports".into(),
@@ -1274,9 +1279,151 @@ pub fn posture_view(status: &PostureStatus, now: i64, lang: Lang) -> PosturePage
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct LockView {
+    /// "camera" or "microphone".
+    pub device: String,
+    pub title: String,
+    pub detail: String,
+    pub blocked: bool,
+    pub available: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrivacyPageView {
+    pub locks: Vec<LockView>,
+    pub locks_note: String,
+    pub watch: ToggleView,
+    /// Who's using the camera or microphone now, then the recent log, as (title, detail).
+    pub uses: Vec<(String, String)>,
+    pub clipboard: String,
+    pub clipboard_armed: bool,
+    pub vault_url: String,
+    pub aliases_url: String,
+    pub web_note: String,
+}
+
+pub fn privacy_view(status: &PrivacyStatus, now: i64, lang: Lang) -> PrivacyPageView {
+    let device_name = |d: &str| t(lang, if d == "camera" { "priv.camera" } else { "priv.microphone" }).to_owned();
+    // Inside a sentence: "zoom is using the camera now".
+    let in_sentence = |d: &str| t(lang, if d == "camera" { "priv.the_camera" } else { "priv.the_microphone" }).to_owned();
+    let locks = [("camera", &status.locks.camera), ("microphone", &status.locks.microphone)]
+        .into_iter()
+        .map(|(device, state)| LockView {
+            device: device.into(),
+            title: device_name(device),
+            detail: match t(lang, &format!("priv.lock.{state}")) {
+                "?" => state.clone(),
+                s => s.to_owned(),
+            },
+            blocked: state == "blocked",
+            available: status.locks.supported && state != "unsupported",
+        })
+        .collect();
+    let locks_note = if !status.locks.supported {
+        t(
+            lang,
+            if status.platform == "darwin" {
+                "priv.locks_mac"
+            } else {
+                "priv.locks_none"
+            },
+        )
+        .to_owned()
+    } else if status.platform == "win32" {
+        t(lang, "priv.locks_windows").to_owned()
+    } else {
+        t(lang, "priv.locks_linux").to_owned()
+    };
+    let watch = ToggleView {
+        key: "watch".into(),
+        label: t(lang, "priv.watch").into(),
+        hint: t(
+            lang,
+            if status.watch.supported {
+                "priv.watch_hint"
+            } else {
+                "priv.watch_mac"
+            },
+        )
+        .into(),
+        on: status.watch.on,
+        available: status.watch.supported,
+    };
+    let mut uses: Vec<(String, String)> = status
+        .in_use
+        .iter()
+        .map(|u| {
+            (
+                fill(lang, "priv.in_use", &[("app", u.app.clone()), ("device", in_sentence(&u.device))]),
+                String::new(),
+            )
+        })
+        .collect();
+    uses.extend(status.log.iter().take(10).map(|e| {
+        (
+            fill(lang, "priv.used", &[("app", e.app.clone()), ("device", in_sentence(&e.device))]),
+            relative(Some(&e.at), now, lang),
+        )
+    }));
+    let (clipboard, clipboard_armed) = match &status.clipboard {
+        None => (t(lang, "priv.clip_none").to_owned(), false),
+        Some(c) if !c.supported => (t(lang, "priv.clip_none").to_owned(), false),
+        Some(c) if !c.enabled => (t(lang, "priv.clip_off").to_owned(), false),
+        Some(c) => match &c.armed {
+            Some(a) => (clipboard_text(&a.kind, a.remaining_ms, lang), true),
+            None => (fill(lang, "priv.clip_on", &[("s", c.ttl_seconds.to_string())]), false),
+        },
+    };
+    let (vault_url, aliases_url, web_note) = match &status.web {
+        Some(w) => (w.vault.clone(), w.aliases.clone(), String::new()),
+        None => (String::new(), String::new(), t(lang, "priv.web_https").to_owned()),
+    };
+    PrivacyPageView {
+        locks,
+        locks_note,
+        watch,
+        uses,
+        clipboard,
+        clipboard_armed,
+        vault_url,
+        aliases_url,
+        web_note,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn privacy_page_shows_locks_use_clipboard_and_web_links() {
+        let json: serde_json::Value = serde_json::from_str(include_str!("../../qalaa-ipc/tests/fixtures/privacy.json")).expect("fixture");
+        let status: qalaa_ipc::PrivacyStatus = serde_json::from_value(json["status"].clone()).expect("status");
+        let now = parse_iso("2026-11-25T12:05:00Z").expect("time");
+        let view = privacy_view(&status, now, Lang::En);
+        assert_eq!(view.locks[0].detail, "Allowed");
+        assert!(view.locks[1].blocked);
+        assert_eq!(view.uses[0].0, "zoom is using the camera now");
+        assert_eq!(view.uses[1], ("zoom used the camera".to_owned(), "5 minutes ago".to_owned()));
+        assert!(view.clipboard_armed);
+        assert_eq!(view.vault_url, "https://qalaa.example.org/dashboard/passwords");
+        assert!(view.web_note.is_empty());
+
+        let mut mac = status.clone();
+        mac.platform = "darwin".into();
+        mac.locks.supported = false;
+        mac.locks.camera = "unsupported".into();
+        mac.watch = qalaa_ipc::PrivacyWatch {
+            on: false,
+            supported: false,
+        };
+        mac.web = None;
+        let view = privacy_view(&mac, now, Lang::Ar);
+        assert!(!view.locks[0].available && !view.watch.available);
+        assert!(view.locks_note.contains("macOS"));
+        assert!(view.vault_url.is_empty() && !view.web_note.is_empty());
+    }
 
     #[test]
     fn posture_page_puts_failures_first_and_marks_new_startup() {

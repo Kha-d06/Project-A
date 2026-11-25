@@ -160,3 +160,45 @@ pub struct BrokerStatus {
     pub done: u32,
     pub recheck_due: u32,
 }
+
+/// A newly started program matched a behaviour rule (Sigma-derived).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BehaviourIncident {
+    pub id: String,
+    pub rule: String,
+    /// English title from the rule; the interface uses its own translation where it has one.
+    pub title: String,
+    pub description: String,
+    pub technique: String,
+    /// "low", "medium", "high" or "critical".
+    pub level: String,
+    pub pid: u32,
+    pub program: String,
+    pub parent: String,
+    /// Shortened, with passwords and tokens masked by the service.
+    pub command_line: String,
+    pub at: String,
+    /// "open", "stopped" or "dismissed".
+    pub state: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BehaviourCapability {
+    /// "proc_poll", "ps_poll" or "unavailable".
+    pub source: String,
+    pub interval_ms: u64,
+    pub sees_short_lived: bool,
+    pub note: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BehaviourStatus {
+    pub enabled: bool,
+    pub capability: BehaviourCapability,
+    pub rules: u32,
+    pub rules_version: String,
+    pub incidents: Vec<BehaviourIncident>,
+}

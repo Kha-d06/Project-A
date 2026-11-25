@@ -10,6 +10,7 @@ export struct ToggleRow { key: string, label: string, hint: string, on: bool, av
 export struct PaletteItem { id: string, title: string }
 export struct BrokerRow { id: string, title: string, detail: string, state: string, url: string, recheck: bool }
 export struct CredRow { id: string, title: string, detail: string, state: string }
+export struct BehRow { id: string, title: string, detail: string, state: string }
 export struct PortRow { key: string, port: int, title: string, detail: string, fresh: bool, blocked: bool, exposed: bool }
 export struct Labels {
     title: string, home: string, about: string, score: string, checks: string, actions: string,
@@ -19,6 +20,7 @@ export struct Labels {
     ports-blocked: string, ports-trust: string, ports-block: string, ports-unblock: string, ports-prompt: string,
     credentials: string, cred-title: string, cred-intro: string, cred-none: string, cred-suspend: string,
     cred-resume: string, cred-terminate: string, cred-allow: string, cred-dismiss: string,
+    behaviour: string, beh-title: string, beh-intro: string, beh-none: string, beh-stop: string, beh-dismiss: string,
     safepay: string, safepay-hint: string,
     brokers: string, brokers-title: string, brokers-intro: string, brokers-unreviewed: string, brokers-open: string,
     brokers-requested: string, brokers-removed: string, brokers-not-listed: string, brokers-copy: string,
@@ -100,6 +102,8 @@ export component App inherits Window {
     in property <[ToggleRow]> toggles;
     in property <[PortRow]> ports;
     in property <[CredRow]> credential-rows;
+    in property <[BehRow]> behaviour-rows;
+    in property <string> beh-note;
     in property <[BrokerRow]> broker-rows;
     in property <string> broker-summary;
     in-out property <string> letter-name;
@@ -124,6 +128,7 @@ export component App inherits Window {
     callback port-block(int, bool);
     callback page-changed(string);
     callback cred-action(string, string);
+    callback beh-action(string, string);
     callback safepay();
     callback broker-open(string);
     callback broker-mark(string, string);
@@ -169,6 +174,7 @@ export component App inherits Window {
                 Button { text: labels.home; checkable: true; checked: page == "home"; clicked => { page = "home"; } }
                 Button { text: labels.ports; checkable: true; checked: page == "ports"; clicked => { page = "ports"; } }
                 Button { text: labels.credentials; checkable: true; checked: page == "credentials"; clicked => { page = "credentials"; } }
+                Button { text: labels.behaviour; checkable: true; checked: page == "behaviour"; clicked => { page = "behaviour"; } }
                 Button { text: labels.brokers; checkable: true; checked: page == "brokers"; clicked => { page = "brokers"; } }
                 Button { text: labels.about; checkable: true; checked: page == "about"; clicked => { page = "about"; } }
                 Rectangle {}
@@ -432,6 +438,53 @@ export component App inherits Window {
                         }
                     }
 
+                    if connected && page == "behaviour": Card {
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 12px;
+                            Heading { text: labels.beh-title; font-size: 20px; }
+                            Muted { text: labels.beh-intro; }
+                            Muted { text: beh-note; font-size: 12px; }
+                            if behaviour-rows.length == 0: Muted { text: labels.beh-none; }
+                            for row in behaviour-rows: Rectangle {
+                                border-color: row.state == "open" ? Theme.attention : Theme.line;
+                                border-width: 1px;
+                                border-radius: 8px;
+                                accessible-role: groupbox;
+                                accessible-label: row.title;
+                                VerticalLayout {
+                                    padding: 12px;
+                                    spacing: 8px;
+                                    Text {
+                                        text: row.title;
+                                        font-size: 14px;
+                                        font-weight: 600;
+                                        color: row.state == "open" ? Theme.attention : Theme.ink;
+                                        wrap: word-wrap;
+                                        horizontal-alignment: Theme.rtl ? right : left;
+                                    }
+                                    Muted { text: row.detail; }
+                                    if row.state == "open": HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: Theme.rtl ? end : start;
+                                        Button {
+                                            text: labels.beh-stop;
+                                            accessible-label: labels.beh-stop + ": " + row.title;
+                                            enabled: !busy;
+                                            clicked => { root.beh-action(row.id, "stop"); }
+                                        }
+                                        Button {
+                                            text: labels.beh-dismiss;
+                                            accessible-label: labels.beh-dismiss + ": " + row.title;
+                                            enabled: !busy;
+                                            clicked => { root.beh-action(row.id, "dismiss"); }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if connected && page == "brokers": Card {
                         VerticalLayout {
                             padding: 24px;
@@ -491,6 +544,7 @@ export component App inherits Window {
                 Button { text: labels.home; checkable: true; checked: page == "home"; clicked => { page = "home"; } }
                 Button { text: labels.ports; checkable: true; checked: page == "ports"; clicked => { page = "ports"; } }
                 Button { text: labels.credentials; checkable: true; checked: page == "credentials"; clicked => { page = "credentials"; } }
+                Button { text: labels.behaviour; checkable: true; checked: page == "behaviour"; clicked => { page = "behaviour"; } }
                 Button { text: labels.brokers; checkable: true; checked: page == "brokers"; clicked => { page = "brokers"; } }
                 Button { text: labels.about; checkable: true; checked: page == "about"; clicked => { page = "about"; } }
                 Rectangle {}

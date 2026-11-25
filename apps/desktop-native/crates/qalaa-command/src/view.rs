@@ -1,7 +1,7 @@
 //! Turns the service's Home model into rows for the interface. Plain Rust with
 //! no window, so it is tested directly.
 
-use qalaa_ipc::{BrokerStatus, CheckStatus, CredentialStatus, HomeModel, ListenerStatus, PostureState};
+use qalaa_ipc::{BehaviourStatus, BrokerStatus, CheckStatus, CredentialStatus, HomeModel, ListenerStatus, PostureState};
 
 use crate::strings::{t, Lang};
 
@@ -388,6 +388,58 @@ pub fn credentials_view(status: &CredentialStatus, now: i64, lang: Lang) -> (Vec
     (rows, t(lang, &format!("cred.mode.{mode}")).to_owned())
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct BehaviourView {
+    pub id: String,
+    pub title: String,
+    pub detail: String,
+    /// "open", "stopped" or "dismissed".
+    pub state: String,
+}
+
+/// Rows for the Behaviour page and the sentence saying how complete the watching is.
+pub fn behaviour_view(status: &BehaviourStatus, now: i64, lang: Lang) -> (Vec<BehaviourView>, String) {
+    let rows = status
+        .incidents
+        .iter()
+        .map(|i| {
+            let rule = match t(lang, &format!("beh.rule.{}", i.rule)) {
+                "?" => i.title.as_str(),
+                known => known,
+            };
+            let mut tags = String::new();
+            if matches!(i.level.as_str(), "high" | "critical") {
+                tags.push_str(&format!("  · {}", t(lang, &format!("beh.level.{}", i.level))));
+            }
+            if matches!(i.state.as_str(), "stopped" | "dismissed") {
+                tags.push_str(&format!("  · {}", t(lang, &format!("beh.state.{}", i.state))));
+            }
+            let parent = if i.parent.is_empty() {
+                String::new()
+            } else {
+                format!(" ({} {})", t(lang, "beh.started_by"), i.parent)
+            };
+            BehaviourView {
+                id: i.id.clone(),
+                title: format!("{rule}: {}{tags}", i.program),
+                detail: format!(
+                    "{}{parent} · {} · {} · {}",
+                    i.command_line,
+                    i.technique,
+                    relative(Some(&i.at), now, lang),
+                    i.pid
+                ),
+                state: i.state.clone(),
+            }
+        })
+        .collect();
+    let source = match status.capability.source.as_str() {
+        "proc_poll" | "ps_poll" => status.capability.source.as_str(),
+        _ => "unavailable",
+    };
+    (rows, t(lang, &format!("beh.source.{source}")).to_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -396,6 +448,32 @@ mod tests {
 
     fn fixture() -> HomeModel {
         serde_json::from_str(include_str!("../../qalaa-ipc/tests/fixtures/home.json")).expect("fixture")
+    }
+
+    #[test]
+    fn behaviour_rows_in_both_languages() {
+        let status: BehaviourStatus = serde_json::from_value(serde_json::json!({
+            "enabled": true, "rules": 8, "rulesVersion": "2026.11.25.1",
+            "capability": {"source": "ps_poll", "intervalMs": 2000, "seesShortLived": false, "note": "x"},
+            "incidents": [
+                {"id": "b1", "rule": "firewall_disabled", "title": "The firewall is being switched off or emptied", "description": "", "technique": "T1562.004", "level": "high", "pid": 87, "program": "sh", "parent": "bash", "commandLine": "sh -c ufw disable", "at": "2026-11-24T11:59:30Z", "state": "open"},
+                {"id": "b2", "rule": "brand_new_rule", "title": "Something new", "description": "", "technique": "T1000", "level": "low", "pid": 9, "program": "x", "parent": "", "commandLine": "x", "at": "2026-11-24T11:00:00Z", "state": "stopped"}
+            ]
+        }))
+        .expect("status");
+        let now = parse_iso(NOW).expect("now");
+        let (rows, note) = behaviour_view(&status, now, Lang::En);
+        assert_eq!(rows[0].title, "The firewall is being switched off or emptied: sh  · High risk");
+        assert_eq!(rows[0].detail, "sh -c ufw disable (started by bash) · T1562.004 · just now · 87");
+        assert_eq!(
+            rows[1].title, "Something new: x  · Stopped",
+            "unknown rules fall back to the service's title"
+        );
+        assert!(note.contains("macOS"));
+        let (ar, note_ar) = behaviour_view(&status, now, Lang::Ar);
+        assert!(ar[0].title.starts_with("يُوقَف جدار الحماية"));
+        assert!(ar[0].title.contains("خطورة عالية"));
+        assert!(note_ar.contains("macOS"));
     }
 
     #[test]

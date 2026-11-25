@@ -34,6 +34,8 @@ export interface HomeInput {
   clipboardGuard?: { on: boolean; available: boolean };
   /** Credential guardrails, where the host runs them; `pending` alerts await a decision. */
   credentialGuard?: { on: boolean; available: boolean; pending: number };
+  /** Behaviour-rule alerts that await a decision. */
+  behaviourPending?: number;
   /** Data brokers whose opt-out is 90+ days old and should be checked again. */
   brokersRecheckDue?: number;
 }
@@ -98,13 +100,14 @@ export function buildHome(input: HomeInput): HomeModel {
   const earned = checks.reduce((sum, check) => sum + WEIGHTS[check.id] * CREDIT[check.status], 0);
   const score = Math.round((earned / total) * 100);
   const offCore = checks.some((c) => (c.id === "realtime" || c.id === "signatures") && c.status !== "ok");
-  const needsAttention = checks.some((c) => c.status === "attention") || score < 85 || (input.credentialGuard?.pending ?? 0) > 0;
+  const needsAttention = checks.some((c) => c.status === "attention") || score < 85 || (input.credentialGuard?.pending ?? 0) > 0 || (input.behaviourPending ?? 0) > 0;
   const state: HomeModel["state"] = input.recentThreats > 0 || offCore ? "at_risk" : needsAttention ? "attention" : "protected";
 
   const actions: HomeAction[] = [];
   if (input.recentThreats > 0) actions.push({ id: "review_threats", priority: 1, command: { method: "view.open", params: { view: "timeline" } } });
   if ((input.newKeyboards ?? 0) > 0) actions.push({ id: "review_keyboard", priority: 1, command: { method: "keyboards.trust_all" } });
   if ((input.credentialGuard?.pending ?? 0) > 0) actions.push({ id: "review_credentials", priority: 1, command: { method: "view.open", params: { view: "credentials" } } });
+  if ((input.behaviourPending ?? 0) > 0) actions.push({ id: "review_behaviour", priority: 1, command: { method: "view.open", params: { view: "behaviour" } } });
   if ((input.newListeners ?? 0) > 0) actions.push({ id: "review_listeners", priority: 1, command: { method: "view.open", params: { view: "listeners" } } });
   if (checks[1]?.status === "off") actions.push({ id: "turn_on_realtime", priority: 1, command: { method: "settings.set", params: { watchEnabled: true } } });
   if (checks[0]?.status !== "ok") actions.push({ id: "update_signatures", priority: 1, command: { method: "signatures.update" } });

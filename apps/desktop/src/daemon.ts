@@ -131,6 +131,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
         safeDns: { on: safeDns.isOn(), available: safeDns.isSupported() },
         clipboardGuard: { on: settings.clipboardGuard, available: clipboard.status().supported },
         credentialGuard: { on: settings.credentialGuard, available: credentials.isSupported(), pending: credentials.pendingCount() },
+        behaviourPending: behaviour.pendingCount(),
         brokersRecheckDue: brokers.recheckDueCount(),
       };
     },

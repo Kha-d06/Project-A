@@ -16,7 +16,7 @@ use std::rc::Rc;
 use slint::{ModelRc, SharedString, VecModel};
 
 use crate::strings::{t, Lang};
-use crate::view::{BrokerView, CredentialView, HomeView, PaletteEntry, PortView};
+use crate::view::{BehaviourView, BrokerView, CredentialView, HomeView, PaletteEntry, PortView};
 
 pub fn labels(lang: Lang) -> Labels {
     let s = |key: &str| SharedString::from(t(lang, key));
@@ -56,6 +56,12 @@ pub fn labels(lang: Lang) -> Labels {
         cred_terminate: s("cred.terminate"),
         cred_allow: s("cred.allow"),
         cred_dismiss: s("cred.dismiss"),
+        behaviour: s("nav.behaviour"),
+        beh_title: s("beh.title"),
+        beh_intro: s("beh.intro"),
+        beh_none: s("beh.none"),
+        beh_stop: s("beh.stop"),
+        beh_dismiss: s("beh.dismiss"),
         safepay: s("safepay.open"),
         safepay_hint: s("safepay.hint"),
         brokers: s("nav.brokers"),
@@ -175,6 +181,20 @@ pub fn set_credentials(app: &App, rows: &[CredentialView], mode: &str) {
         .collect();
     app.set_credential_rows(ModelRc::from(Rc::new(VecModel::from(items))));
     app.set_cred_mode(mode.into());
+}
+
+pub fn set_behaviour(app: &App, rows: &[BehaviourView], note: &str) {
+    let items: Vec<BehRow> = rows
+        .iter()
+        .map(|r| BehRow {
+            id: r.id.clone().into(),
+            title: r.title.clone().into(),
+            detail: r.detail.clone().into(),
+            state: r.state.clone().into(),
+        })
+        .collect();
+    app.set_behaviour_rows(ModelRc::from(Rc::new(VecModel::from(items))));
+    app.set_beh_note(note.into());
 }
 
 pub fn set_brokers(app: &App, rows: &[BrokerView], summary: &str) {

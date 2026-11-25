@@ -19,6 +19,7 @@ from app.api import (
     mail,
     metrics,
     network,
+    passkeys,
     push,
     reports,
     scans,
@@ -112,6 +113,7 @@ def create_app() -> FastAPI:
         mail.router,
         aliases.router,
         updates.router,
+        passkeys.router,
     ):
         app.include_router(router, prefix=API_PREFIX)
     return app

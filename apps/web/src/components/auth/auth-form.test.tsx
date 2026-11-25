@@ -86,3 +86,39 @@ describe("two-step sign-in", () => {
     expect(calls).toContain("/api/v1/auth/login/two-factor");
   });
 });
+
+describe("passkey sign-in", () => {
+  it("signs in with a passkey the browser offers and opens the dashboard", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal("PublicKeyCredential", function PublicKeyCredential() {});
+    vi.stubGlobal("navigator", {
+      ...navigator,
+      credentials: {
+        get: vi.fn(async () => ({
+          id: "AQI",
+          rawId: new Uint8Array([1, 2]).buffer,
+          type: "public-key",
+          getClientExtensionResults: () => ({}),
+          response: { clientDataJSON: new Uint8Array([3]).buffer, authenticatorData: new Uint8Array([4]).buffer, signature: new Uint8Array([5]).buffer, userHandle: null },
+        })),
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        calls.push(url.replace(/^.*\/api\/v1/, ""));
+        if (url.endsWith("/auth/session")) return jsonResponse({ user: null, csrf_token: null });
+        if (url.endsWith("/auth/passkey/options")) return jsonResponse({ challenge_id: "c1", options: { challenge: "AQ", rpId: "localhost" } });
+        return jsonResponse({ user, csrf_token: "t" });
+      }),
+    );
+    render(
+      <SessionProvider>
+        <AuthForm mode="sign-in" />
+      </SessionProvider>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Sign in with a passkey" }));
+    expect(calls).toContain("/auth/passkey");
+    expect(router.replace).toHaveBeenCalledWith("/dashboard");
+  });
+});

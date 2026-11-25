@@ -181,6 +181,17 @@ When the person ticks "Also run it in an isolated sandbox", an uploaded Linux pr
 
 A `VpnService` whose only route is a virtual DNS server (10.111.222.2), the usual DNS-only pattern, written for Qalaa (no third-party VPN code). Android sends every app's lookups there. Names on the downloaded malware and phishing domain list (the same one the desktop uses), or under one, get NXDOMAIN at once. Everything else is asked of the network's own resolver (Quad9 if there is none) through a socket protected from the VPN, so local names and captive portals keep working; Android's connectivity checks are never blocked. No other traffic enters the tunnel, nothing is logged and nothing is sent to Qalaa. The packet handling (IPv4/UDP and DNS parsing, NXDOMAIN replies, checksums) lives in `scanner-core` and is unit-tested on the JVM, including malformed and truncated packets. Limits stated in the app: Android's Private DNS (DNS-over-TLS), when on, takes over lookups and Safe DNS then has no effect; only one VPN can run at a time, so it can't be combined with another VPN app; IPv6-only lookups aren't routed in.
 
+## Account passkeys (Wave 4.F)
+
+People can add passkeys to their Qalaa account and sign in with them (`app/api/passkeys.py`, py_webauthn 3.0.1, BSD-3-Clause), following the OWASP Authentication Cheat Sheet:
+
+- Challenges are 32 random bytes kept on the server, single-use (marked used before verification, so a replay fails), tied to their purpose and, for registration, to the signed-in person, and valid for five minutes.
+- The relying-party id and allowed origins are configured (`SENTINEL_WEBAUTHN_RP_ID`, `SENTINEL_WEBAUTHN_ORIGINS`; by default the public URL's host and origin), so a passkey can't be used from a look-alike site.
+- User verification (PIN or biometric) is required, so a passkey sign-in counts as two factors and doesn't also ask for the authenticator code. Discoverable credentials: the browser offers the account's passkeys without an email being typed.
+- The signature counter must increase when the authenticator keeps one; a counter that goes backwards suggests a cloned authenticator and the sign-in is refused.
+- The user handle is the account's random id, never the email. Only the public key, credential id and counter are stored. Up to ten passkeys per account; removing one needs the password. Sign-in errors don't say whether an account or passkey exists. Rate limits as for password sign-in.
+- Tests use a software authenticator with real P-256 keys, so verification runs for real: wrong origins, missing user verification, replays, expired or another person's challenges, cloned counters and disabled accounts are all refused.
+
 ## Known gaps
 
 - Admin and moderator actions are not yet protected by a second confirmation step.

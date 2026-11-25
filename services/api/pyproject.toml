@@ -26,6 +26,9 @@ dependencies = [
     "oletools>=0.60",
     "pefile>=2024.8",
     "lief==1.0.0",
+    # Account passkeys (py_webauthn, BSD-3-Clause); cbor2 pinned below its newest release, which is under two weeks old.
+    "webauthn==3.0.1",
+    "cbor2==6.2.1",
     "dnspython>=2.7",
     "pyaxmlparser>=0.3.31",
     "pyotp>=2.9",

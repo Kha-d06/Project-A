@@ -1,4 +1,6 @@
 import type {
+  Passkey,
+  PasskeyOptions,
   Activity,
   ApiKey,
   AdminOverview,
@@ -286,6 +288,9 @@ export const api = {
       request<SessionInfo | LoginChallenge>("/auth/login", { method: "POST", json: body }),
     completeTwoFactor: (challenge: string, code: string) =>
       request<SessionInfo>("/auth/login/two-factor", { method: "POST", json: { challenge, code } }),
+    passkeyOptions: () => request<PasskeyOptions>("/auth/passkey/options", { method: "POST" }),
+    passkey: (challengeId: string, credential: Record<string, unknown>) =>
+      request<SessionInfo>("/auth/passkey", { method: "POST", json: { challenge_id: challengeId, credential } }),
     requestReset: (email: string) =>
       request<{ status: string }>("/auth/password-reset", { method: "POST", json: { email } }),
     confirmReset: (token: string, newPassword: string) =>
@@ -348,6 +353,12 @@ export const api = {
     activity: () => request<Activity[]>("/user/activity"),
     exportData: () => request<Record<string, unknown>>("/user/export"),
     security: () => request<SecurityStatus>("/user/security"),
+    passkeys: () => request<Passkey[]>("/user/passkeys"),
+    passkeyOptions: () => request<PasskeyOptions>("/user/passkeys/options", { method: "POST" }),
+    addPasskey: (challengeId: string, credential: Record<string, unknown>, name: string) =>
+      request<Passkey>("/user/passkeys", { method: "POST", json: { challenge_id: challengeId, credential, name } }),
+    removePasskey: (id: string, password: string) =>
+      request<void>(`/user/passkeys/${encodeURIComponent(id)}/remove`, { method: "POST", json: { password } }),
     setupTwoFactor: () =>
       request<{ secret: string; otpauth_uri: string; qr_code: string }>("/user/2fa/setup", { method: "POST" }),
     enableTwoFactor: (code: string) =>

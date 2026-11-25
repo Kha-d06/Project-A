@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     smtp_starttls: bool = True
     # Public address of the web app, used to build links in emails.
     public_url: str = "http://localhost:8080"
+    # Passkeys: the relying-party id (the site's registrable domain) and the exact
+    # origins sign-ins may come from. Default: public_url's host and origin.
+    webauthn_rp_id: str | None = None
+    webauthn_origins: list[str] = Field(default_factory=list)
 
     # Scales every rate limit. Raise it only for load tests on a private instance;
     # production refuses values other than 1.

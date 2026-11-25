@@ -274,6 +274,20 @@ export interface SecurityStatus {
   backup_codes_remaining: number;
 }
 
+/** A passkey linked to the account (the private key stays on the device). */
+export interface Passkey {
+  id: string;
+  name: string;
+  created_at: string;
+  last_used_at: string | null;
+  backed_up: boolean;
+}
+
+export interface PasskeyOptions {
+  challenge_id: string;
+  options: Record<string, unknown>;
+}
+
 export interface FieldError {
   field: string;
   message: string;

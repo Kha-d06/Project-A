@@ -9,6 +9,7 @@ from app.models.device import Device, DeviceCommand
 from app.models.extension import ExtensionEvent, ExtensionInstallation, ExtensionLinkCode
 from app.models.identity import MonitoredIdentity
 from app.models.intel import ThreatIndicator, ThreatSource
+from app.models.passkey import AccountPasskey, WebAuthnChallenge
 from app.models.push import PushSubscription
 from app.models.scan import Finding, ScanJob
 from app.models.screen_time import ScreenTimeDay
@@ -23,6 +24,8 @@ __all__ = [
     "BackupCode",
     "OutboxEmail",
     "EmailAlias",
+    "AccountPasskey",
+    "WebAuthnChallenge",
     "ApiKey",
     "Assessment",
     "VerifiedDomain",

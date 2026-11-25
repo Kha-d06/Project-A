@@ -10,6 +10,7 @@ import { Field, Input } from "@/components/ui/field";
 import { ApiError, api } from "@/lib/api/client";
 import { type Dictionary } from "@/lib/i18n/en";
 import { useI18n } from "@/lib/i18n/client";
+import { usePasskeysSupported } from "@/lib/passkeys";
 import { useSession } from "@/lib/session";
 
 const MIN_PASSWORD_LENGTH = 10;
@@ -34,7 +35,8 @@ function validate(t: Dictionary, mode: Mode, email: string, password: string): E
 }
 
 export function AuthForm({ mode }: { mode: Mode }) {
-  const { signIn, register, completeTwoFactor } = useSession();
+  const { signIn, register, completeTwoFactor, signInWithPasskey } = useSession();
+  const canPasskey = usePasskeysSupported();
   const { t } = useI18n();
   const [challenge, setChallenge] = useState<string | null>(null);
   const [code, setCode] = useState("");
@@ -177,6 +179,29 @@ export function AuthForm({ mode }: { mode: Mode }) {
       <Button type="submit" size="lg" pending={pending} className="w-full">
         {isSignUp ? t.auth.createAccount : t.auth.signIn}
       </Button>
+      {!isSignUp && canPasskey && (
+        <Button
+          type="button"
+          variant="secondary"
+          size="lg"
+          className="w-full"
+          disabled={pending}
+          onClick={async () => {
+            setPending(true);
+            setErrors({});
+            try {
+              await signInWithPasskey();
+              router.replace(safeNextPath(params.get("next")));
+            } catch (error) {
+              if (!(error instanceof DOMException && error.name === "NotAllowedError")) setErrors({ form: t.auth.passkeyFailed });
+            } finally {
+              setPending(false);
+            }
+          }}
+        >
+          {t.auth.signInPasskey}
+        </Button>
+      )}
       {!isSignUp && emailEnabled && (
         <p className="text-center text-sm">
           <Link href="/forgot-password" className="text-ink-muted underline-offset-4 hover:text-ink hover:underline">

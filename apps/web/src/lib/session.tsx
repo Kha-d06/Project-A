@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
+import { credentialJson, requestOptions } from "@/lib/passkeys";
 import { api, setCsrfToken } from "./api/client";
 import type { LoginChallenge, SessionInfo, User } from "./api/types";
 
@@ -15,6 +16,8 @@ interface SessionContextValue {
   /** Resolves to a challenge when the account needs a second sign-in step. */
   signIn: (email: string, password: string) => Promise<LoginChallenge | null>;
   completeTwoFactor: (challenge: string, code: string) => Promise<void>;
+  /** Signs in with a passkey the browser offers; user verification counts as both factors. */
+  signInWithPasskey: () => Promise<void>;
   register: (email: string, password: string, displayName?: string) => Promise<void>;
   signOut: () => Promise<void>;
   updateUser: (user: User) => void;
@@ -66,6 +69,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         return null;
       },
       completeTwoFactor: async (challenge, code) => adopt(await api.auth.completeTwoFactor(challenge, code)),
+      signInWithPasskey: async () => {
+        const { challenge_id, options } = await api.auth.passkeyOptions();
+        const credential = (await navigator.credentials.get({ publicKey: requestOptions(options) })) as PublicKeyCredential | null;
+        if (!credential) throw new Error("No passkey was chosen.");
+        adopt(await api.auth.passkey(challenge_id, credentialJson(credential)));
+      },
       register: async (email, password, displayName) =>
         adopt(await api.auth.register({ email, password, display_name: displayName })),
       signOut: async () => {

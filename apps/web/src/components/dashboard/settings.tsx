@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from "react";
 
 import { PageTitle } from "@/components/dashboard/dashboard-shell";
 import { NotificationsSection } from "@/components/dashboard/notifications";
+import { PasskeysSection } from "@/components/dashboard/passkeys";
 import { WebhooksSection } from "@/components/dashboard/webhooks";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -505,6 +506,7 @@ export function Settings() {
           <NotificationsSection profile={profile} onSaved={setProfile} />
           <PasswordSection />
           <SecuritySection />
+          <PasskeysSection />
           <ApiKeysSection />
           <WebhooksSection />
           <DeleteAccountSection />

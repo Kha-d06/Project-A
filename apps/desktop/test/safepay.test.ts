@@ -35,6 +35,8 @@ describe("SafePay launch rules", () => {
     expect(plan.args).toContain("--user-data-dir=/tmp/qalaa-safepay-x");
     expect(plan.args).toContain("--disable-extensions");
     expect(plan.args).toContain("--disable-sync");
+    expect(plan.args).toContain("--force-webrtc-ip-handling-policy=disable_non_proxied_udp");
+    expect(plan.args).toContain("--no-pings");
     const disabled = plan.args.filter((a) => a.startsWith("--disable-features="));
     expect(disabled).toEqual(["--disable-features=AutofillServerCommunication,PasswordManagerOnboarding,DnsOverHttps"]);
     expect(plan.args.at(-1)).toBe("https://bank.example/");
@@ -51,6 +53,21 @@ describe("SafePay launch rules", () => {
     expect(prefs).toContain('user_pref("network.trr.uri", "https://dns.quad9.net/dns-query");');
     expect(prefs).toContain('user_pref("extensions.enabledScopes", 0);');
     expect(prefs).toContain('user_pref("signon.rememberSignons", false);');
+    // arkenfox-derived hardening for a banking session.
+    for (const pref of [
+      'user_pref("network.IDN_show_punycode", true);',
+      'user_pref("media.peerconnection.ice.default_address_only", true);',
+      'user_pref("media.peerconnection.ice.no_host", true);',
+      'user_pref("network.http.referer.XOriginTrimmingPolicy", 2);',
+      'user_pref("network.dns.disablePrefetch", true);',
+      'user_pref("network.predictor.enabled", false);',
+      'user_pref("browser.cache.disk.enable", false);',
+      'user_pref("pdfjs.enableScripting", false);',
+      'user_pref("security.ssl.require_safe_negotiation", true);',
+      'user_pref("browser.safebrowsing.phishing.enabled", true);',
+    ]) {
+      expect(prefs, pref).toContain(pref);
+    }
     // Under Safe DNS, Firefox's own DoH is off so lookups go through Qalaa.
     expect(firefoxPrefs("safe_dns")).toContain('user_pref("network.trr.mode", 5);');
     expect(firefoxPrefs("safe_dns")).not.toContain("network.trr.uri");
@@ -170,4 +187,48 @@ describe("SafePay service", () => {
     expect(await handlers["safepay.get"]!(undefined)).toMatchObject({ available: true, browsers: [{ id: "firefox", name: "Firefox" }, { id: "chrome", name: "Google Chrome" }], safeDnsOn: false });
     expect(await handlers["safepay.launch"]!({ url: "https://bank.example/" })).toMatchObject({ host: "bank.example" });
   });
+});
+
+/** The bit of Playwright this test uses (it isn't a desktop dependency; it runs where Playwright is installed). */
+interface MiniPlaywright {
+  chromium: {
+    launch(options: { args: string[] }): Promise<{ newPage(): Promise<{ evaluate<T>(fn: () => Promise<T>): Promise<T> }>; close(): Promise<void> }>;
+  };
+}
+
+describe("SafePay in a real Chromium", () => {
+  const playwright = (() => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      return require("playwright") as MiniPlaywright;
+    } catch {
+      return null;
+    }
+  })();
+
+  it.runIf(playwright !== null)("the WebRTC flag leaves pages no local address candidates", async () => {
+    const args = launchPlan(chrome, "about:blank", "/unused", "system").args.filter((a) => a.startsWith("--force-webrtc"));
+    expect(args).toHaveLength(1);
+    const candidates = async (flags: string[]): Promise<string[]> => {
+      const browser = await playwright!.chromium.launch({ args: flags });
+      try {
+        const page = await browser.newPage();
+        return await page.evaluate(async () => {
+          const pc = new RTCPeerConnection({ iceServers: [] });
+          pc.createDataChannel("x");
+          const found: string[] = [];
+          pc.onicecandidate = (e) => {
+            if (e.candidate) found.push(e.candidate.candidate);
+          };
+          await pc.setLocalDescription(await pc.createOffer());
+          await new Promise((r) => setTimeout(r, 1500));
+          return found;
+        });
+      } finally {
+        await browser.close();
+      }
+    };
+    expect((await candidates([])).some((c) => c.includes("typ host"))).toBe(true);
+    expect(await candidates(args)).toEqual([]);
+  }, 30_000);
 });

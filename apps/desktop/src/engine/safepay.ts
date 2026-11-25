@@ -115,6 +115,30 @@ export function firefoxPrefs(mode: DnsMode): string {
     ["extensions.formautofill.creditCards.enabled", false],
     ["privacy.trackingprotection.enabled", true],
     ["dom.security.https_only_mode", true],
+    // From arkenfox user.js (MIT), for a banking session:
+    // look-alike domains show as punycode (xn--) instead of a convincing name;
+    ["network.IDN_show_punycode", true],
+    // WebRTC can't reveal local network addresses;
+    ["media.peerconnection.ice.default_address_only", true],
+    ["media.peerconnection.ice.no_host", true],
+    // other sites see only the origin as referrer, never the page address;
+    ["network.http.referer.XOriginTrimmingPolicy", 2],
+    // nothing is fetched or resolved before you click;
+    ["network.dns.disablePrefetch", true],
+    ["network.prefetch-next", false],
+    ["network.predictor.enabled", false],
+    ["browser.urlbar.speculativeConnect.enabled", false],
+    ["browser.places.speculativeConnect.enabled", false],
+    // nothing from the session is kept on disk;
+    ["browser.cache.disk.enable", false],
+    ["browser.sessionstore.privacy_level", 2],
+    // PDFs can't run scripts; TLS renegotiation must be the safe kind;
+    ["pdfjs.enableScripting", false],
+    ["security.ssl.require_safe_negotiation", true],
+    ["security.tls.version.min", 3],
+    // Safe Browsing stays on: it warns about known phishing and malware.
+    ["browser.safebrowsing.malware.enabled", true],
+    ["browser.safebrowsing.phishing.enabled", true],
     ["network.trr.mode", mode === "browser_doh" ? 3 : 5],
     ...(mode === "browser_doh" ? ([["network.trr.uri", QUAD9_DOH]] as [string, string][]) : []),
   ];
@@ -147,6 +171,9 @@ export function launchPlan(browser: Browser, url: string, profileDir: string, mo
     "--disable-background-mode",
     "--disable-features=AutofillServerCommunication,PasswordManagerOnboarding",
     "--password-store=basic",
+    // WebRTC uses only proxied routes, so pages can't learn local addresses (arkenfox's WebRTC goal).
+    "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+    "--no-pings",
     "--new-window",
   ];
   // With Safe DNS on, the browser's own DoH would skip Qalaa's filter.

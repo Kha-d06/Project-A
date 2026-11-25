@@ -41,6 +41,21 @@ and what is still missing. This is not a substitute for an independent review.
 - **Worker containment.** The worker runs as an unprivileged user on a read-only filesystem, with all capabilities dropped, `no-new-privileges`, and memory and CPU caps. Tasks have hard time limits.
 - **No third parties.** Files are never sent to a third party. A VirusTotal lookup happens only when the user ticks the box for that scan, and sends the SHA-256 fingerprint only.
 
+## Parser jail (`app/sandbox`)
+
+Everything that parses an uploaded file's contents (PDF streams, Office macros, ZIP members, PE headers, YARA) runs in a fresh child process per file, never in the worker itself:
+
+- **Environment:** only `PATH`, `LANG` and the YARA rules folder. The database URL, secret key and API tokens are never passed in, no file descriptors are inherited (so no database or Redis connection), and the working folder is `/`.
+- **rlimits:** 512 MB address space, 60 s CPU, zero-byte file writes, 64 open files, no core dumps. The parent also enforces a wall-clock timeout.
+- **Landlock (Linux 5.13+, unprivileged):** the child may read only the interpreter, its libraries, the app, the rules and its own sample. Other people's uploads and other processes' `/proc` entries are refused.
+- **seccomp-bpf allowlist (libseccomp through ctypes), default action kill:** no `socket` or `connect`, no `fork`, `vfork` or `execve` (`clone` only with `CLONE_THREAD`), files only opened for reading.
+- **Worker processes are non-dumpable**, so even on a kernel without Landlock their `/proc/<pid>/environ` is closed to the child.
+- **nsjail (`SENTINEL_SANDBOX=nsjail`):** on hosts that allow namespaces, the same child runs inside nsjail with its own network, user, PID, IPC, UTS and mount namespaces, read-only binds, a private `/tmp`, `/proc` hidden, mapped to an unprivileged user, and cgroup v2 memory, PID and CPU caps where a cgroup is delegated. The default compose worker drops every capability, which nsjail's namespaces need, so there the layers above apply instead.
+
+A file whose inspection breaks a rule or a limit gets a failed "Structure and embedded content" check and a stated limitation; nothing it produced is shown. All of this is tested inside a container with the worker's own hardening (`--cap-drop ALL`, `no-new-privileges`, read-only root) and in CI under real nsjail.
+
+Every compose service now has a `pids_limit` and `no-new-privileges` (except the VPN, which needs its capabilities), and every Qalaa-built service drops all capabilities. Third-party images (Postgres, Redis, ClamAV, Caddy and others) keep their default capabilities, because they start as root and drop privileges themselves. Docker's default seccomp profile applies to all of them.
+
 ## Isolated page rendering (`app/analyzers/page_render.py`)
 
 Off by default. When enabled, website scans also load the page in headless Chromium, because scripts run there:

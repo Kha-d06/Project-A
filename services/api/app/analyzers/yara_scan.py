@@ -25,20 +25,24 @@ def _rule_files(directory: Path) -> list[Path]:
     return sorted(path for path in directory.glob("*.yar*") if path.is_file())
 
 
-@lru_cache
-def load_rules() -> RuleSet:
+def compile_rules(custom_dir: Path | None) -> RuleSet:
+    """Built-in rules plus an operator's own folder. Used inside the parser jail too."""
     built_in = _rule_files(BUILT_IN_RULES)
-    custom_dir = get_settings().yara_rules_dir
     custom = _rule_files(custom_dir) if custom_dir and custom_dir.is_dir() else []
     sources = {f"rules_{index}": str(path) for index, path in enumerate(built_in + custom)}
     rules = yara.compile(filepaths=sources)
     return RuleSet(rules, sum(1 for _ in rules), len(custom))
 
 
-def yara_check(path: Path, outcome: Outcome) -> None:
+@lru_cache
+def load_rules() -> RuleSet:
+    return compile_rules(get_settings().yara_rules_dir)
+
+
+def yara_check(path: Path, outcome: Outcome, rule_set: RuleSet | None = None) -> None:
     label, provider = "Signature rules", "YARA"
     try:
-        rule_set = load_rules()
+        rule_set = rule_set or load_rules()
         matches = rule_set.rules.match(str(path), timeout=SCAN_TIMEOUT_SECONDS, fast=True)
     except yara.TimeoutError:
         outcome.checks.append(Check("yara", label, provider, "failed", "Rule matching timed out."))

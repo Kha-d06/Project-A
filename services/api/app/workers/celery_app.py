@@ -1,5 +1,8 @@
+from typing import Any
+
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import worker_process_init
 
 from app.core.config import get_settings
 
@@ -22,6 +25,17 @@ celery_app.conf.update(
         "sentinel.run_assessment": {"queue": "scans"},
     },
 )
+
+
+def _harden_worker_process(**_: Any) -> None:
+    """Jailed parsers run as children of this process; keep its /proc entries away from them."""
+    from app.sandbox.policy import make_undumpable
+
+    make_undumpable()
+
+
+worker_process_init.connect(_harden_worker_process, weak=False)
+
 
 if settings.feed_sync_enabled:
     celery_app.conf.beat_schedule = {

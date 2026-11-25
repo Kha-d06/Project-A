@@ -53,6 +53,8 @@ x-api-environment: &api-environment
 
 services:
   postgres:
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: sentinel
@@ -66,6 +68,8 @@ services:
       retries: 10
 
   redis:
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
     image: redis:7-alpine
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     healthcheck:
@@ -74,6 +78,9 @@ services:
       retries: 10
 
   migrate:
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
     build:
       context: ./services/api
       args:
@@ -86,6 +93,8 @@ services:
 
   # Creates the restricted database role the scan worker uses.
   worker-role:
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
     image: postgres:16-alpine
     command:
       - sh
@@ -101,6 +110,9 @@ services:
     restart: "no"
 
   api:
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
     build:
       context: ./services/api
       args:
@@ -121,6 +133,7 @@ services:
   # Scans run here, not in the API process. The worker never executes samples, but it
   # still runs unprivileged, on a read-only filesystem, with capped memory and CPU.
   worker:
+    pids_limit: 512
     build:
       context: ./services/api
       args:
@@ -160,6 +173,7 @@ services:
   # Feed refresh, retention, webhooks and replies to bots and emails. Has full
   # database access but never touches uploaded samples.
   tasks:
+    pids_limit: 128
     build: ./services/api
     command: ["celery", "-A", "app.workers.celery_app", "worker", "-Q", "tasks", "--loglevel=INFO", "--concurrency=2", "--max-tasks-per-child=500"]
     environment: *api-environment
@@ -176,6 +190,9 @@ services:
 
   # Hourly feed refresh and retention sweep.
   scheduler:
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
     build:
       context: ./services/api
       args:
@@ -188,6 +205,9 @@ services:
       redis: { condition: service_healthy }
 
   web:
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
     build: ./apps/web
     environment:
       SENTINEL_API_URL: http://api:8000
@@ -202,6 +222,8 @@ services:
       api: { condition: service_healthy }
 
   caddy:
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
     image: caddy:2-alpine
     environment:
       SENTINEL_SITE_ADDRESS: ${SENTINEL_SITE_ADDRESS:-:8080}
@@ -219,6 +241,7 @@ services:
   # (this server's public name and UDP port) and SENTINEL_VPN_SYNC_TOKEN in .env, then
   # `docker compose --profile vpn up -d`. See docs/vpn.md.
   vpn:
+    pids_limit: 64
     build: ./infrastructure/vpn
     profiles: [vpn]
     cap_add: [NET_ADMIN]
@@ -242,6 +265,8 @@ services:
   # Turned on by COMPOSE_PROFILES=devmail (scripts/demo.sh sets it). Never use it in
   # production: nothing is delivered.
   mailpit:
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
     image: axllent/mailpit:latest
     profiles: [devmail]
     ports:
@@ -251,6 +276,8 @@ services:
   # Daily database backups into ./backups (scripts/backup-loop.sh). Turn on with
   # COMPOSE_PROFILES=backups, and copy ./backups to another machine.
   backup:
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
     image: postgres:16-alpine
     profiles: [backups]
     environment:
@@ -268,6 +295,8 @@ services:
     restart: unless-stopped
 
   clamav:
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
     image: clamav/clamav:stable
     profiles: [clamav]
     mem_limit: 2g
@@ -275,6 +304,8 @@ services:
   # Metrics and alert rules. Needs SENTINEL_METRICS_TOKEN in .env. Not published;
   # reach it with `docker compose port prometheus 9090` or an SSH tunnel.
   prometheus:
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
     image: prom/prometheus:v3.5.0
     profiles: [monitoring]
     volumes:
@@ -287,6 +318,8 @@ services:
     depends_on: [api, alertmanager]
 
   alertmanager:
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
     image: prom/alertmanager:v0.28.1
     profiles: [monitoring]
     command: ["--config.file=/etc/alertmanager/alertmanager.yml", "--storage.path=/alertmanager"]

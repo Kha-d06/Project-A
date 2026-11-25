@@ -14,11 +14,12 @@ from app.analyzers.file_types import FileType, extension_of
 from app.analyzers.office_macros import macro_findings
 from app.analyzers.pe_info import pe_findings
 from app.analyzers.types import Check, FindingData, Outcome, Severity
-from app.analyzers.yara_scan import SCAN_TIMEOUT_SECONDS, load_rules, yara_check
+from app.analyzers.yara_scan import SCAN_TIMEOUT_SECONDS, RuleSet, load_rules, yara_check
 from app.core.config import get_settings
 from app.intel import providers
 from app.intel.feeds import MALWAREBAZAAR, THREATFOX
 from app.intel.lookup import find_indicators, fresh_sources
+from app.sandbox.runner import merge_into, run_static_inspection
 
 SOURCE = "Qalaa static file inspection"
 
@@ -449,6 +450,28 @@ def _content_findings(path: Path, filename: str, detected: FileType, outcome: Ou
         )
 
 
+def static_inspection(
+    path: Path,
+    filename: str,
+    detected: FileType,
+    outcome: Outcome,
+    rule_set: RuleSet | None = None,
+) -> None:
+    """The part that parses hostile content. Runs inside the parser jail (app.sandbox)."""
+    _content_findings(path, filename, detected, outcome)
+    outcome.checks.append(
+        Check(
+            "static_inspection",
+            "Structure and embedded content",
+            SOURCE,
+            "completed",
+            "Looked for disguised file types, macros, risky archive contents and, for Windows "
+            "programs, their capabilities.",
+        )
+    )
+    yara_check(path, outcome, rule_set)
+
+
 def hash_reputation_check(db: Session, sha256: str, outcome: Outcome) -> None:
     label, provider = "Known malware hashes", "MalwareBazaar feed (local copy)"
     for match in find_indicators(db, "sha256", sha256):
@@ -627,18 +650,8 @@ def analyze_file(payload: dict[str, Any], db: Session) -> Outcome:
     )
 
     outcome.findings += _name_findings(filename, detected)
-    _content_findings(path, filename, detected, outcome)
-    outcome.checks.append(
-        Check(
-            "static_inspection",
-            "Structure and embedded content",
-            SOURCE,
-            "completed",
-            "Looked for disguised file types, macros, risky archive contents and, for Windows "
-            "programs, their capabilities.",
-        )
-    )
-    yara_check(path, outcome)
+    # Everything that parses the file's contents runs in a separate, jailed process.
+    merge_into(outcome, run_static_inspection(path, filename))
     hash_reputation_check(db, sha256, outcome)
     antivirus_check(path, outcome)
     if payload.get("virustotal_consent"):

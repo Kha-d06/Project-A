@@ -19,6 +19,7 @@ import { CredentialGuardService, pollMs as credentialPollMs } from "./core/crede
 import { KeyboardService } from "./core/keyboard-service";
 import { ListenerService } from "./core/listener-service";
 import { SafeDnsService } from "./core/safe-dns-service";
+import { SafePayService } from "./core/safepay-service";
 import type { HomeInput } from "./core/home";
 import { dataDirFor, ipcPaths } from "./core/paths";
 import { startIpcServer } from "./core/server";
@@ -48,7 +49,7 @@ async function mtime(file: string): Promise<string | null> {
   }
 }
 
-export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService }> {
+export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService; safePay: SafePayService }> {
   const settingsFile = join(dataDir, "settings.json");
   const historyFile = join(dataDir, "history.json");
   let settings = await loadSettings(settingsFile, defaultSettings(join(homedir(), "Downloads"), [], hostname().slice(0, 80) || "This computer"));
@@ -73,6 +74,8 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
   const credentials = new CredentialGuardService({ file: join(dataDir, "credential-guard.json"), home: homedir(), platform: process.platform, emit });
   await credentials.load();
   credentials.configure({ enabled: settings.credentialGuard });
+  const safePay = new SafePayService({ platform: process.platform, emit, safeDnsOn: () => safeDns.isOn() });
+  await safePay.cleanup();
   const clamBinary = await findClam();
   const sevenZip = await findSevenZip();
 
@@ -84,6 +87,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     safeDns,
     clipboard,
     credentials,
+    safePay,
     async homeInput(): Promise<HomeInput> {
       const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       return {

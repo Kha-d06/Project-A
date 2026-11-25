@@ -57,6 +57,10 @@ fn pet_window() {
     scan[0].invoke_accessible_default_action();
     assert_eq!(ran.borrow().last().map(String::as_str), Some("scan.quick"));
 
+    let safepay: Vec<_> = ElementHandle::find_by_accessible_label(&pet, "Open SafePay for banking").collect();
+    safepay[0].invoke_accessible_default_action();
+    assert_eq!(ran.borrow().last().map(String::as_str), Some("safepay.launch"));
+
     // A credential alert: the card's first three buttons answer it.
     pet.set_actions(ModelRc::from(Rc::new(VecModel::from(credential_actions(Lang::En, true)))));
     for (label, id) in [

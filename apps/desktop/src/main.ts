@@ -72,6 +72,8 @@ import * as mail from "./engine/mail";
 import { type CoreHost, type Emit, createHandlers } from "./core/handlers";
 import { ClipboardService, POLL_MS } from "./core/clipboard-service";
 import { CredentialGuardService, pollMs as credentialPollMs } from "./core/credential-guard-service";
+import { SafePayService } from "./core/safepay-service";
+import { parseSafePayLink } from "./engine/safepay";
 import { KeyboardService } from "./core/keyboard-service";
 import { ListenerService } from "./core/listener-service";
 import { SafeDnsService } from "./core/safe-dns-service";
@@ -1219,6 +1221,20 @@ let keyboardService: KeyboardService | null = null;
 let safeDnsService: SafeDnsService | null = null;
 let clipboardService: ClipboardService | null = null;
 let credentialService: CredentialGuardService | null = null;
+let safePayService: SafePayService | null = null;
+
+/** Opens a qalaa://safepay link; false when it isn't one Qalaa accepts. */
+function openSafePayLink(link: string): boolean {
+  const url = parseSafePayLink(link);
+  if (!url) return false;
+  if (!safePayService) {
+    pendingSafePayLink = link;
+    return true;
+  }
+  void safePayService.launch({ url }).catch((error: unknown) => notify("SafePay couldn't start", error instanceof Error ? error.message : String(error)));
+  return true;
+}
+let pendingSafePayLink: string | null = process.argv.find((a) => a.startsWith("qalaa://")) ?? null;
 
 const electronHost: CoreHost = {
   version: app.getVersion(),
@@ -1264,6 +1280,9 @@ const electronHost: CoreHost = {
   },
   get credentials() {
     return credentialService ?? undefined;
+  },
+  get safePay() {
+    return safePayService ?? undefined;
   },
   async updateToggles(changes) {
     const { onAccessScan, ...rest } = changes;
@@ -1326,6 +1345,13 @@ async function startCoreIpc() {
   credentialService.configure({ enabled: settings.credentialGuard });
   syncCredentialMode();
   if (credentialService.isSupported()) setInterval(() => void credentialService?.poll().catch(() => undefined), credentialPollMs(process.platform)).unref();
+  safePayService = new SafePayService({ platform: process.platform, emit: coreEmit, safeDnsOn: () => safeDnsService?.isOn() ?? false });
+  await safePayService.cleanup();
+  if (pendingSafePayLink) {
+    const link = pendingSafePayLink;
+    pendingSafePayLink = null;
+    openSafePayLink(link);
+  }
   const handlers = createHandlers(electronHost, coreEmit);
   coreIpc = await startIpcServer(ipcPaths(process.platform, process.env, dataDir()), handlers, { version: app.getVersion() });
   const check = () => void listenerService?.check().catch(() => undefined);
@@ -1900,7 +1926,18 @@ async function start() {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on("second-instance", () => window?.show());
+  // qalaa://safepay?url=… from the browser extension: Windows and Linux pass it
+  // to a second instance, macOS sends open-url.
+  app.setAsDefaultProtocolClient("qalaa");
+  app.on("open-url", (event, link) => {
+    event.preventDefault();
+    openSafePayLink(link);
+  });
+  app.on("second-instance", (_event, argv) => {
+    const link = argv.find((a) => a.startsWith("qalaa://"));
+    if (link && openSafePayLink(link)) return;
+    window?.show();
+  });
   app.whenReady().then(start, (error: unknown) => {
     console.error(error);
     app.quit();

@@ -4,6 +4,7 @@ import { applyTheme } from "../lib/theme";
 import { initLanguage, localizeDocument, t } from "../lib/i18n";
 import { ask, type Status, type VaultStatus } from "../lib/messages";
 import type { CheckResult } from "../lib/types";
+import { isBankingHost, safePayLink } from "../lib/safepay";
 import { VERDICTS } from "../lib/verdicts";
 
 declare const __TEST_BUILD__: boolean;
@@ -65,7 +66,17 @@ function renderPage(status: Status) {
     section.append(verdictBlock(result));
   }
   if (url.startsWith("http")) {
-    section.append(el("div", { class: "actions" }, fullScanLink(url, status.settings.serverUrl)));
+    const actions = el("div", { class: "actions" }, fullScanLink(url, status.settings.serverUrl));
+    const link = isBankingHost(host) ? safePayLink(url) : null;
+    if (link) {
+      const open = el("button", { class: "button", type: "button", title: t().popup.safePayHint }, t().notifications.safePayOpen);
+      open.addEventListener("click", () => {
+        // The browser asks before handing the page to Qalaa Desktop.
+        if (activeTab?.id !== undefined) void chrome.tabs.update(activeTab.id, { url: link }).then(() => window.close());
+      });
+      actions.prepend(open);
+    }
+    section.append(actions);
   }
 }
 

@@ -1,3 +1,4 @@
+import { isBankingHost, safePayLink } from "./lib/safepay";
 import * as api from "./lib/api";
 import { clearAlerts, listAlerts, recordAlert } from "./lib/alerts";
 import { builtInAnswer, describeCookie, toAssistantContext, type CookieInfo, type PageSummary } from "./lib/assistant-core";
@@ -326,7 +327,52 @@ chrome.downloads.onCreated.addListener((item) => {
   })();
 });
 
+// --- SafePay offer -----------------------------------------------------------------
+
+const SAFEPAY_OFFERED = "safepay-offered";
+
+/** Once per site per browser session, on a banking page that finished loading. */
+chrome.webNavigation.onCompleted.addListener(({ tabId, frameId, url }) => {
+  if (frameId !== 0 || !url.startsWith("https://")) return;
+  void (async () => {
+    const settings = await loadSettings();
+    if (!settings.safePayOffer || settings.paused) return;
+    const host = new URL(url).hostname;
+    if (!isBankingHost(host) || !safePayLink(url)) return;
+    const offered = ((await chrome.storage.session.get(SAFEPAY_OFFERED))[SAFEPAY_OFFERED] as string[] | undefined) ?? [];
+    if (offered.includes(host)) return;
+    await chrome.storage.session.set({ [SAFEPAY_OFFERED]: [...offered, host].slice(-200) });
+    await initLanguage();
+    const n = t().notifications;
+    const options: chrome.notifications.NotificationCreateOptions = {
+      type: "basic",
+      iconUrl: chrome.runtime.getURL("icons/icon-128.png"),
+      title: n.safePayTitle,
+      message: IS_FIREFOX ? `${n.safePayBody(host)} ${n.safePayFirefox}` : n.safePayBody(host),
+      priority: 0,
+    };
+    if (!IS_FIREFOX) options.buttons = [{ title: n.safePayOpen }, { title: n.safePayLater }];
+    await chrome.notifications.create(`safepay:${tabId}:${url}`, options);
+  })();
+});
+
+/** Hands the page to Qalaa Desktop; the browser asks the person first. */
+async function openInSafePay(notificationId: string) {
+  const [, tab, ...rest] = notificationId.split(":");
+  const link = safePayLink(rest.join(":"));
+  if (link) await chrome.tabs.update(Number(tab), { url: link }).catch(() => undefined);
+}
+
+chrome.notifications.onClicked.addListener((notificationId) => {
+  if (!notificationId.startsWith("safepay:")) return;
+  void openInSafePay(notificationId).finally(() => chrome.notifications.clear(notificationId));
+});
+
 chrome.notifications.onButtonClicked.addListener((notificationId, buttonIndex) => {
+  if (notificationId.startsWith("safepay:")) {
+    void (buttonIndex === 0 ? openInSafePay(notificationId) : Promise.resolve()).finally(() => chrome.notifications.clear(notificationId));
+    return;
+  }
   if (!notificationId.startsWith("download:")) return;
   const id = Number(notificationId.split(":")[1]);
   const action = buttonIndex === 0 ? chrome.downloads.cancel(id) : chrome.downloads.resume(id);

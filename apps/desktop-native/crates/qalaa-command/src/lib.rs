@@ -56,6 +56,8 @@ pub fn labels(lang: Lang) -> Labels {
         cred_terminate: s("cred.terminate"),
         cred_allow: s("cred.allow"),
         cred_dismiss: s("cred.dismiss"),
+        safepay: s("safepay.open"),
+        safepay_hint: s("safepay.hint"),
     }
 }
 

@@ -98,6 +98,10 @@ lookup tool, where a person deliberately pastes one fingerprint.
   - Polling can miss a read that starts and finishes between two looks, and the interface says so.
   - Windows: not available yet. Seeing which program holds a file open needs a system handle query from native code, which Qalaa doesn't have; the interface says so.
 
+- **SafePay.** Opens a banking or shopping site in Firefox, Brave, Chrome, Chromium or Edge with a brand-new profile in a private temporary folder (mode 0700). Extensions, sync, background apps, password saving and form filling are off, and the profile is deleted when the browser closes. Profiles left by a crash are removed the next time Qalaa starts. With Safe DNS on, the browser's own DNS-over-HTTPS is turned off so lookups go through Qalaa's filter; with it off, Firefox uses Quad9 over HTTPS, and Chromium-based browsers use the system's DNS (they accept a DoH server only by policy). SafePay keeps the session apart from the everyday browser. It is not a sandbox and doesn't make an infected computer safe.
+  - The browser extension offers SafePay once per banking site with a notification, and the popup has an "Open in SafePay" button. The page is handed over as a `qalaa://safepay` link: the browser asks the person first, and Qalaa Desktop accepts https pages only.
+  - Qalaa's native window hides its Credentials page from screenshots and screen sharing on Windows (`WDA_EXCLUDEFROMCAPTURE`) and macOS (`NSWindowSharingNone`). Linux has no way to ask for this.
+
 ## API keys and metrics
 
 - **API keys.** Personal keys are 256-bit random values prefixed `snt_`, shown once and stored only as SHA-256 digests. They are revocable and limited to ten per account. Keys authenticate scanning, history and lookups only. Account changes, key management, extension linking and all staff functions require a website session with its CSRF token, so a leaked key cannot take over or escalate an account. Disabling an account stops its keys working immediately.

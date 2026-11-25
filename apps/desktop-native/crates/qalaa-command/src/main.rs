@@ -6,10 +6,13 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use qalaa_command::strings::{t, Lang};
-use qalaa_command::view::{clipboard_text, credentials_view, filter_palette, home_view, palette_entries, ports_view, PaletteEntry};
+use qalaa_command::view::{
+    clipboard_text, content_protected, credentials_view, filter_palette, home_view, palette_entries, ports_view, PaletteEntry,
+};
 use qalaa_command::{apply_home, now_secs, set_credentials, set_language, set_offline, set_palette, set_ports, App};
 use qalaa_ipc::{Client, CredentialStatus, HomeModel, IpcError, ListenerStatus, Message, Stream};
 use serde_json::json;
+use slint::winit_030::WinitWindowAccessor;
 use slint::ComponentHandle;
 
 type Shared<T> = Arc<Mutex<T>>;
@@ -291,6 +294,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 "page.about" => app.set_page("about".into()),
                 "page.ports" => app.set_page("ports".into()),
                 "page.credentials" => app.set_page("credentials".into()),
+                "safepay" => call(&app, &state, "safepay.launch", None),
                 other => {
                     if let Some(key) = other.strip_prefix("toggle.") {
                         let on = state
@@ -343,10 +347,16 @@ fn main() -> Result<(), slint::PlatformError> {
     }
     {
         let (weak, state) = (app.as_weak(), Arc::clone(&state));
-        app.on_page_changed(move |page| match (weak.upgrade(), page.as_str()) {
-            (Some(app), "ports") => ports(&app, &state, "listeners.check", None),
-            (Some(app), "credentials") => credentials(&app, &state, "credentials.get".into(), None),
-            _ => {}
+        app.on_page_changed(move |page| {
+            let Some(app) = weak.upgrade() else { return };
+            // Hidden from screenshots and screen sharing where the system allows it.
+            let protect = content_protected(page.as_str());
+            app.window().with_winit_window(|w| w.set_content_protected(protect));
+            match page.as_str() {
+                "ports" => ports(&app, &state, "listeners.check", None),
+                "credentials" => credentials(&app, &state, "credentials.get".into(), None),
+                _ => {}
+            }
         });
     }
     {
@@ -372,6 +382,15 @@ fn main() -> Result<(), slint::PlatformError> {
             let Some(app) = weak.upgrade() else { return };
             if matches!(action.as_str(), "suspend" | "resume" | "terminate" | "allow" | "dismiss") {
                 credentials(&app, &state, format!("credentials.{action}"), Some(json!({ "id": id.as_str() })));
+            }
+        });
+    }
+
+    {
+        let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_safepay(move || {
+            if let Some(app) = weak.upgrade() {
+                call(&app, &state, "safepay.launch", None);
             }
         });
     }

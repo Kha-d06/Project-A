@@ -49,6 +49,14 @@
       "!**/*.map"
     ],
     "asar": true,
+    "protocols": [
+      {
+        "name": "Qalaa SafePay",
+        "schemes": [
+          "qalaa"
+        ]
+      }
+    ],
     "asarUnpack": [
       "dist/cli.js",
       "dist/onaccessd.py"

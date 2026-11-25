@@ -9,6 +9,7 @@ import type { CredentialGuardService } from "./credential-guard-service";
 import type { KeyboardService } from "./keyboard-service";
 import type { ListenerService } from "./listener-service";
 import type { SafeDnsService } from "./safe-dns-service";
+import type { SafePayService } from "./safepay-service";
 import { IpcError } from "./protocol";
 
 export interface CoreHost {
@@ -28,6 +29,8 @@ export interface CoreHost {
   clipboard?: ClipboardService;
   /** Credential guardrails, where the host runs them. */
   credentials?: CredentialGuardService;
+  /** SafePay clean browser sessions, where the host runs them. */
+  safePay?: SafePayService;
 }
 
 export type Handler = (params: unknown) => Promise<unknown>;
@@ -49,7 +52,7 @@ export function toggleChanges(params: unknown): Partial<Record<HomeToggle["key"]
 
 /** Events pushed to every client (the native window and the Guardian pet). */
 export type Emit = (
-  event: "home.changed" | "scan.started" | "scan.finished" | "threat.blocked" | "alert" | "clipboard.armed" | "clipboard.cleared",
+  event: "home.changed" | "scan.started" | "scan.finished" | "threat.blocked" | "alert" | "clipboard.armed" | "clipboard.cleared" | "safepay.started" | "safepay.ended",
   payload: unknown,
 ) => void;
 
@@ -91,6 +94,8 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
     "clipboard.get": async () => requireClipboard(host).status(),
     "clipboard.copy_secret": async (params) => requireClipboard(host).copySecret((params as { text?: unknown } | undefined)?.text),
     "clipboard.clear_now": async () => requireClipboard(host).clearNow(),
+    "safepay.get": async () => requireSafePay(host).status(),
+    "safepay.launch": async (params) => requireSafePay(host).launch(params),
     "credentials.get": async () => requireCredentials(host).status(),
     ...Object.fromEntries(
       (["suspend", "resume", "terminate", "allow", "dismiss"] as const).map((action) => [
@@ -151,4 +156,9 @@ function requireClipboard(host: CoreHost): ClipboardService {
 function requireCredentials(host: CoreHost): CredentialGuardService {
   if (!host.credentials) throw new IpcError("unavailable", "Credential guardrails aren't running here.");
   return host.credentials;
+}
+
+function requireSafePay(host: CoreHost): SafePayService {
+  if (!host.safePay) throw new IpcError("unavailable", "SafePay isn't running here.");
+  return host.safePay;
 }

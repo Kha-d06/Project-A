@@ -23,7 +23,7 @@ use mood::{Input, Mood};
 use qalaa_ipc::Event;
 
 pub const SPRITE: f32 = 96.0;
-pub const POPOVER: (f32, f32) = (280.0, 300.0);
+pub const POPOVER: (f32, f32) = (280.0, 360.0);
 pub const SKINS: [&str; 3] = ["mini-sentinel", "cyber-owl", "shield-fox"];
 
 /// What a service event means for the pet; `None` for events it ignores.
@@ -112,6 +112,7 @@ pub fn text(key: &str, lang: Lang) -> &'static str {
         (Lang::En, "sprite") => "Qalaa Guardian: open quick actions",
         (Lang::En, "scan.quick") => "Run a quick scan",
         (Lang::En, "signatures.update") => "Update malware fingerprints",
+        (Lang::En, "safepay.launch") => "Open SafePay for banking",
         (Lang::En, "open") => "Open Qalaa",
         (Lang::En, "snooze") => "Hide for 2 hours",
         (Lang::En, "offline") => "The Qalaa background service isn't running.",
@@ -123,6 +124,7 @@ pub fn text(key: &str, lang: Lang) -> &'static str {
         (Lang::Ar, "sprite") => "حارس قلعة: افتح الإجراءات السريعة",
         (Lang::Ar, "scan.quick") => "شغّل فحصًا سريعًا",
         (Lang::Ar, "signatures.update") => "حدّث بصمات البرمجيات الخبيثة",
+        (Lang::Ar, "safepay.launch") => "افتح الدفع الآمن للمصارف",
         (Lang::Ar, "open") => "افتح قلعة",
         (Lang::Ar, "snooze") => "أخفِ لمدة ساعتين",
         (Lang::Ar, "offline") => "خدمة قلعة الخلفية لا تعمل.",
@@ -142,7 +144,7 @@ pub fn actions(lang: Lang, connected: bool) -> Vec<Action> {
 
 /// "Clear the clipboard now" appears first, only while a secret is waiting to be wiped.
 pub fn actions_with(lang: Lang, connected: bool, clipboard_armed: bool) -> Vec<Action> {
-    let mut ids = vec!["scan.quick", "signatures.update", "open", "snooze"];
+    let mut ids = vec!["scan.quick", "safepay.launch", "signatures.update", "open", "snooze"];
     if clipboard_armed {
         ids.insert(0, "clipboard.clear_now");
     }
@@ -273,6 +275,10 @@ mod tests {
         let armed = actions_with(Lang::En, true, true);
         assert_eq!(armed[0].id, "clipboard.clear_now");
         assert!(!actions(Lang::En, true).iter().any(|a| a.id == "clipboard.clear_now"));
+        assert!(actions(Lang::Ar, true)
+            .iter()
+            .any(|a| a.id == "safepay.launch" && !a.label.is_empty()));
+        assert!(offline.iter().any(|a| a.id == "safepay.launch" && !a.enabled));
         assert_eq!(clipboard_text(11_200, Lang::En), "A secret is on the clipboard: clearing in 12 s");
     }
 

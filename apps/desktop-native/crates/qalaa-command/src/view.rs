@@ -171,6 +171,10 @@ pub fn palette_entries(view: Option<&HomeView>, lang: Lang) -> Vec<PaletteEntry>
             title: t(lang, "palette.update_signatures").into(),
         },
         PaletteEntry {
+            id: "safepay".into(),
+            title: t(lang, "safepay.open").into(),
+        },
+        PaletteEntry {
             id: "page.home".into(),
             title: t(lang, "palette.home").into(),
         },
@@ -257,6 +261,12 @@ pub fn ports_view(status: &ListenerStatus, lang: Lang) -> Vec<PortView> {
     rows.sort_by_key(|r| (!r.fresh, !r.exposed, r.port));
     rows.dedup_by(|a, b| a.key == b.key);
     rows
+}
+
+/// Pages that show what programs read your secrets are hidden from screenshots
+/// and screen sharing (Windows and macOS; Linux has no way to ask).
+pub fn content_protected(page: &str) -> bool {
+    matches!(page, "credentials")
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -400,6 +410,15 @@ mod tests {
             ..status
         };
         assert!(credentials_view(&unknown, now, Lang::En).1.contains("Windows"));
+    }
+
+    #[test]
+    fn sensitive_pages_are_hidden_from_capture() {
+        assert!(content_protected("credentials"));
+        assert!(!content_protected("home"));
+        assert!(palette_entries(None, Lang::En)
+            .iter()
+            .any(|e| e.id == "safepay" && e.title == "Open SafePay"));
     }
 
     #[test]

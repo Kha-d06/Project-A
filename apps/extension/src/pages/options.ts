@@ -6,7 +6,7 @@ import { ask, type Status } from "../lib/messages";
 import { SAFE_SEARCH_ORIGINS, hasSafeSearchAccess } from "../lib/safesearch";
 import { SEARCH_ORIGINS, normalizeHostEntry, type Settings } from "../lib/settings";
 
-const SWITCHES = ["paused", "warnOnSuspicious", "preloadBlocking", "blockTrackers", "searchBadges", "downloadChecks", "keepLocalAlerts", "hoverChecks", "assistant"] as const;
+const SWITCHES = ["paused", "warnOnSuspicious", "preloadBlocking", "blockTrackers", "searchBadges", "downloadChecks", "keepLocalAlerts", "safePayOffer", "hoverChecks", "assistant"] as const;
 // Optional permissions, requested from the click that turns a feature on.
 const PAGE_ORIGINS = ["http://*/*", "https://*/*"];
 const FEATURE_PERMISSIONS: Partial<Record<(typeof SWITCHES)[number], chrome.permissions.Permissions>> = {

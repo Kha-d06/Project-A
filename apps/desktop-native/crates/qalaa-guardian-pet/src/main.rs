@@ -273,7 +273,7 @@ fn main() -> Result<(), slint::PlatformError> {
         window.on_action(move |id| {
             let Some(shared) = weak.upgrade() else { return };
             match id.as_str() {
-                "scan.quick" | "clipboard.clear_now" | "signatures.update" => call_service(id.as_str(), None),
+                "scan.quick" | "clipboard.clear_now" | "signatures.update" | "safepay.launch" => call_service(id.as_str(), None),
                 "credentials.suspend" | "credentials.terminate" | "credentials.allow" => {
                     let mut app = shared.borrow_mut();
                     if let Some((incident, _)) = app.credential.take() {

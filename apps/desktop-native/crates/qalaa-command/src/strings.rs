@@ -36,6 +36,11 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
 }
 
 pub const EN: &[(&str, &str)] = &[
+    ("safepay.open", "Open SafePay"),
+    (
+        "safepay.hint",
+        "A clean browser window for banking and shopping: no extensions, nothing saved, deleted when you close it.",
+    ),
     ("nav.credentials", "Credentials"),
     ("cred.title", "Who opens your keys and passwords"),
     (
@@ -180,6 +185,11 @@ pub const EN: &[(&str, &str)] = &[
 ];
 
 pub const AR: &[(&str, &str)] = &[
+    ("safepay.open", "افتح الدفع الآمن"),
+    (
+        "safepay.hint",
+        "نافذة متصفح نظيفة للمصارف والتسوق: بلا إضافات ولا يُحفظ شيء، وتُحذف عند إغلاقها.",
+    ),
     ("nav.credentials", "بيانات الاعتماد"),
     ("cred.title", "من يفتح مفاتيحك وكلمات مرورك"),
     (

@@ -34,6 +34,8 @@ export interface Settings {
   screenTime: ScreenTimeRule | null;
   screenTimeBlocked: BlockReason | null;
   keepLocalAlerts: boolean;
+  /** On banking and payment sites, offer to reopen the page in Qalaa Desktop's SafePay. */
+  safePayOffer: boolean;
   allowlist: string[];
   blocklist: string[];
 }
@@ -60,6 +62,7 @@ export const DEFAULT_SETTINGS: Settings = {
   screenTime: null,
   screenTimeBlocked: null,
   keepLocalAlerts: true,
+  safePayOffer: true,
   allowlist: [],
   blocklist: [],
 };

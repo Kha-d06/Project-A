@@ -157,6 +157,16 @@ fn command_centre_interface() {
         "only new listeners ask for a decision"
     );
 
+    // --- SafePay from the Quick-Toggle Dock.
+    app.set_page("home".into());
+    let safepay = Rc::new(RefCell::new(0));
+    {
+        let safepay = Rc::clone(&safepay);
+        app.on_safepay(move || *safepay.borrow_mut() += 1);
+    }
+    labelled(&app, "Open SafePay")[0].invoke_accessible_default_action();
+    assert_eq!(*safepay.borrow(), 1);
+
     // --- Clipboard countdown banner with Clear now.
     app.set_page("home".into());
     app.set_clip_text(qalaa_command::view::clipboard_text("api_token", 12_000, Lang::En).into());

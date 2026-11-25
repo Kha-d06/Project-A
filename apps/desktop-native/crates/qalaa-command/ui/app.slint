@@ -18,6 +18,7 @@ export struct Labels {
     ports-blocked: string, ports-trust: string, ports-block: string, ports-unblock: string, ports-prompt: string,
     credentials: string, cred-title: string, cred-intro: string, cred-none: string, cred-suspend: string,
     cred-resume: string, cred-terminate: string, cred-allow: string, cred-dismiss: string,
+    safepay: string, safepay-hint: string,
 }
 
 component Card inherits Rectangle {
@@ -115,6 +116,7 @@ export component App inherits Window {
     callback port-block(int, bool);
     callback page-changed(string);
     callback cred-action(string, string);
+    callback safepay();
     changed page => { page-changed(page); }
 
     changed rtl => { Theme.rtl = rtl; }
@@ -276,6 +278,16 @@ export component App inherits Window {
                                 padding: 20px;
                                 spacing: 8px;
                                 Heading { text: labels.dock; }
+                                HorizontalLayout {
+                                    alignment: Theme.rtl ? end : start;
+                                    Button {
+                                        text: labels.safepay;
+                                        accessible-label: labels.safepay;
+                                        enabled: !busy;
+                                        clicked => { root.safepay(); }
+                                    }
+                                }
+                                Muted { text: labels.safepay-hint; font-size: 12px; }
                                 for toggle in toggles: VerticalLayout {
                                     spacing: 0px;
                                     Switch {

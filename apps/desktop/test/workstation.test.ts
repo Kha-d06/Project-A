@@ -193,6 +193,7 @@ describe("file integrity monitoring", () => {
     const accepted = await monitor.accept(a);
     expect(accepted.changes.map((x) => x.path).sort()).toEqual([b, c].sort());
     expect(compare(accepted.baseline, [await fileState(a)])).toEqual([]);
+    monitor.stop();
   });
 });
 

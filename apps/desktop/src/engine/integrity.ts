@@ -81,6 +81,8 @@ export class IntegrityMonitor {
   private watchers: FSWatcher[] = [];
   private timer: NodeJS.Timeout | null = null;
   private pending: NodeJS.Timeout | null = null;
+  /** Only after start(): rebaselining a monitor that was never started must not begin watching. */
+  private watching = false;
 
   constructor(
     private readonly file: string,
@@ -110,7 +112,7 @@ export class IntegrityMonitor {
     const states = await Promise.all(paths.map(fileState));
     this.store = { paths, baseline: Object.fromEntries(states.map((s) => [s.path, s])), changes: [], lastCheck: new Date().toISOString() };
     await this.save();
-    this.restartWatch();
+    if (this.watching) this.restartWatch();
     return this.store;
   }
 
@@ -130,7 +132,7 @@ export class IntegrityMonitor {
     this.store.paths = unique;
     this.store.changes = this.store.changes.filter((c) => unique.includes(c.path));
     await this.save();
-    this.restartWatch();
+    if (this.watching) this.restartWatch();
     return this.store;
   }
 
@@ -146,6 +148,7 @@ export class IntegrityMonitor {
 
   /** Watch each file's folder (a file may be replaced, not edited), plus a 10-minute sweep. */
   start(): void {
+    this.watching = true;
     this.restartWatch();
     if (!this.timer) {
       this.timer = setInterval(() => void this.check(), 10 * 60 * 1000);
@@ -154,6 +157,9 @@ export class IntegrityMonitor {
   }
 
   stop(): void {
+    this.watching = false;
+    if (this.pending) clearTimeout(this.pending);
+    this.pending = null;
     for (const w of this.watchers) w.close();
     this.watchers = [];
     if (this.timer) clearInterval(this.timer);

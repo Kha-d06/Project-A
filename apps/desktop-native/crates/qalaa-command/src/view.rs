@@ -434,10 +434,15 @@ pub fn behaviour_view(status: &BehaviourStatus, now: i64, lang: Lang) -> (Vec<Be
         })
         .collect();
     let source = match status.capability.source.as_str() {
-        "proc_poll" | "ps_poll" => status.capability.source.as_str(),
+        "proc_connector" | "proc_poll" | "ps_poll" => status.capability.source.as_str(),
         _ => "unavailable",
     };
     (rows, t(lang, &format!("beh.source.{source}")).to_owned())
+}
+
+/// Linux without the root helper: offer to install it, so every start is seen.
+pub fn behaviour_can_install_helper(status: &BehaviourStatus) -> bool {
+    status.capability.source == "proc_poll"
 }
 
 #[cfg(test)]
@@ -470,6 +475,13 @@ mod tests {
             "unknown rules fall back to the service's title"
         );
         assert!(note.contains("macOS"));
+        assert!(!behaviour_can_install_helper(&status));
+        let mut linux = status.clone();
+        linux.capability.source = "proc_poll".into();
+        assert!(behaviour_can_install_helper(&linux));
+        linux.capability.source = "proc_connector".into();
+        assert!(behaviour_view(&linux, now, Lang::En).1.contains("Every program start"));
+        assert!(!behaviour_can_install_helper(&linux));
         let (ar, note_ar) = behaviour_view(&status, now, Lang::Ar);
         assert!(ar[0].title.starts_with("يُوقَف جدار الحماية"));
         assert!(ar[0].title.contains("خطورة عالية"));

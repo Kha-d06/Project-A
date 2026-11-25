@@ -11,7 +11,7 @@
  */
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 
 import { type CoreHost, type Emit, createHandlers } from "./core/handlers";
 import { AliasService } from "./core/alias-service";
@@ -23,6 +23,8 @@ import { KeyboardService } from "./core/keyboard-service";
 import { ListenerService } from "./core/listener-service";
 import { ScanEngineService } from "./core/scan-engine-service";
 import { BehaviourService } from "./core/behaviour-service";
+import { ConnectorServer, installHelperCommand, uninstallHelperCommand } from "./engine/proc-connector";
+import { runElevated } from "./core/listener-service";
 import { findNativeScanner } from "./engine/native-scan";
 import { SafeDnsService } from "./core/safe-dns-service";
 import { SafePayService } from "./core/safepay-service";
@@ -88,7 +90,16 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
   const aliases = new AliasService(() => loadAccount(join(dataDir, "account.json")), (text) => clipboard.copyPlain(text));
   const scanEngine = new ScanEngineService({ root: join(dataDir, "scan-bundle"), binary: await findNativeScanner(), baseUrl: () => `${settings.serverUrl.replace(/\/+$/, "")}/api/v1/updates/scan-bundle/` });
   await scanEngine.load();
-  const behaviour = new BehaviourService({ platform: process.platform, emit });
+  const procSocket = join(dataDir, "proc.sock");
+  const behaviour = new BehaviourService({
+    platform: process.platform,
+    emit,
+    helper: (install) => runElevated(install ? installHelperCommand(join(__dirname, "procwatchd.py").replace(`app.asar${sep}`, `app.asar.unpacked${sep}`), procSocket) : uninstallHelperCommand()),
+  });
+  if (process.platform === "linux") {
+    // Every program start from the root helper, when it's installed; /proc polling otherwise.
+    await new ConnectorServer(procSocket, (event) => void behaviour.check(event), (connected) => behaviour.setConnector(connected)).start().catch(() => undefined);
+  }
   const clamBinary = await findClam();
   const sevenZip = await findSevenZip();
 
@@ -193,7 +204,7 @@ export async function runDaemon(env: NodeJS.ProcessEnv = process.env) {
   if (host.behaviour.isSupported()) {
     const checkBehaviour = () => void host.behaviour.poll().then((found) => (found.length ? handlers["home.get"]?.(undefined).then((m) => emit("home.changed", m)) : undefined)).catch(() => undefined);
     checkBehaviour();
-    setInterval(checkBehaviour, behaviourCap.intervalMs).unref();
+    setInterval(checkBehaviour, behaviourCap.intervalMs || 1_000).unref();
   }
   // qalaa-scan's signed rule bundle: a few minutes after start, then daily.
   const updateScanEngine = () => void host.scanEngine.update().catch(() => undefined);

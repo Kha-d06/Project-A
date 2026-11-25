@@ -47,6 +47,8 @@ export interface BehaviourDeps {
   /** Current command line of a pid, to check it is still the same program before stopping it. */
   commandOf?: (pid: number) => Promise<string | null>;
   signal?: (pid: number, signal: "SIGKILL") => void;
+  /** Linux: runs the pkexec install (true) or removal (false) of the root helper. */
+  helper?: (install: boolean) => Promise<void>;
 }
 
 const MAX_INCIDENTS = 50;
@@ -75,8 +77,26 @@ export class BehaviourService {
     this.now = deps.now ?? Date.now;
   }
 
+  private connector = false;
+
   capability(): FeedCapability {
-    return capabilityFor(this.deps.platform);
+    return capabilityFor(this.deps.platform, this.connector);
+  }
+
+  /** Installs or removes the root helper (Linux, one pkexec prompt). */
+  async helper(install: boolean): Promise<BehaviourStatus> {
+    if (this.deps.platform !== "linux" || !this.deps.helper) throw new IpcError("unavailable", "The program-start helper is only for Linux.");
+    try {
+      await this.deps.helper(install);
+    } catch (error) {
+      throw new IpcError("failed", `The helper could not be ${install ? "installed" : "removed"}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    return this.status();
+  }
+
+  /** The root helper connected or went away (Linux). While it's connected, polling stops. */
+  setConnector(connected: boolean): void {
+    this.connector = connected && this.deps.platform === "linux";
   }
 
   isSupported(): boolean {
@@ -94,13 +114,14 @@ export class BehaviourService {
   }
 
   private async look(): Promise<BehaviourIncident[]> {
-    if (!this.enabled || !this.rows) return [];
+    if (!this.enabled || !this.rows || this.connector) return [];
     const events = this.diff.next(await this.rows(), this.now());
     return events.flatMap((e) => this.check(e));
   }
 
   /** Rules against one event (also used directly by tests and a future event-driven source). */
   check(event: ProcessEvent): BehaviourIncident[] {
+    if (!this.enabled) return [];
     if (event.pid === (this.deps.selfPid ?? process.pid) || event.ppid === (this.deps.selfPid ?? process.pid)) return [];
     const found: BehaviourIncident[] = [];
     for (const rule of this.rules) {

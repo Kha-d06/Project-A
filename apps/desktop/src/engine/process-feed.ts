@@ -28,7 +28,7 @@ export interface ProcessRow {
   start: string;
 }
 
-export type FeedSource = "proc_poll" | "ps_poll" | "unavailable";
+export type FeedSource = "proc_connector" | "proc_poll" | "ps_poll" | "unavailable";
 
 export interface FeedCapability {
   source: FeedSource;
@@ -38,7 +38,8 @@ export interface FeedCapability {
   note: string;
 }
 
-export function capabilityFor(platform: NodeJS.Platform): FeedCapability {
+export function capabilityFor(platform: NodeJS.Platform, connector = false): FeedCapability {
+  if (platform === "linux" && connector) return { source: "proc_connector", intervalMs: 0, seesShortLived: true, note: "Every program start is reported by the kernel's process connector (root helper running)." };
   if (platform === "linux") return { source: "proc_poll", intervalMs: 1_000, seesShortLived: false, note: "Running programs are checked every second, so commands that finish faster can be missed. Every start will be seen once the root helper's process connector is installed." };
   if (platform === "darwin") return { source: "ps_poll", intervalMs: 2_000, seesShortLived: false, note: "Running programs are checked every 2 seconds, so commands that finish faster can be missed. Seeing every start needs Apple's Endpoint Security, which Qalaa has applied for." };
   return { source: "unavailable", intervalMs: 0, seesShortLived: false, note: "Behaviour rules aren't available on Windows yet: they need the Qalaa admin service (ETW)." };

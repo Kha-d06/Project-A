@@ -158,6 +158,7 @@ The background service checks newly started programs against process-creation ru
 
 - Linux: `/proc` is read every second. macOS: `ps` every 2 seconds, the user-space fallback while Apple's Endpoint Security entitlement is pending. Windows: not available until the admin service (ETW) exists, and the app says so.
 - Polling sees a program only if it is still running at the next look, so commands that finish faster are missed. The status shows this (`seesShortLived: false`).
+- On Linux the person can install a small root helper (`qalaa-procwatchd.py`, one pkexec prompt, a systemd unit with `NoNewPrivileges` and `ProtectSystem=strict`). It subscribes to the kernel's netlink process connector, so every program start is reported, however short, and polling stops while it's connected. It only reports: it never blocks or changes anything, drops events while Qalaa isn't running, and forwards at most 500 a second over a socket only the person and root can open (mode 0600). A CI step runs it as root and checks it sees a command that lasts milliseconds.
 - Alerts keep the rule, the program and its parent, and a command line shortened to 300 characters with passwords, tokens and long random strings masked. One alert per rule and program per 10 minutes. The person can dismiss it or stop the program; Qalaa first checks the process still runs the same command.
 
 ## Known gaps

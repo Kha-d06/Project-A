@@ -29,5 +29,5 @@ counted as passes.
 | T1059.004 Download piped to a shell | covered (programs running ≥ 1 s) | covered (≥ 2 s) | gap: needs ETW (admin service) |
 | T1562.004 Firewall switched off | covered (command line only, nothing changed) | covered | gap |
 | T1070.003 Shell history cleared | covered by script or file removal; `history -c` typed at a prompt is a gap (built-in, no new program) | same | — |
-| T1059.004 A sub-second command | gap: polling; needs the netlink connector (root helper) | gap: needs Endpoint Security | gap |
+| T1059.004 A sub-second command | covered with the root helper (CI step runs it as root); gap with polling alone | gap: needs Endpoint Security | gap |
 | T1486 Data encrypted for impact | gap: classic app's fanotify burst detector only | gap | gap |

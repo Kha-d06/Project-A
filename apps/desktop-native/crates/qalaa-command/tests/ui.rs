@@ -232,8 +232,19 @@ fn command_centre_interface() {
     }))
     .expect("status");
     let (rows, note) = qalaa_command::view::behaviour_view(&status, now, Lang::En);
-    qalaa_command::set_behaviour(&app, &rows, &note);
+    qalaa_command::set_behaviour(&app, &rows, &note, true);
     app.set_page("behaviour".into());
+    let helper = Rc::new(RefCell::new(0));
+    {
+        let helper = Rc::clone(&helper);
+        app.on_beh_helper(move || *helper.borrow_mut() += 1);
+    }
+    labelled(
+        &app,
+        "See every program start (installs a small system helper; asks for your password)",
+    )[0]
+    .invoke_accessible_default_action();
+    assert_eq!(*helper.borrow(), 1);
     let beh = Rc::new(RefCell::new(Vec::<String>::new()));
     {
         let beh = Rc::clone(&beh);
@@ -251,7 +262,12 @@ fn command_centre_interface() {
         "a stopped program offers no actions"
     );
     assert_eq!(labelled(&app, &note).len(), 1, "the page says what polling can miss");
-    qalaa_command::set_behaviour(&app, &[], &note);
+    qalaa_command::set_behaviour(&app, &[], &note, false);
+    assert!(labelled(
+        &app,
+        "See every program start (installs a small system helper; asks for your password)"
+    )
+    .is_empty());
     assert_eq!(labelled(&app, "No new program has matched a behaviour rule.").len(), 1);
 
     // --- Data brokers: open, mark, and the request letter needs a name and email first.

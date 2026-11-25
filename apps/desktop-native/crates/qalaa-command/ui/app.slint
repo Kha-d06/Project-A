@@ -20,7 +20,7 @@ export struct Labels {
     ports-blocked: string, ports-trust: string, ports-block: string, ports-unblock: string, ports-prompt: string,
     credentials: string, cred-title: string, cred-intro: string, cred-none: string, cred-suspend: string,
     cred-resume: string, cred-terminate: string, cred-allow: string, cred-dismiss: string,
-    behaviour: string, beh-title: string, beh-intro: string, beh-none: string, beh-stop: string, beh-dismiss: string,
+    behaviour: string, beh-title: string, beh-intro: string, beh-none: string, beh-stop: string, beh-dismiss: string, beh-helper: string,
     safepay: string, safepay-hint: string,
     brokers: string, brokers-title: string, brokers-intro: string, brokers-unreviewed: string, brokers-open: string,
     brokers-requested: string, brokers-removed: string, brokers-not-listed: string, brokers-copy: string,
@@ -104,6 +104,7 @@ export component App inherits Window {
     in property <[CredRow]> credential-rows;
     in property <[BehRow]> behaviour-rows;
     in property <string> beh-note;
+    in property <bool> beh-can-install: false;
     in property <[BrokerRow]> broker-rows;
     in property <string> broker-summary;
     in-out property <string> letter-name;
@@ -129,6 +130,7 @@ export component App inherits Window {
     callback page-changed(string);
     callback cred-action(string, string);
     callback beh-action(string, string);
+    callback beh-helper();
     callback safepay();
     callback broker-open(string);
     callback broker-mark(string, string);
@@ -445,6 +447,14 @@ export component App inherits Window {
                             Heading { text: labels.beh-title; font-size: 20px; }
                             Muted { text: labels.beh-intro; }
                             Muted { text: beh-note; font-size: 12px; }
+                            if beh-can-install: HorizontalLayout {
+                                alignment: Theme.rtl ? end : start;
+                                Button {
+                                    text: labels.beh-helper;
+                                    enabled: !busy;
+                                    clicked => { root.beh-helper(); }
+                                }
+                            }
                             if behaviour-rows.length == 0: Muted { text: labels.beh-none; }
                             for row in behaviour-rows: Rectangle {
                                 border-color: row.state == "open" ? Theme.attention : Theme.line;

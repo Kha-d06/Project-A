@@ -128,6 +128,11 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       await changed();
       return status;
     },
+    "behaviour.helper": async (params) => {
+      const install = (params as { install?: unknown } | undefined)?.install;
+      if (typeof install !== "boolean") throw new IpcError("bad_params", "Expected install: true or false.");
+      return requireBehaviour(host).helper(install);
+    },
     "scanengine.get": async () => requireScanEngine(host).status(),
     "scanengine.update": async () => {
       const result = await requireScanEngine(host).update();

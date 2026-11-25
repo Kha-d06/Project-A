@@ -59,7 +59,8 @@
     ],
     "asarUnpack": [
       "dist/cli.js",
-      "dist/onaccessd.py"
+      "dist/onaccessd.py",
+      "dist/procwatchd.py"
     ],
     "publish": [
       {

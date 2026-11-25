@@ -120,7 +120,7 @@ fn behaviour(app: &App, state: &Arc<State>, method: String, params: Option<serde
             match result {
                 Ok(status) => {
                     let (rows, note) = qalaa_command::view::behaviour_view(&status, now_secs(), lang);
-                    set_behaviour(&app, &rows, &note);
+                    set_behaviour(&app, &rows, &note, qalaa_command::view::behaviour_can_install_helper(&status));
                     app.set_notice("".into());
                 }
                 Err(message) => app.set_notice(message.into()),
@@ -523,6 +523,14 @@ fn main() -> Result<(), slint::PlatformError> {
 
     {
         let (weak, state) = (app.as_weak(), Arc::clone(&state));
+        app.on_beh_helper({
+            let (weak, state) = (weak.clone(), Arc::clone(&state));
+            move || {
+                if let Some(app) = weak.upgrade() {
+                    behaviour(&app, &state, "behaviour.helper".into(), Some(json!({ "install": true })));
+                }
+            }
+        });
         app.on_beh_action(move |id, action| {
             let Some(app) = weak.upgrade() else { return };
             if matches!(action.as_str(), "stop" | "dismiss") {

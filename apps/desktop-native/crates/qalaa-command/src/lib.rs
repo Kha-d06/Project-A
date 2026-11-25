@@ -62,6 +62,7 @@ pub fn labels(lang: Lang) -> Labels {
         beh_none: s("beh.none"),
         beh_stop: s("beh.stop"),
         beh_dismiss: s("beh.dismiss"),
+        beh_helper: s("beh.helper"),
         safepay: s("safepay.open"),
         safepay_hint: s("safepay.hint"),
         brokers: s("nav.brokers"),
@@ -183,7 +184,8 @@ pub fn set_credentials(app: &App, rows: &[CredentialView], mode: &str) {
     app.set_cred_mode(mode.into());
 }
 
-pub fn set_behaviour(app: &App, rows: &[BehaviourView], note: &str) {
+pub fn set_behaviour(app: &App, rows: &[BehaviourView], note: &str, can_install_helper: bool) {
+    app.set_beh_can_install(can_install_helper);
     let items: Vec<BehRow> = rows
         .iter()
         .map(|r| BehRow {

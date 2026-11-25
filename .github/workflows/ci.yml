@@ -95,6 +95,9 @@ jobs:
           mkdir -p "$RUNNER_TEMP/atomics" && chmod 777 "$RUNNER_TEMP/atomics"
           docker run --rm --network none -v "$PWD:/repo:ro" -v "$RUNNER_TEMP/atomics:/out" \
             -e GITHUB_STEP_SUMMARY=/out/summary.md qalaa-atomics python3 tests/attack/run_atomics.py
+      - name: Process-start helper as root (netlink process connector sees a millisecond command)
+        working-directory: apps/desktop
+        run: sudo env "PATH=$PATH" npx vitest run test/proc-connector.test.ts
       - name: Summary
         if: always()
         run: cat "$RUNNER_TEMP/atomics/summary.md" >> "$GITHUB_STEP_SUMMARY" || true

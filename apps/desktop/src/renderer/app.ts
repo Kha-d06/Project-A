@@ -376,6 +376,9 @@ function toggle(label: string, checked: boolean, onchange: (value: boolean) => v
   );
 }
 
+/** Schedule changes sent but not yet answered, so a quick second change builds on them. */
+const pendingSchedules: { scan?: DesktopSettings["scanSchedule"]; backup?: DesktopSettings["scanSchedule"] } = {};
+
 async function change(changes: Partial<DesktopSettings>) {
   const next = await guard(() => api.settings(changes));
   if (next) {
@@ -1444,15 +1447,21 @@ function select<T extends string | number>(id: string, label: string, value: T, 
   );
 }
 
-function scheduleFields(prefix: string, schedule: DesktopSettings["scanSchedule"], save: (next: DesktopSettings["scanSchedule"]) => void) {
+/**
+ * `current` reads the schedule at the moment of a change, not when the panel
+ * was drawn: picking the frequency and then the hour before the panel redraws
+ * must not save the old frequency back.
+ */
+function scheduleFields(prefix: string, schedule: DesktopSettings["scanSchedule"], current: () => DesktopSettings["scanSchedule"], apply: (next: DesktopSettings["scanSchedule"]) => void) {
   const c = t.security;
   const off = schedule.frequency === "off";
+  const save = (part: Partial<DesktopSettings["scanSchedule"]>) => apply({ ...current(), ...part });
   return h(
     "div",
     { class: "row" },
-    select(`${prefix}-frequency`, c.frequency, schedule.frequency, [["off", c.off], ["daily", c.daily], ["weekly", c.weekly]], (frequency) => save({ ...schedule, frequency })),
-    schedule.frequency === "weekly" ? select(`${prefix}-day`, c.day, schedule.day, c.days.map((name, index) => [index, name] as [number, string]), (day) => save({ ...schedule, day })) : null,
-    select(`${prefix}-hour`, c.hour, schedule.hour, Array.from({ length: 24 }, (_, hour) => [hour, `${String(hour).padStart(2, "0")}:00`] as [number, string]), (hour) => save({ ...schedule, hour }), off),
+    select(`${prefix}-frequency`, c.frequency, schedule.frequency, [["off", c.off], ["daily", c.daily], ["weekly", c.weekly]], (frequency) => save({ frequency })),
+    schedule.frequency === "weekly" ? select(`${prefix}-day`, c.day, schedule.day, c.days.map((name, index) => [index, name] as [number, string]), (day) => save({ day })) : null,
+    select(`${prefix}-hour`, c.hour, schedule.hour, Array.from({ length: 24 }, (_, hour) => [hour, `${String(hour).padStart(2, "0")}:00`] as [number, string]), (hour) => save({ hour }), off),
   );
 }
 
@@ -1463,7 +1472,10 @@ function schedulePanel() {
     "section",
     { class: "panel", id: "schedule" },
     h("h2", {}, c.schedule),
-    scheduleFields("scan", s.scanSchedule, (scanSchedule) => change({ scanSchedule })),
+    scheduleFields("scan", s.scanSchedule, () => pendingSchedules.scan ?? status.settings.scanSchedule, (scanSchedule) => {
+      pendingSchedules.scan = scanSchedule;
+      void change({ scanSchedule }).finally(() => pendingSchedules.scan === scanSchedule && (pendingSchedules.scan = undefined));
+    }),
     s.scanSchedule.frequency !== "off"
       ? h("div", { class: "row" }, select("scan-kind", c.kind, s.scheduledScanKind, [["quick", c.quick], ["full", c.full]], (scheduledScanKind) => change({ scheduledScanKind })))
       : null,
@@ -1528,7 +1540,10 @@ function backupPanel() {
       }, c.savePassword),
     ),
     h("p", { class: "muted small" }, c.passwordHint),
-    scheduleFields("backup", s.backupSchedule, (backupSchedule) => change({ backupSchedule })),
+    scheduleFields("backup", s.backupSchedule, () => pendingSchedules.backup ?? status.settings.backupSchedule, (backupSchedule) => {
+      pendingSchedules.backup = backupSchedule;
+      void change({ backupSchedule }).finally(() => pendingSchedules.backup === backupSchedule && (pendingSchedules.backup = undefined));
+    }),
     h("div", { class: "row" }, select("backup-keep", c.keep, s.backupKeep, [1, 3, 5, 10, 20].map((n) => [n, String(n)] as [number, string]), (backupKeep) => change({ backupKeep }))),
     status.schedule.nextBackup && s.backupSchedule.frequency !== "off" ? h("p", { class: "muted small" }, c.next(date(status.schedule.nextBackup))) : null,
     h(

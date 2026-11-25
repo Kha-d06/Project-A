@@ -12,6 +12,7 @@ import type { KeyboardService } from "./keyboard-service";
 import type { ListenerService } from "./listener-service";
 import type { SafeDnsService } from "./safe-dns-service";
 import type { SafePayService } from "./safepay-service";
+import type { ScanEngineService } from "./scan-engine-service";
 import { IpcError } from "./protocol";
 
 export interface CoreHost {
@@ -37,6 +38,8 @@ export interface CoreHost {
   aliases?: AliasService;
   /** The data-broker opt-out checklist. */
   brokers?: BrokerService;
+  /** qalaa-scan, the native scanner, and its signed rule bundle. */
+  scanEngine?: ScanEngineService;
 }
 
 export type Handler = (params: unknown) => Promise<unknown>;
@@ -111,6 +114,11 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
     "aliases.create": async (params) => requireAliases(host).create(params),
     "safepay.get": async () => requireSafePay(host).status(),
     "safepay.launch": async (params) => requireSafePay(host).launch(params),
+    "scanengine.get": async () => requireScanEngine(host).status(),
+    "scanengine.update": async () => {
+      const result = await requireScanEngine(host).update();
+      return { ...requireScanEngine(host).status(), result };
+    },
     "credentials.get": async () => requireCredentials(host).status(),
     ...Object.fromEntries(
       (["suspend", "resume", "terminate", "allow", "dismiss"] as const).map((action) => [
@@ -151,6 +159,11 @@ export function createHandlers(host: CoreHost, emit: Emit): Record<string, Handl
       return status;
     },
   };
+}
+
+function requireScanEngine(host: CoreHost): ScanEngineService {
+  if (!host.scanEngine) throw new IpcError("unavailable", "The native scanner isn't part of this app.");
+  return host.scanEngine;
 }
 
 function requireListeners(host: CoreHost): ListenerService {

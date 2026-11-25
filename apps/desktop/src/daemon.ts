@@ -21,6 +21,8 @@ import { loadAccount } from "./engine/account";
 import { CredentialGuardService, pollMs as credentialPollMs } from "./core/credential-guard-service";
 import { KeyboardService } from "./core/keyboard-service";
 import { ListenerService } from "./core/listener-service";
+import { ScanEngineService } from "./core/scan-engine-service";
+import { findNativeScanner } from "./engine/native-scan";
 import { SafeDnsService } from "./core/safe-dns-service";
 import { SafePayService } from "./core/safepay-service";
 import type { HomeInput } from "./core/home";
@@ -52,7 +54,7 @@ async function mtime(file: string): Promise<string | null> {
   }
 }
 
-export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService; safePay: SafePayService; aliases: AliasService; brokers: BrokerService }> {
+export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): Promise<CoreHost & { settings: () => DesktopSettings; listeners: ListenerService; keyboards: KeyboardService; safeDns: SafeDnsService; clipboard: ClipboardService; credentials: CredentialGuardService; safePay: SafePayService; aliases: AliasService; brokers: BrokerService; scanEngine: ScanEngineService }> {
   const settingsFile = join(dataDir, "settings.json");
   const historyFile = join(dataDir, "history.json");
   let settings = await loadSettings(settingsFile, defaultSettings(join(homedir(), "Downloads"), [], hostname().slice(0, 80) || "This computer"));
@@ -83,6 +85,8 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
   const brokers = new BrokerService(join(dataDir, "brokers.json"), undefined, undefined, (text) => clipboard.copyPlain(text));
   await brokers.load();
   const aliases = new AliasService(() => loadAccount(join(dataDir, "account.json")), (text) => clipboard.copyPlain(text));
+  const scanEngine = new ScanEngineService({ root: join(dataDir, "scan-bundle"), binary: await findNativeScanner(), baseUrl: () => `${settings.serverUrl.replace(/\/+$/, "")}/api/v1/updates/scan-bundle/` });
+  await scanEngine.load();
   const clamBinary = await findClam();
   const sevenZip = await findSevenZip();
 
@@ -90,6 +94,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
     version: VERSION,
     settings: () => settings,
     listeners,
+    scanEngine,
     keyboards,
     safeDns,
     clipboard,
@@ -137,6 +142,7 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
       const context = {
         signatures,
         clamBinary: settings.useClamav ? clamBinary : null,
+        nativeScanner: scanEngine.scanner(),
         sevenZip,
         cloudLookup: settings.cloudLookup ? (sha: string) => lookupHash(settings.serverUrl, sha) : undefined,
       };
@@ -161,6 +167,8 @@ export async function createDaemonHost(dataDir: string, emit: Emit = () => {}): 
       } catch (error) {
         signatureError = error instanceof Error ? error.message : String(error);
       }
+      // The native scanner's signed rules and model update with the signatures.
+      await scanEngine.update();
     },
   };
 }
@@ -176,6 +184,10 @@ export async function runDaemon(env: NodeJS.ProcessEnv = process.env) {
   const checkListeners = () => void host.listeners.check().then((fresh) => (fresh.length ? handlers["home.get"]?.(undefined).then((m) => emit("home.changed", m)) : undefined)).catch(() => undefined);
   checkListeners();
   setInterval(checkListeners, 60_000).unref();
+  // qalaa-scan's signed rule bundle: a few minutes after start, then daily.
+  const updateScanEngine = () => void host.scanEngine.update().catch(() => undefined);
+  setTimeout(updateScanEngine, 3 * 60_000).unref();
+  setInterval(updateScanEngine, 24 * 60 * 60_000).unref();
   // New keyboards (BadUSB): checked every few seconds; the first look records what's there.
   const checkKeyboards = () => void host.keyboards.check().then((fresh) => (fresh.length ? handlers["home.get"]?.(undefined).then((m) => emit("home.changed", m)) : undefined)).catch(() => undefined);
   checkKeyboards();

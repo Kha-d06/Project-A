@@ -140,8 +140,19 @@ lookup tool, where a person deliberately pastes one fingerprint.
 
 See also [security-review.md](security-review.md) for the latest self-review.
 
+## Native scanner (`qalaa-scan`, Wave 4.A)
+
+`apps/desktop-native/crates/qalaa-scan` is a separate Rust program the daemon starts for each file it scans, so a parser bug triggered by a hostile file can't take the daemon down.
+
+- **Caps.** Before reading the file it limits itself: on Linux, writable memory (`RLIMIT_DATA`, 1 GB by default; `RLIMIT_AS` would break YARA-X's engine, which reserves large address ranges it never uses), CPU seconds, no file writes, no core dumps and `no_new_privs`. macOS has the CPU, write and core-dump limits but doesn't enforce the memory one. Windows has none of these yet (a Job Object cap comes with the Windows service). On every platform the daemon kills it after 45 seconds and reads at most 1 MB of output. Files over 128 MB aren't passed to it.
+- **What it does.** goblin parses PE, ELF and Mach-O headers; YARA-X matches the rule set; EMBER-style static features (byte and byte-entropy histograms, strings, headers, sections, hashed imports and exports) feed a gradient-boosted tree model. The features were written from the EMBER paper's descriptions; EMBER's AGPL code isn't used. The model is trained on EMBER's MIT-licensed data by `tools/scan-model/train.py`, which uses the same vectorizer (a fixture keeps the Rust and Python versions identical). It covers Windows PE files only and says so for anything else.
+- **Verdicts.** Only rules named `MAL_`/`APT_` (or with `score >= 80`) make a file "known malicious". Other rules and the model make it "suspicious" at most, and the model's finding states its false-positive rate on the held-out set.
+- **Signed bundles.** Rules and the model are loaded only from a bundle whose `manifest.json` is signed (ed25519) by a key compiled into the binary (`keys/bundle-keys.txt`), and whose every file matches its listed size and SHA-256. Paths that could leave the folder are refused. No key is pinned yet: until one is, the scanner runs without rules or a model and the app says so. Bundles are built with `tools/scan-bundle/build_bundle.py`; keep the private key offline.
+- **Updates.** Differential: the desktop downloads the manifest, checks its signature and that its version is newer (no downgrades), copies unchanged files from the current bundle, downloads only changed ones and checks each hash, then has `qalaa-scan verify` accept the assembled folder before swapping it in. The previous bundle is kept; any failure leaves the current one in use. The server hosts the files at `/api/v1/updates/scan-bundle/` without authentication or identifiers, serving only names its manifest lists.
+
 ## Known gaps
 
 - Admin and moderator actions are not yet protected by a second confirmation step.
 - There is no encryption at rest beyond what the database volume provides.
 - There has been no independent penetration test.
+- qalaa-scan has no trained model or pinned signing key in the repository yet: the training needs the EMBER dataset (several GB) and the key must be generated and held by the project owner.

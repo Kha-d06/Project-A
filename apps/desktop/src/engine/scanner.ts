@@ -25,6 +25,7 @@ import {
   stringFindings,
 } from "./analysis";
 import { clamScan } from "./clamav";
+import { type NativeScanner, nativeFindings, nativeScan } from "./native-scan";
 import { autorunFindings } from "./protection";
 import {
   archiveKind,
@@ -58,6 +59,8 @@ const MAX_ARCHIVE_TOTAL = 128 * 1024 * 1024;
 export interface ScanContext {
   signatures: SignatureStore;
   clamBinary?: string | null;
+  /** qalaa-scan, Qalaa's native scanner (YARA-X rules and the local model from the signed bundle). */
+  nativeScanner?: NativeScanner | null;
   /** 7-Zip, when installed, to list 7z and RAR archives. */
   sevenZip?: string | null;
   /** Fingerprint-only lookup; returns a source name when the hash is known malware. */
@@ -278,6 +281,19 @@ export async function scanFile(path: string, context: ScanContext): Promise<Scan
         }
       } catch {
         // ClamAV is optional; its absence is shown in the engine list.
+      }
+    }
+    if (context.nativeScanner) {
+      try {
+        findings.push(...nativeFindings(await nativeScan(context.nativeScanner, path)));
+        engines.push("qalaa-scan");
+      } catch (error) {
+        findings.push({
+          severity: "info",
+          rule: "native_scan_failed",
+          title: "The native scanner couldn't finish this file",
+          detail: `${error instanceof Error ? error.message : String(error)}. The other checks still ran.`,
+        });
       }
     }
     if (context.cloudLookup && !findings.some((f) => f.rule === "known_hash")) {

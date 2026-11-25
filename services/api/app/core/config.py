@@ -82,6 +82,8 @@ class Settings(BaseSettings):
 
     # Extra YARA rule files (*.yar) to load next to the built-in ones.
     yara_rules_dir: Path | None = None
+    # A signed qalaa-scan bundle (tools/scan-bundle/build_bundle.py) served to desktops.
+    scan_bundle_dir: Path | None = None
     max_apk_bytes: int = 100 * 1024 * 1024
     max_image_bytes: int = 10 * 1024 * 1024
 

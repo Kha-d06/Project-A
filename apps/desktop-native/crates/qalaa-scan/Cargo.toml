@@ -1,0 +1,28 @@
+[package]
+name = "qalaa-scan"
+description = "Qalaa's static file scanner: runs as a capped child process, one file at a time."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+default = ["yara"]
+yara = ["dep:yara-x"]
+
+[dependencies]
+goblin = { version = "=0.10.7", default-features = false, features = ["std", "pe32", "pe64", "elf32", "elf64", "mach32", "mach64", "endian_fd", "te", "archive"] }
+yara-x = { version = "=1.22.1", optional = true, default-features = false, features = ["crypto", "pe-module", "elf-module", "macho-module", "hash-module", "math-module", "string-module", "time-module", "constant-folding", "exact-atoms", "fast-regexp"] }
+ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["fast"] }
+sha2 = "=0.11.1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "=0.2.190"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["fast"] }

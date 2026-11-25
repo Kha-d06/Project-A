@@ -25,6 +25,7 @@ from app.api import (
     sharing,
     system,
     trends,
+    updates,
     user,
     vault,
     vault_share,
@@ -110,6 +111,7 @@ def create_app() -> FastAPI:
         network.router,
         mail.router,
         aliases.router,
+        updates.router,
     ):
         app.include_router(router, prefix=API_PREFIX)
     return app

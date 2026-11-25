@@ -1,0 +1,5 @@
+# Public keys trusted to sign qalaa-scan rule and model bundles.
+# One 64-character hex ed25519 public key per line. Generate a key pair with
+#   python3 tools/scan-bundle/build_bundle.py keygen --out <private key file>
+# keep the private key offline, and add the printed public key here.
+# With no key listed, qalaa-scan loads no rules or model and says so.

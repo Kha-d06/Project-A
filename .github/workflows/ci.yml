@@ -31,6 +31,8 @@ jobs:
       - run: ruff check . && ruff format --check .
       - run: mypy app
       - run: pytest -q
+      - name: qalaa-scan model and bundle tools
+        run: pytest -q -p no:cacheprovider ../../tools/scan-model ../../tools/scan-bundle
       - name: Migrations apply cleanly and match the models
         env:
           SENTINEL_DATABASE_URL: postgresql+psycopg://sentinel:sentinel@localhost:5432/sentinel

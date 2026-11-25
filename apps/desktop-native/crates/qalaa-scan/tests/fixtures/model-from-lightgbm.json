@@ -1,0 +1,1 @@
+{"format": 1, "feature_version": 1, "feature_len": 2267, "formats": ["pe"], "base": 0.0, "threshold": 0.8, "fpr": 0.01, "name": "fixture", "trees": [{"nodes": [{"f": 0, "t": 0.5, "l": 1, "r": 2, "d": true}, {"leaf": -2.0}, {"leaf": 2.0}]}]}

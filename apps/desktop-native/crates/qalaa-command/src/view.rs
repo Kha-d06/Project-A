@@ -289,17 +289,28 @@ pub fn credentials_view(status: &CredentialStatus, now: i64, lang: Lang) -> (Vec
                 "?" => i.credential.as_str(),
                 known => known,
             };
-            let state = match i.state.as_str() {
+            let mut state = match i.state.as_str() {
                 "suspended" | "terminated" => format!("  · {}", t(lang, &format!("cred.state.{}", i.state))),
                 _ => String::new(),
             };
+            if i.severity == "high" {
+                state.push_str(&format!("  · {}", t(lang, "cred.high")));
+            }
+            let pattern = i
+                .pattern
+                .as_deref()
+                .map(|p| match t(lang, &format!("cred.pattern.{p}")) {
+                    "?" => String::new(),
+                    text => format!(" · {text}"),
+                })
+                .unwrap_or_default();
             CredentialView {
                 id: i.id.clone(),
                 title: match lang {
                     Lang::En => format!("{} opened {}{state}", i.program, i.file),
                     Lang::Ar => format!("فتح {} الملف {}{state}", i.program, i.file),
                 },
-                detail: format!("{kind} · {} · {}", relative(Some(&i.at), now, lang), i.exe),
+                detail: format!("{kind}{pattern} · {} · {}", relative(Some(&i.at), now, lang), i.exe),
                 state: i.state.clone(),
             }
         })
@@ -392,11 +403,16 @@ mod tests {
             "supported": true, "enabled": true, "mode": "polling", "trusted": [],
             "incidents": [
                 {"id": "c2", "pid": 901, "program": "node", "exe": "/usr/bin/node", "credential": "browser_secrets", "file": "~/.config/google-chrome/Default/Cookies", "at": "2026-11-24T10:00:00Z", "state": "suspended"},
-                {"id": "c1", "pid": 900, "program": "python3", "exe": "/usr/bin/python3", "credential": "ssh_key", "file": "~/.ssh/id_rsa", "at": "2026-11-24T09:59:00Z", "state": "open"}
+                {"id": "c1", "pid": 900, "program": "python3", "exe": "/usr/bin/python3", "credential": "ssh_key", "file": "~/.ssh/id_rsa", "at": "2026-11-24T09:59:00Z", "state": "open"},
+                {"id": "c3", "pid": 902, "program": "upd", "exe": "/tmp/upd", "credential": "browser_secrets", "file": "~/.config/google-chrome/Default/Login Data", "at": "2026-11-24T09:59:00Z", "state": "open", "severity": "high", "pattern": "browser_key_and_secrets"}
             ]
         }))
         .expect("status");
         let now = parse_iso("2026-11-24T10:00:30Z").expect("time");
+        let (high, _) = credentials_view(&status, now, Lang::En);
+        assert!(high[2].title.ends_with("  · High risk"), "{}", high[2].title);
+        assert!(high[2].detail.contains("as information stealers do"));
+        assert_eq!(status.incidents[0].severity, "warning", "older daemons send no severity");
         let (rows, mode) = credentials_view(&status, now, Lang::En);
         assert_eq!(rows[0].title, "node opened ~/.config/google-chrome/Default/Cookies  · Paused");
         assert!(rows[0].detail.starts_with("Browser passwords and cookies · "));

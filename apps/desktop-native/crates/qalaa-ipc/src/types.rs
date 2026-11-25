@@ -110,6 +110,16 @@ pub struct CredentialIncident {
     pub at: String,
     /// "open", "suspended" or "terminated".
     pub state: String,
+    /// "warning" or "high" (stealer pattern, wallets, keychains, system secrets).
+    #[serde(default = "default_severity")]
+    pub severity: String,
+    /// "browser_key_and_secrets" when one program read a browser's key and its passwords or cookies.
+    #[serde(default)]
+    pub pattern: Option<String>,
+}
+
+fn default_severity() -> String {
+    "warning".into()
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

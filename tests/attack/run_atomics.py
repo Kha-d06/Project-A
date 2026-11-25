@@ -201,14 +201,15 @@ class Service:
 # --- Running ------------------------------------------------------------------------
 
 
-def start(atomic: Atomic, env: dict[str, str]) -> subprocess.Popen[str]:
+def start(atomic: Atomic, env: dict[str, str], log: Path) -> subprocess.Popen[str]:
     if atomic.executor == "python":
         argv = [sys.executable, "-c", atomic.command]
     elif atomic.executor == "powershell":
         argv = ["powershell", "-NoProfile", "-NonInteractive", "-Command", atomic.command]
     else:
         argv = ["sh", "-c", atomic.command]
-    return subprocess.Popen(argv, env=env, text=True)
+    output = log.open("w", encoding="utf-8")
+    return subprocess.Popen(argv, env=env, text=True, stdout=output, stderr=subprocess.STDOUT)
 
 
 def cleanup(atomic: Atomic, proc: subprocess.Popen[str], env: dict[str, str]) -> None:
@@ -228,7 +229,8 @@ def run_one(atomic: Atomic, service: Service) -> tuple[str, str]:
     service.drain()
     if "before" in q:
         service.call(q["before"]["method"], q["before"].get("params"))
-    proc = start(atomic, service.env)
+    log = Path(service.env["HOME"]) / f"atomic-{atomic.guid}.log"
+    proc = start(atomic, service.env, log)
     expected = q.get("expect") or q.get("expect_none")
     want = "expect" in q
     deadline = time.monotonic() + float(q.get("within_seconds", 30))
@@ -250,8 +252,20 @@ def run_one(atomic: Atomic, service: Service) -> tuple[str, str]:
                 found = event
     finally:
         cleanup(atomic, proc, service.env)
+    if want and not found:
+        # What the attack printed, and what the service sees, to tell a broken
+        # atomic from a missed detection.
+        output = log.read_text(encoding="utf-8", errors="replace")[-600:] if log.exists() else ""
+        state = ""
+        if (expected.get("match") or {}).get("kind") == "listener":
+            try:
+                ports = service.call("listeners.get").get("listeners", [])
+                state = f"; listeners now: {[(p.get('process'), p.get('port'), p.get('exposed'), p.get('fresh')) for p in ports][:12]}"
+            except Exception as exc:  # noqa: BLE001 - diagnostics only
+                state = f"; listeners.get failed: {exc}"
+        return ("fail", f"no matching event; saw {[e.get('event') for e in seen]}{state}; atomic output: {output.strip()!r}")
     if want:
-        return ("pass", f"got {found['payload']}") if found else ("fail", f"no matching event; saw {[e.get('event') for e in seen]}")
+        return ("pass", f"got {found['payload']}")
     return ("fail", f"unexpected {found['payload']}") if found else ("pass", "nothing reported, as expected")
 
 

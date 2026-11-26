@@ -66,7 +66,10 @@ export function refusal(pageUrl: string, verdict: Verdict | null, matches: numbe
  * not use anything from outside its own body). Fills the first visible password
  * field and the closest visible username/email field before it.
  */
-export function fillLoginForm(username: string, password: string): { filled: boolean; usernameFilled: boolean } {
+export function fillLoginForm(username: string, password: string, expectedOrigin: string): { filled: boolean; usernameFilled: boolean } {
+  // Checked again inside the page, at the moment of filling: the tab may have
+  // navigated somewhere else after the background script looked at its address.
+  if (location.origin !== expectedOrigin || window.top !== window) return { filled: false, usernameFilled: false };
   const visible = (field: HTMLInputElement) => {
     const box = field.getBoundingClientRect();
     const style = getComputedStyle(field);

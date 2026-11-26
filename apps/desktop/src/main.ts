@@ -21,6 +21,7 @@ import { findClam } from "./engine/clamav";
 import { findSevenZip } from "./engine/formats";
 import { type RansomwareAlert, RansomwareMonitor } from "./engine/ransomware";
 import { isDue, nextSlot } from "./engine/schedule";
+import { verifyDownloadedUpdate } from "./engine/release-verify";
 import { type UpdateState, feedUrl, installKind, isNewer, versionFromManifest } from "./engine/updates";
 import {
   type DeviceUse,
@@ -58,7 +59,7 @@ import { Telemetry } from "./engine/telemetry";
 import * as reports from "./engine/reports";
 import { buildReport } from "./engine/report-data";
 import { Quarantine } from "./engine/quarantine";
-import { type Detection, type OfferedFolder, type ScanOutcome, RemoteAgent } from "./engine/remote";
+import { type Detection, type OfferedFolder, type ScanOutcome, RemoteAgent, quarantineCandidates } from "./engine/remote";
 import { type ScanContext, scanFile } from "./engine/scanner";
 import { fetchSignatures, lookupHash, uploadForFullScan } from "./engine/server";
 import { type DesktopSettings, defaultSettings, loadSettings, sanitizeChanges, saveSettings } from "./engine/settings";
@@ -131,6 +132,8 @@ let deviceUses: DeviceUse[] = [];
 const deviceUseLog: { at: string; device: DeviceUse["device"]; app: string }[] = [];
 let privacyTimer: NodeJS.Timeout | null = null;
 let updateState: UpdateState = { state: "idle" };
+/** The version whose download passed the signed-manifest check, if any. */
+let verifiedUpdate: string | null = null;
 const UPDATE_CHECK_MS = 6 * 60 * 60 * 1000;
 // Executable scan results, reused while the file is unchanged (path → size+mtime).
 const programCache = new Map<string, { stamp: string; verdict: ScanResult["verdict"]; title: string | null }>();
@@ -1068,12 +1071,25 @@ async function checkForUpdates(): Promise<UpdateState> {
     const { autoUpdater } = await import("electron-updater");
     autoUpdater.setFeedURL({ provider: "generic", url: feedUrl(settings.serverUrl) });
     autoUpdater.autoDownload = settings.autoUpdate;
-    autoUpdater.autoInstallOnAppQuit = true;
+    // Never install on quit: only an update that passed the signed-manifest check
+    // (engine/release-verify.ts) may install, and only when the person chooses to.
+    autoUpdater.autoInstallOnAppQuit = false;
+    verifiedUpdate = null;
     autoUpdater.removeAllListeners();
     autoUpdater.on("update-available", (info) => setUpdateState({ state: "available", version: info.version }));
     autoUpdater.on("update-not-available", () => setUpdateState({ state: "none", checkedAt: new Date().toISOString() }));
     autoUpdater.on("download-progress", (p) => setUpdateState({ state: "downloading", percent: Math.round(p.percent) }));
-    autoUpdater.on("update-downloaded", (info) => setUpdateState({ state: "ready", version: info.version }));
+    autoUpdater.on("update-downloaded", (info) => {
+      void verifyDownloadedUpdate({ feed: feedUrl(settings.serverUrl), downloadedFile: info.downloadedFile, updateVersion: info.version, currentVersion: app.getVersion() }).then((check) => {
+        if (check.ok) {
+          verifiedUpdate = info.version;
+          setUpdateState({ state: "ready", version: info.version });
+        } else {
+          // Not signed by a pinned release key: offer the download page instead.
+          setUpdateState({ state: "manual", version: info.version, reason: check.reason === "no_keys" ? "unsigned-build" : "unverified" });
+        }
+      });
+    });
     autoUpdater.on("error", (error) => setUpdateState({ state: "error", message: error.message.slice(0, 300) }));
     await autoUpdater.checkForUpdates();
   } catch (error) {
@@ -1124,13 +1140,9 @@ function sha256File(path: string): Promise<string> {
 
 /** Quarantine files from scan history by hash, checking that each file still has that hash. */
 async function quarantineByHash(hashes: string[]): Promise<number> {
-  const wanted = new Set(hashes);
   const already = new Set((await quarantine.list()).map((item) => item.originalPath));
   let moved = 0;
-  const seen = new Set<string>();
-  for (const entry of history) {
-    if (!entry.sha256 || !wanted.has(entry.sha256) || seen.has(entry.path) || already.has(entry.path)) continue;
-    seen.add(entry.path);
+  for (const entry of quarantineCandidates(history, hashes, already)) {
     try {
       if ((await sha256File(entry.path)) !== entry.sha256) continue;
       await quarantine.add(entry.path, { sha256: entry.sha256, verdict: entry.verdict, reason: entry.findings[0]?.title ?? "" });
@@ -1441,7 +1453,7 @@ function registerIpc() {
   });
   ipcMain.handle("update-check", () => checkForUpdates());
   ipcMain.handle("update-install", async () => {
-    if (updateState.state !== "ready") return;
+    if (updateState.state !== "ready" || verifiedUpdate !== updateState.version) return;
     const { autoUpdater } = await import("electron-updater");
     autoUpdater.quitAndInstall();
   });

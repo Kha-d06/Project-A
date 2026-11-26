@@ -109,12 +109,58 @@ impl Client<Stream> {
     /// Connects to the service and says hello with the token from `token_file`.
     pub fn connect(endpoint: &Path, token_file: &Path, client_name: &str) -> Result<Self, IpcError> {
         let token = std::fs::read_to_string(token_file).map_err(|e| IpcError::Unauthorized(format!("can't read the token file: {e}")))?;
+        // The token goes only to a socket in a folder no other user controls.
+        check_private_socket(endpoint).map_err(IpcError::Unavailable)?;
         let stream = open(endpoint).map_err(IpcError::Unavailable)?;
         let writer = stream.try_clone()?;
         let mut client = Client::from_parts(stream, writer);
         client.say_hello(token.trim(), client_name)?;
         Ok(client)
     }
+}
+
+/// The socket, its folder and the folder above must not be controlled by another
+/// user. Otherwise someone who created the folder first (the temp-dir fallback when
+/// XDG_RUNTIME_DIR isn't set) could put their own socket there and collect the
+/// token. Mirrors `assertPrivateDir` in the service.
+#[cfg(unix)]
+pub fn check_private_socket(endpoint: &Path) -> io::Result<()> {
+    // SAFETY: getuid has no preconditions and cannot fail.
+    let uid = unsafe { libc::getuid() };
+    check_private_socket_for(endpoint, uid)
+}
+
+/// The check, for a given user id (tests pass another one to stand for a stranger).
+#[cfg(unix)]
+pub fn check_private_socket_for(endpoint: &Path, uid: u32) -> io::Result<()> {
+    use std::os::unix::fs::{FileTypeExt, MetadataExt};
+    let refuse = |why: String| Err(io::Error::new(io::ErrorKind::PermissionDenied, why));
+    let socket = std::fs::symlink_metadata(endpoint)?;
+    if !socket.file_type().is_socket() {
+        return refuse(format!("{} isn't a socket", endpoint.display()));
+    }
+    if socket.uid() != uid {
+        return refuse(format!("{} belongs to another user", endpoint.display()));
+    }
+    let Some(dir) = endpoint.parent() else { return Ok(()) };
+    let folder = std::fs::symlink_metadata(dir)?;
+    if !folder.is_dir() || folder.uid() != uid || folder.mode() & 0o077 != 0 {
+        return refuse(format!("{} isn't a private folder of this user", dir.display()));
+    }
+    if let Some(parent) = dir.parent() {
+        let above = std::fs::symlink_metadata(parent)?;
+        if (above.uid() != uid && above.uid() != 0) || (above.uid() == uid && above.mode() & 0o022 != 0) {
+            return refuse(format!("{} can be changed by another user", parent.display()));
+        }
+    }
+    Ok(())
+}
+
+/// Windows: named pipes have no folder. See docs/security-audit.md (IPC-2) for the
+/// pipe-squatting limit and its planned fix (checking the pipe server's user).
+#[cfg(windows)]
+pub fn check_private_socket(_endpoint: &Path) -> io::Result<()> {
+    Ok(())
 }
 
 #[cfg(unix)]

@@ -6,6 +6,14 @@
  * server. To share, the sender derives a shared secret from an ephemeral key
  * pair and the recipient's public key (ECDH), then encrypts with AES-256-GCM.
  * The server only ever relays the ciphertext and the ephemeral public key.
+ *
+ * The server also hands out the recipients' public keys, so a compromised server
+ * could hand out its own instead. Two defences, both on this device:
+ * - a fingerprint of each key (SHA-256 of the key, 128 bits shown as 8 groups),
+ *   which the two people can compare in person or by phone;
+ * - the fingerprint is remembered (inside the encrypted vault) the first time
+ *   you share with someone, and a different key later is a warning that has to
+ *   be confirmed before anything is sealed to it.
  */
 import { fromBase64, toBase64 } from "./vault";
 
@@ -69,3 +77,20 @@ export async function openSealed(myPrivateKey: string, sealed: SealedShare): Pro
   const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, aes, data);
   return new TextDecoder().decode(plain);
 }
+
+/** "1a2b 3c4d …": the first 128 bits of SHA-256 over the public key, for comparing by eye. */
+export async function keyFingerprint(publicKeyBase64: string): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", fromBase64(publicKeyBase64)));
+  const hex = [...digest.slice(0, 16)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return hex.match(/.{4}/g)!.join(" ");
+}
+
+export type PinStatus = "new" | "same" | "changed";
+
+/** Compares a recipient's current key fingerprint with the one remembered for them. */
+export function pinStatus(pinned: Record<string, string> | undefined, userId: string, fingerprint: string): PinStatus {
+  const known = pinned?.[userId];
+  if (!known) return "new";
+  return known === fingerprint ? "same" : "changed";
+}
+

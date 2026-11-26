@@ -233,3 +233,24 @@ function toReport(outcome: ScanOutcome): CommandReport {
 function pause(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms).unref?.());
 }
+
+/**
+ * Which files a "quarantine" command from the account may move: only ones this
+ * computer itself found malicious or suspicious, by the hashes the command names,
+ * once each and not already in quarantine. A command (or a compromised server)
+ * can't use a hash to make this computer hide an ordinary file it once scanned.
+ */
+export function quarantineCandidates<T extends { path: string; sha256: string | null; verdict: string }>(history: T[], hashes: string[], alreadyQuarantined: Set<string>): T[] {
+  const wanted = new Set(hashes.filter((h) => /^[0-9a-f]{64}$/.test(h)));
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const entry of history) {
+    if (!entry.sha256 || !wanted.has(entry.sha256)) continue;
+    if (entry.verdict !== "malicious" && entry.verdict !== "suspicious") continue;
+    if (seen.has(entry.path) || alreadyQuarantined.has(entry.path)) continue;
+    seen.add(entry.path);
+    out.push(entry);
+  }
+  return out;
+}
+

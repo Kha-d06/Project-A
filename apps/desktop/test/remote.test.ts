@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { LinkedAccount } from "../src/engine/account";
-import { type RemoteHost, RemoteAgent } from "../src/engine/remote";
+import { type RemoteHost, RemoteAgent, quarantineCandidates } from "../src/engine/remote";
 
 const account: LinkedAccount = { deviceId: "d1", token: "sdv_test", email: "a@example.com", server: "https://sentinel.test" };
 
@@ -129,3 +129,20 @@ describe("remote agent", () => {
     expect(wait.auth).toBe("Bearer sdv_test");
   });
 });
+
+describe("quarantine commands from the account", () => {
+  const h = (c: string) => c.repeat(64);
+  const history = [
+    { path: "/home/u/Downloads/bad.exe", sha256: h("a"), verdict: "malicious" },
+    { path: "/home/u/Downloads/odd.js", sha256: h("b"), verdict: "suspicious" },
+    { path: "/home/u/Documents/contract.pdf", sha256: h("c"), verdict: "clean" },
+    { path: "/home/u/Downloads/bad.exe", sha256: h("a"), verdict: "malicious" },
+    { path: "/home/u/Downloads/moved.exe", sha256: h("d"), verdict: "malicious" },
+  ];
+
+  it("moves only files this computer flagged, never an ordinary file named by its hash", () => {
+    const picked = quarantineCandidates(history, [h("a"), h("b"), h("c"), h("d"), "not-a-hash"], new Set(["/home/u/Downloads/moved.exe"]));
+    expect(picked.map((e) => e.path)).toEqual(["/home/u/Downloads/bad.exe", "/home/u/Downloads/odd.js"]);
+  });
+});
+

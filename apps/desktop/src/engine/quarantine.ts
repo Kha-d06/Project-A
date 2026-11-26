@@ -105,7 +105,10 @@ export class Quarantine {
     const plain = Buffer.concat([decipher.update(await readFile(join(this.folder, `${id}.bin`))), decipher.final()]);
     await mkdir(dirname(item.originalPath), { recursive: true });
     const target = await this.freePath(item.originalPath);
-    await writeFile(target, plain);
+    // "wx": create only. If something appeared at that name after freePath looked
+    // (a link planted to redirect the write), the restore fails instead of
+    // writing through it or overwriting another file.
+    await writeFile(target, plain, { flag: "wx" });
     await rm(join(this.folder, `${id}.bin`), { force: true });
     await this.writeIndex(items.filter((candidate) => candidate.id !== id));
     return target;

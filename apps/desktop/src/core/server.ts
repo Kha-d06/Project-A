@@ -4,7 +4,8 @@
  * order per connection; events go to every authenticated client.
  */
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import { type Server, type Socket, createConnection, createServer } from "node:net";
 
 import type { Handler } from "./handlers";
@@ -47,6 +48,23 @@ function sameToken(a: string, b: string): boolean {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
+/**
+ * The socket's folder must belong to this user and be closed to everyone else,
+ * and so must its parent unless root owns it. Otherwise another user who created
+ * the folder first (the /tmp fallback when XDG_RUNTIME_DIR isn't set) could
+ * swap the socket and collect the token from the next client.
+ */
+export async function assertPrivateDir(dir: string, uid: number | undefined = process.getuid?.()): Promise<void> {
+  if (uid === undefined) return; // Windows: no socket folder
+  const info = await lstat(dir);
+  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error(`${dir} isn't a plain folder, so the background service won't listen there.`);
+  if (info.uid !== uid) throw new Error(`${dir} belongs to another user, so the background service won't listen there.`);
+  if (info.mode & 0o077) throw new Error(`${dir} can be opened by other users, so the background service won't listen there.`);
+  const parent = await lstat(dirname(dir));
+  if (parent.uid !== uid && parent.uid !== 0) throw new Error(`${dirname(dir)} belongs to another user, so the background service won't listen there.`);
+  if (parent.uid === uid && parent.mode & 0o022) throw new Error(`Other users can write to ${dirname(dir)}, so the background service won't listen there.`);
+}
+
 /** True when another process already answers on this endpoint. */
 export function endpointInUse(endpoint: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -65,6 +83,7 @@ export async function startIpcServer(paths: IpcPaths, handlers: Record<string, H
   if (paths.socketDir) {
     await mkdir(paths.socketDir, { recursive: true, mode: 0o700 });
     await chmod(paths.socketDir, 0o700).catch(() => undefined);
+    await assertPrivateDir(paths.socketDir);
   }
   // A stale socket file from a crash; endpointInUse() showed nobody answers on it.
   if (process.platform !== "win32") await rm(paths.endpoint, { force: true });

@@ -786,7 +786,7 @@ async function handle(request: Request, sender: chrome.runtime.MessageSender): P
       const [result] = await chrome.scripting.executeScript({
         target: { tabId: request.tabId, allFrames: false },
         func: fillLoginForm,
-        args: [item.username, item.password],
+        args: [item.username, item.password, new URL(tab.url).origin],
       });
       const outcome = result?.result as { filled: boolean } | undefined;
       if (!outcome?.filled) throw new Error(t().vault.noField);

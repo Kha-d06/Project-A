@@ -15,7 +15,7 @@ import { useI18n } from "@/lib/i18n/client";
 import { generatePassword } from "@/lib/password";
 import { pwnedCount } from "@/lib/pwned";
 import { parseOtpauth, secondsRemaining, totpCode } from "@/lib/totp";
-import { generateSharingKeys, openSealed, sealTo } from "@/lib/vault-sharing";
+import { generateSharingKeys, keyFingerprint, openSealed, pinStatus, sealTo } from "@/lib/vault-sharing";
 import { useSession } from "@/lib/session";
 import {
   MIN_MASTER_LENGTH,
@@ -275,7 +275,7 @@ function ItemEditor({ item, isNew, onSave, onClose }: { item: VaultItem; isNew: 
 // --- Unlocked vault --------------------------------------------------------------
 
 /** Password sharing and emergency access — all encryption happens here in the browser. */
-function SharingPanel({ doc, persist }: { doc: VaultDoc; persist: (doc: VaultDoc) => Promise<boolean> }) {
+export function SharingPanel({ doc, persist }: { doc: VaultDoc; persist: (doc: VaultDoc) => Promise<boolean> }) {
   const v = useVaultText();
   const notify = useToast();
   const [recipients, setRecipients] = useState<{ user_id: string; email: string; public_key: string }[]>([]);
@@ -285,6 +285,11 @@ function SharingPanel({ doc, persist }: { doc: VaultDoc; persist: (doc: VaultDoc
   const [shareTo, setShareTo] = useState("");
   const [emTo, setEmTo] = useState("");
   const [emHours, setEmHours] = useState(48);
+  // Key fingerprints: mine (to read out to others) and each recipient's.
+  const [myPrint, setMyPrint] = useState("");
+  const [prints, setPrints] = useState<Record<string, string>>({});
+  // A recipient whose key changed since the last share, confirmed for this session.
+  const [confirmed, setConfirmed] = useState<Record<string, string>>({});
 
   const ensureKeys = useCallback(async (): Promise<{ publicKey: string; privateKey: string }> => {
     if (doc.sharing) return doc.sharing;
@@ -300,10 +305,13 @@ function SharingPanel({ doc, persist }: { doc: VaultDoc; persist: (doc: VaultDoc
     ensureKeys()
       .then((keys) => api.vault.setSharingKey(keys.publicKey)) // keep the published key current
       .then(() => Promise.all([api.vault.recipients(), api.vault.shares(), api.vault.emergency()]))
-      .then(([recipientList, shareList, grantList]) => {
+      .then(async ([recipientList, shareList, grantList]) => {
         setRecipients(recipientList);
         setShares(shareList);
         setGrants(grantList);
+        const entries = await Promise.all(recipientList.map(async (r) => [r.user_id, await keyFingerprint(r.public_key)] as const));
+        setPrints(Object.fromEntries(entries));
+        setMyPrint(await keyFingerprint((await ensureKeys()).publicKey));
       })
       .catch((error) => notify("error", errorText(error)));
   }, [ensureKeys, notify]);
@@ -312,13 +320,29 @@ function SharingPanel({ doc, persist }: { doc: VaultDoc; persist: (doc: VaultDoc
 
   const logins = doc.items.filter((i) => i.kind === "login");
 
+  /** The recipient's key as the server gave it now, checked against the remembered one. */
+  const keyCheck = (userId: string) => {
+    const fingerprint = prints[userId] ?? "";
+    const status = pinStatus(doc.sharing?.pinned, userId, fingerprint);
+    return { fingerprint, status, blocked: !fingerprint || (status === "changed" && confirmed[userId] !== fingerprint) };
+  };
+
+  /** Remember the key that was just used, inside the encrypted vault. */
+  const pin = async (userId: string) => {
+    const keys = await ensureKeys();
+    const fingerprint = prints[userId];
+    if (!fingerprint || doc.sharing?.pinned?.[userId] === fingerprint) return;
+    await persist({ ...doc, sharing: { ...keys, ...doc.sharing, pinned: { ...doc.sharing?.pinned, [userId]: fingerprint } } });
+  };
+
   const doShare = async () => {
     const item = doc.items.find((i) => i.id === shareItem);
     const recipient = recipients.find((r) => r.user_id === shareTo);
-    if (!item || !recipient) return;
+    if (!item || !recipient || keyCheck(recipient.user_id).blocked) return;
     try {
       const sealed = await sealTo(recipient.public_key, JSON.stringify({ ...item, id: undefined }));
       await api.vault.createShare({ recipient_id: recipient.user_id, ciphertext: sealed.ciphertext, sender_ephemeral: sealed.ephemeral });
+      await pin(recipient.user_id);
       notify("success", v.shareSent(recipient.email));
     } catch (error) {
       notify("error", errorText(error));
@@ -345,11 +369,12 @@ function SharingPanel({ doc, persist }: { doc: VaultDoc; persist: (doc: VaultDoc
 
   const grantEmergency = async () => {
     const recipient = recipients.find((r) => r.user_id === emTo);
-    if (!recipient) return;
+    if (!recipient || keyCheck(recipient.user_id).blocked) return;
     try {
       // Seal a snapshot of the current vault to the trusted contact.
       const sealed = await sealTo(recipient.public_key, JSON.stringify({ format: 1, items: doc.items }));
       await api.vault.grantEmergency({ grantee_id: recipient.user_id, wait_hours: emHours, wrapped_vault_key: sealed.ciphertext, sender_ephemeral: sealed.ephemeral });
+      await pin(recipient.user_id);
       notify("success", v.emGranted(recipient.email));
       void refresh();
     } catch (error) {
@@ -375,11 +400,36 @@ function SharingPanel({ doc, persist }: { doc: VaultDoc; persist: (doc: VaultDoc
     }
   };
 
+  /** The chosen person's key fingerprint, and a warning if it changed since the last share. */
+  const keyNote = (userId: string) => {
+    if (!userId) return null;
+    const { fingerprint, status, blocked } = keyCheck(userId);
+    if (!fingerprint) return null;
+    return (
+      <div className={`rounded-control border px-3 py-2 text-sm ${status === "changed" ? "border-danger text-danger" : "border-line text-ink-muted"}`} role={status === "changed" ? "alert" : undefined}>
+        <p>
+          {status === "changed" ? v.keyChanged : status === "same" ? v.keySame : v.keyNew}{" "}
+          <code dir="ltr" className="font-mono">{fingerprint}</code>
+        </p>
+        {status === "changed" && blocked && (
+          <Button size="sm" variant="secondary" className="mt-2" onClick={() => setConfirmed({ ...confirmed, [userId]: fingerprint })}>
+            {v.keyConfirm}
+          </Button>
+        )}
+      </div>
+    );
+  };
+
   return (
     <details className="rounded-panel border border-line bg-surface">
       <summary className="cursor-pointer px-5 py-4 font-semibold text-ink">{v.sharingTitle}</summary>
       <div className="space-y-6 border-t border-line p-5">
         <p className="text-sm text-ink-muted">{v.sharingIntro}</p>
+        {myPrint && (
+          <p className="text-sm text-ink-muted">
+            {v.myKey} <code dir="ltr" className="font-mono text-ink">{myPrint}</code>
+          </p>
+        )}
 
         {/* Received shares */}
         {shares.length > 0 && (
@@ -421,8 +471,9 @@ function SharingPanel({ doc, persist }: { doc: VaultDoc; persist: (doc: VaultDoc
               </Select>
             )}
           </Field>
-          <Button size="sm" onClick={doShare} disabled={!shareItem || !shareTo}>{v.shareButton}</Button>
+          <Button size="sm" onClick={doShare} disabled={!shareItem || !shareTo || keyCheck(shareTo).blocked}>{v.shareButton}</Button>
         </div>
+        {keyNote(shareTo)}
 
         {/* Emergency access */}
         <div className="space-y-2">
@@ -440,8 +491,9 @@ function SharingPanel({ doc, persist }: { doc: VaultDoc; persist: (doc: VaultDoc
               )}
             </Field>
             <Field label={v.emWait}>{(props) => <Input {...props} type="number" min={0} max={720} value={emHours} onChange={(e) => setEmHours(Number(e.target.value))} className="w-24" />}</Field>
-            <Button size="sm" onClick={grantEmergency} disabled={!emTo}>{v.emGrant}</Button>
+            <Button size="sm" onClick={grantEmergency} disabled={!emTo || keyCheck(emTo).blocked}>{v.emGrant}</Button>
           </div>
+          {keyNote(emTo)}
           {grants.length > 0 && (
             <ul className="space-y-2">
               {grants.map((g) => (

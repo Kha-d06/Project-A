@@ -962,7 +962,11 @@ function updateText(update: UpdateView): string {
     case "available": return u.available(update.version);
     case "downloading": return u.downloading(update.percent);
     case "ready": return u.ready(update.version);
-    case "manual": return update.reason === "development" ? u.development : u.packageManager(update.version);
+    case "manual":
+      if (update.reason === "development") return u.development;
+      if (update.reason === "unsigned-build") return u.unsignedBuild(update.version);
+      if (update.reason === "unverified") return u.unverified(update.version);
+      return u.packageManager(update.version);
     case "error": return u.error(update.message);
     default: return "";
   }

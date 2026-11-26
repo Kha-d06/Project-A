@@ -194,3 +194,24 @@ describe("settings", () => {
     expect(sanitizeChanges({ serverUrl: "http://localhost:8080" }).serverUrl).toBe("http://localhost:8080");
   });
 });
+
+describe("quarantine restore", () => {
+  it("won't write through a link planted where the file used to be", async () => {
+    const { mkdtemp, writeFile, symlink, readdir, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { Quarantine } = await import("../src/engine/quarantine");
+    const dir = await mkdtemp(join(tmpdir(), "qalaa-restore-"));
+    const original = join(dir, "invoice.pdf");
+    await writeFile(original, "payload");
+    const q = new Quarantine(join(dir, "q"));
+    const item = await q.add(original, { sha256: null, verdict: "malicious", reason: "test" });
+    // A dangling link at the old name, pointing where an attacker wants the bytes.
+    const target = join(dir, "elsewhere.txt");
+    await symlink(target, original);
+    await expect(q.restore(item.id)).rejects.toThrow();
+    expect(await readdir(dir)).not.toContain("elsewhere.txt");
+    await rm(dir, { recursive: true, force: true });
+  });
+});
+

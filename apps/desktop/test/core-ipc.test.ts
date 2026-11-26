@@ -8,7 +8,7 @@ import { createHandlers, toggleChanges } from "../src/core/handlers";
 import { type HomeInput, buildHome } from "../src/core/home";
 import { ipcPaths } from "../src/core/paths";
 import { IpcError, parseRequest } from "../src/core/protocol";
-import { type IpcServer, startIpcServer } from "../src/core/server";
+import { type IpcServer, assertPrivateDir, startIpcServer } from "../src/core/server";
 import { createDaemonHost } from "../src/daemon";
 
 const NOW = new Date("2026-11-24T12:00:00Z");
@@ -182,3 +182,30 @@ describe.skipIf(process.platform === "win32")("daemon over a Unix socket", () =>
     wrong.end();
   });
 });
+
+describe.skipIf(process.platform === "win32")("the socket folder", () => {
+  it("must be this user's, closed to others, with a parent others can't write to", async () => {
+    const { chmod, mkdir, symlink } = await import("node:fs/promises");
+    const base = await mkdtemp(join(tmpdir(), "qalaa-sockdir-"));
+    const good = join(base, "qalaa");
+    await mkdir(good, { mode: 0o700 });
+    await chmod(base, 0o700);
+    await expect(assertPrivateDir(good)).resolves.toBeUndefined();
+
+    await chmod(good, 0o755);
+    await expect(assertPrivateDir(good)).rejects.toThrow(/other users/);
+    await chmod(good, 0o700);
+
+    await chmod(base, 0o777);
+    await expect(assertPrivateDir(good)).rejects.toThrow(/Other users can write/);
+    await chmod(base, 0o700);
+
+    // Another user's folder (simulated by claiming a different uid).
+    await expect(assertPrivateDir(good, (process.getuid?.() ?? 0) + 1)).rejects.toThrow(/another user/);
+
+    const link = join(base, "link");
+    await symlink(good, link);
+    await expect(assertPrivateDir(link)).rejects.toThrow(/plain folder/);
+  });
+});
+

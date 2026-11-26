@@ -48,7 +48,12 @@ export interface VaultDoc {
   format: 1;
   items: VaultItem[];
   /** This user's ECDH sharing key pair, generated on first use of sharing. */
-  sharing?: { publicKey: string; privateKey: string };
+  sharing?: {
+    publicKey: string;
+    privateKey: string;
+    /** Recipients' key fingerprints, remembered at first share (user id → fingerprint). */
+    pinned?: Record<string, string>;
+  };
 }
 
 export interface StoredVault {

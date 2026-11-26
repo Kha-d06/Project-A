@@ -31,7 +31,11 @@ import {
   hideDesktopEntry,
   junkCategories,
   measureJunk,
+  checkProgramPath,
+  elevatedFirewallCommand,
+  elevatedWindowsCommand,
   netshBlockArgs,
+  windowsArg,
   parseCrontab,
   parseIfeo,
   parseNetshRules,
@@ -404,3 +408,50 @@ describe("Linux system watch: late folders", () => {
     watcher.close();
   });
 });
+
+describe("elevated commands never splice a path into a shell", () => {
+  const decode = (args: string[]) => {
+    const inner = /'-EncodedCommand','([A-Za-z0-9+/=]+)'/.exec(args.at(-1)!)![1]!;
+    return Buffer.from(inner, "base64").toString("utf16le");
+  };
+
+  it("Windows: a path with & and quotes stays a single-quoted literal in an encoded script", () => {
+    const program = "C:\\Apps\\a&calc.exe & whoami %PATH% ^ 'x'.exe";
+    const { command, args } = elevatedFirewallCommand("block", program, "win32");
+    expect(command).toBe("powershell.exe");
+    expect(args.join(" ")).not.toContain("cmd");
+    expect(args.join(" ")).not.toContain("calc");
+    const script = decode(args);
+    expect(script).toContain("'program=C:\\Apps\\a&calc.exe & whoami %PATH% ^ ''x''.exe'");
+    expect(script.match(/advfirewall firewall add rule/g)).toHaveLength(2);
+  });
+
+  it("macOS: the path is an osascript argument, quoted with quoted form of", () => {
+    const program = '/Applications/Evil" & do shell script "id.app';
+    expect(() => elevatedFirewallCommand("block", program, "darwin")).toThrow(/can't be used/);
+    const ok = "/Applications/It's $(id) `x`.app";
+    const { command, args } = elevatedFirewallCommand("unblock", ok, "darwin");
+    expect(command).toBe("osascript");
+    expect(args.at(-1)).toBe(ok);
+    expect(args.slice(0, -1).join(" ")).not.toContain("$(id)");
+    expect(args).toContain("set p to quoted form of (item 1 of argv)");
+  });
+
+  it("refuses relative, multi-line and forbidden-character paths", () => {
+    expect(() => checkProgramPath("tool.exe")).toThrow(/full path/);
+    expect(() => checkProgramPath("/bin/a\nrm -rf /")).toThrow(/can't be used/);
+    expect(() => checkProgramPath("C:\\a|b.exe")).toThrow(/can't be used/);
+    expect(() => elevatedFirewallCommand("block", "/usr/bin/x", "linux")).toThrow(/not available on Linux/);
+  });
+
+  it("quotes each elevated argument by the Windows command-line rules", () => {
+    expect(windowsArg("plain")).toBe("plain");
+    expect(windowsArg("x /va")).toBe('"x /va"');
+    expect(windowsArg('a"b')).toBe('"a\\"b"');
+    expect(windowsArg("C:\\dir with space\\")).toBe('"C:\\dir with space\\\\"');
+    expect(windowsArg("")).toBe('""');
+    const args = elevatedWindowsCommand("reg.exe", ["delete", "HKLM\\Run", "/v", "x /va", "/f"]);
+    expect(args.at(-1)).toContain(`'"x /va"'`);
+  });
+});
+

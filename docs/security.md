@@ -3,6 +3,10 @@
 What the code does to protect users and the service, the assumptions it makes,
 and what is still missing. This is not a substitute for an independent review.
 
+The latest whole-repository audit, with findings, trust boundaries and the
+remediation roadmap, is [security-audit.md](security-audit.md). Specifications:
+[update signing](update-signing.md), [vault cryptography](vault-crypto.md).
+
 ## Trust boundaries
 
 1. **Browser to Caddy.** Everything a user submits is untrusted: URLs, message text, files and file names.

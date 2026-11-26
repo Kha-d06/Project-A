@@ -42,7 +42,7 @@ describe("filling the form in the page", () => {
     for (const field of document.querySelectorAll("input")) field.getBoundingClientRect = () => ({ width: 100, height: 20 }) as DOMRect;
     let inputEvents = 0;
     document.getElementById("pw")!.addEventListener("input", () => inputEvents++);
-    expect(fillLoginForm("sara", "s3cret")).toEqual({ filled: true, usernameFilled: true });
+    expect(fillLoginForm("sara", "s3cret", location.origin)).toEqual({ filled: true, usernameFilled: true });
     expect((document.getElementById("email") as HTMLInputElement).value).toBe("sara");
     expect((document.getElementById("pw") as HTMLInputElement).value).toBe("s3cret");
     expect(inputEvents).toBe(1);
@@ -51,7 +51,14 @@ describe("filling the form in the page", () => {
   it("skips invisible password fields (a common skimming trick)", () => {
     document.body.innerHTML = `<input type="text" id="u"><input type="password" id="trap">`;
     for (const field of document.querySelectorAll("input")) field.getBoundingClientRect = () => ({ width: 0, height: 0 }) as DOMRect;
-    expect(fillLoginForm("sara", "s3cret").filled).toBe(false);
+    expect(fillLoginForm("sara", "s3cret", location.origin).filled).toBe(false);
     expect((document.getElementById("trap") as HTMLInputElement).value).toBe("");
+  });
+
+  it("fills nothing if the page is no longer on the origin that was checked", () => {
+    document.body.innerHTML = `<input type="password" id="pw">`;
+    for (const field of document.querySelectorAll("input")) field.getBoundingClientRect = () => ({ width: 100, height: 20 }) as DOMRect;
+    expect(fillLoginForm("sara", "s3cret", "https://bank.example").filled).toBe(false);
+    expect((document.getElementById("pw") as HTMLInputElement).value).toBe("");
   });
 });

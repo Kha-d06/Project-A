@@ -27,11 +27,29 @@ function run(command: string, args: string[], timeout = 30_000): Promise<string>
   });
 }
 
-/** Runs a command elevated on Windows (UAC prompt), the same way service control does. */
-function runElevatedWindows(command: string, args: string[]): Promise<string> {
-  const quoted = args.map((a) => `'${a.replace(/'/g, "''")}'`).join(",");
-  return run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", `Start-Process -FilePath '${command}' -ArgumentList ${quoted} -Verb RunAs -Wait -WindowStyle Hidden`], 120_000);
+/**
+ * One argument quoted by the rules programs use to split a Windows command line
+ * (CommandLineToArgvW), so a value with spaces or quotes stays one argument.
+ */
+export function windowsArg(arg: string): string {
+  if (arg && !/[\s"]/.test(arg)) return arg;
+  return `"${arg.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, "$1$1")}"`;
 }
+
+/**
+ * Runs a command elevated on Windows (UAC prompt). Start-Process joins
+ * -ArgumentList with spaces and quotes nothing, so each argument is quoted for
+ * the command line first: a registry value named "x /va" stays one argument.
+ */
+export function elevatedWindowsCommand(command: string, args: string[]): string[] {
+  const quoted = args.map((a) => `'${windowsArg(a).replace(/'/g, "''")}'`).join(",");
+  return ["-NoProfile", "-NonInteractive", "-Command", `Start-Process -FilePath '${command}' -ArgumentList ${quoted} -Verb RunAs -Wait -WindowStyle Hidden`];
+}
+
+function runElevatedWindows(command: string, args: string[]): Promise<string> {
+  return run("powershell.exe", elevatedWindowsCommand(command, args), 120_000);
+}
+
 
 // --- Startup manager ------------------------------------------------------------------------
 
@@ -772,35 +790,71 @@ export function firewallBlockSupported(platform: NodeJS.Platform = process.platf
   return platform === "win32" || platform === "darwin";
 }
 
-export async function blockProgram(program: string, platform: NodeJS.Platform = process.platform): Promise<void> {
+/**
+ * A program path that is safe to hand to an elevated command: absolute, one line,
+ * none of the characters Windows forbids in file names (which also covers the
+ * double quote). The path still never goes through cmd.exe or an AppleScript
+ * string literal: see elevatedFirewallCommand.
+ */
+export function checkProgramPath(program: string): string {
   if (!/^([a-z]:\\|\/)/i.test(program)) throw new Error("Choose the program's full path.");
+  if (program.length > 1024 || /[\u0000-\u001f\u007f"<>|*?]/.test(program)) throw new Error("That program path can't be used.");
+  return program;
+}
+
+const psLiteral = (value: string) => `'${value.replace(/'/g, "''")}'`;
+
+/** PowerShell's -EncodedCommand: base64 of the UTF-16LE script, so no quoting survives to the elevated side. */
+export function encodedPowerShell(script: string): string {
+  return Buffer.from(script, "utf16le").toString("base64");
+}
+
+const SOCKETFILTERFW = "/usr/libexec/ApplicationFirewall/socketfilterfw";
+
+/**
+ * The elevated command that blocks or unblocks one program in the system firewall.
+ * Windows: netsh run from an elevated PowerShell whose script is base64-encoded and
+ * whose arguments are single-quoted literals, so "&", "%" or "^" in a path is just
+ * text. macOS: the path is an argument to osascript and quoted with "quoted form
+ * of", never spliced into the AppleScript source.
+ */
+export function elevatedFirewallCommand(action: "block" | "unblock", program: string, platform: NodeJS.Platform): { command: string; args: string[] } {
+  const path = checkProgramPath(program);
   if (platform === "win32") {
-    // Both rules in one elevated step: netsh via cmd /c so a single UAC prompt covers them.
-    const quote = (a: string) => (a.includes(" ") ? `"${a}"` : a);
-    const both = `netsh ${netshBlockArgs(program, "out").map(quote).join(" ")} && netsh ${netshBlockArgs(program, "in").map(quote).join(" ")}`;
-    await runElevatedWindows("cmd.exe", ["/c", both]);
-    return;
+    const name = psLiteral(`name=${RULE_PREFIX}${fileName(path)}`);
+    const prog = psLiteral(`program=${path}`);
+    const script =
+      action === "block"
+        ? ["out", "in"].map((dir) => `& netsh.exe advfirewall firewall add rule ${name} 'dir=${dir}' 'action=block' ${prog} 'enable=yes'; if ($LASTEXITCODE) { exit $LASTEXITCODE }`).join("\n")
+        : `& netsh.exe advfirewall firewall delete rule ${name} ${prog}; exit $LASTEXITCODE`;
+    const inner = encodedPowerShell(script);
+    return {
+      command: "powershell.exe",
+      args: ["-NoProfile", "-NonInteractive", "-Command", `Start-Process -FilePath 'powershell.exe' -ArgumentList '-NoProfile','-NonInteractive','-EncodedCommand','${inner}' -Verb RunAs -Wait -WindowStyle Hidden`],
+    };
   }
   if (platform === "darwin") {
-    const fw = "/usr/libexec/ApplicationFirewall/socketfilterfw";
-    const script = `do shell script "${fw} --add '${program.replace(/'/g, "")}' && ${fw} --blockapp '${program.replace(/'/g, "")}'" with administrator privileges`;
-    await run("osascript", ["-e", script], 120_000);
-    return;
+    const shell =
+      action === "block"
+        ? `"${SOCKETFILTERFW} --add " & p & " && ${SOCKETFILTERFW} --blockapp " & p`
+        : `"${SOCKETFILTERFW} --unblockapp " & p`;
+    return {
+      command: "osascript",
+      args: ["-e", "on run argv", "-e", "set p to quoted form of (item 1 of argv)", "-e", `do shell script ${shell} with administrator privileges`, "-e", "end run", path],
+    };
   }
   throw new Error("Blocking a single program is not available on Linux; use your firewall's rules (ufw or firewalld) instead.");
 }
 
+export async function blockProgram(program: string, platform: NodeJS.Platform = process.platform): Promise<void> {
+  const { command, args } = elevatedFirewallCommand("block", program, platform);
+  await run(command, args, 120_000);
+}
+
 export async function unblockProgram(program: string, platform: NodeJS.Platform = process.platform): Promise<void> {
-  if (platform === "win32") {
-    await runElevatedWindows("netsh.exe", ["advfirewall", "firewall", "delete", "rule", `name=${RULE_PREFIX}${fileName(program)}`, `program=${program}`]);
-    return;
-  }
-  if (platform === "darwin") {
-    const fw = "/usr/libexec/ApplicationFirewall/socketfilterfw";
-    await run("osascript", ["-e", `do shell script "${fw} --unblockapp '${program.replace(/'/g, "")}'" with administrator privileges`], 120_000);
-    return;
-  }
-  throw new Error("Not available on this system.");
+  if (platform !== "win32" && platform !== "darwin") throw new Error("Not available on this system.");
+  const { command, args } = elevatedFirewallCommand("unblock", program, platform);
+  await run(command, args, 120_000);
 }
 
 export async function blockedPrograms(platform: NodeJS.Platform = process.platform): Promise<string[]> {

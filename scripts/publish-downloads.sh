@@ -11,7 +11,9 @@ mkdir -p downloads/desktop downloads/android
 
 shopt -s nullglob
 copied=0
-for file in "$src"/*.{AppImage,deb,rpm,exe,dmg,zip,blockmap} "$src"/latest*.yml; do
+# release-manifest.json(.sig): the offline signature the desktop app checks before installing (docs/update-signing.md).
+for file in "$src"/*.{AppImage,deb,rpm,exe,dmg,zip,blockmap} "$src"/latest*.yml "$src"/release-manifest.json "$src"/release-manifest.json.sig; do
+  [ -e "$file" ] || continue
   cp -f "$file" downloads/desktop/ && copied=$((copied + 1))
 done
 

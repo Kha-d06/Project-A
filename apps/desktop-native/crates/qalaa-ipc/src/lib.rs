@@ -10,7 +10,9 @@ mod client;
 mod paths;
 mod types;
 
-pub use client::{parse_message, Client, Event, IpcError, Message, Stream};
+#[cfg(unix)]
+pub use client::check_private_socket_for;
+pub use client::{check_private_socket, parse_message, Client, Event, IpcError, Message, Stream};
 pub use paths::{data_dir, endpoint, token_file};
 pub use types::*;
 

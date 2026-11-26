@@ -7,12 +7,15 @@ import { describe, expect, it } from "vitest";
 
 import { checkRelease, sha512Base64, verifyDownloadedUpdate } from "../src/engine/release-verify";
 // The release manager's offline tool, so the signing and checking sides can't drift apart.
-import { buildManifest, publicKeyHex, signManifest } from "../../../tools/release-signing/sign-release.mjs";
+import { buildManifest, encryptedPem, loadPrivateKey, publicKeyHex, signManifest, verifyFolder } from "../../../tools/release-signing/sign-release.mjs";
+
+const PASS = "correct horse battery staple";
 
 function keys() {
   const { privateKey } = generateKeyPairSync("ed25519");
-  const pem = privateKey.export({ format: "pem", type: "pkcs8" }) as string;
-  return { pem, pub: publicKeyHex(pem) as string };
+  // The tool only ever handles passphrase-encrypted keys.
+  const pem = loadPrivateKey(encryptedPem(privateKey, PASS), PASS);
+  return { pem, pub: publicKeyHex(pem) };
 }
 
 async function release(version: string, installer = Buffer.from("installer bytes")) {
@@ -54,3 +57,32 @@ describe("signed desktop updates", () => {
     expect(await verifyDownloadedUpdate({ feed: "https://q.example/d", downloadedFile, updateVersion: "2.0.0", currentVersion: "1.0.0", keys: [], fetcher })).toEqual({ ok: false, reason: "no_keys" });
   });
 });
+
+describe("the offline signing tool", () => {
+  it("keeps the private key encrypted and refuses an unencrypted or weakly protected one", () => {
+    const { privateKey } = generateKeyPairSync("ed25519");
+    const pem = encryptedPem(privateKey, PASS);
+    expect(pem).toContain("BEGIN ENCRYPTED PRIVATE KEY");
+    expect(() => loadPrivateKey(pem, "wrong passphrase!")).toThrow();
+    expect(() => encryptedPem(privateKey, "short")).toThrow(/at least 12/);
+    const plain = privateKey.export({ format: "pem", type: "pkcs8" }) as string;
+    expect(() => loadPrivateKey(plain, PASS)).toThrow(/passphrase-protected/);
+  });
+
+  it("verifies a signed folder with the public key only, and catches a swapped installer", async () => {
+    const { pem, pub } = keys();
+    const { dir, manifest } = await release("3.1.0");
+    await writeFile(join(dir, "release-manifest.json"), manifest);
+    await writeFile(join(dir, "release-manifest.json.sig"), signManifest(pem, manifest));
+    expect(verifyFolder(pub, dir)).toMatchObject({ ok: true, version: "3.1.0", files: 1 });
+    expect(verifyFolder(keys().pub, dir)).toMatchObject({ ok: false });
+    await writeFile(join(dir, "Qalaa-Setup.exe"), "swapped");
+    expect(verifyFolder(pub, dir)).toMatchObject({ ok: false, problem: expect.stringContaining("Qalaa-Setup.exe") });
+  });
+
+  it("only pins public keys in the app", async () => {
+    const { RELEASE_KEYS } = await import("../src/engine/release-verify");
+    for (const key of RELEASE_KEYS) expect(key).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+

@@ -9,6 +9,8 @@
  * - only logins saved for this site (same host, or a subdomain of it);
  * - never on a page Qalaa flags as dangerous or that you or your family blocked.
  */
+import { parse as parseDomain } from "tldts";
+
 import type { VaultItem } from "../../../web/src/lib/vault";
 import type { Verdict } from "./types";
 
@@ -40,6 +42,12 @@ export function savedHost(item: VaultItem): string | null {
   return pageHost(item.url.includes("://") ? item.url : `https://${item.url}`);
 }
 
+/** True for "co.uk", "github.io" and the like (ICANN and private suffixes). */
+export function isPublicSuffix(host: string): boolean {
+  const parsed = parseDomain(host, { allowPrivateDomains: true });
+  return parsed.isIp !== true && (parsed.domain === null || parsed.publicSuffix === host);
+}
+
 export function loginsFor(items: VaultItem[], pageUrl: string): VaultItem[] {
   const host = pageHost(pageUrl);
   if (!host) return [];
@@ -47,7 +55,12 @@ export function loginsFor(items: VaultItem[], pageUrl: string): VaultItem[] {
     .filter((item) => item.kind === "login" && item.password)
     .filter((item) => {
       const saved = savedHost(item);
-      return saved !== null && (host === saved || host.endsWith(`.${saved}`));
+      if (saved === null) return false;
+      if (host === saved) return true;
+      // Subdomains match only below a real site: a login saved for a shared
+      // suffix ("github.io", "herokuapp.com", "co.uk") would otherwise be offered
+      // on every site anyone hosts under it.
+      return host.endsWith(`.${saved}`) && !isPublicSuffix(saved);
     })
     .sort((a, b) => Number(savedHost(b) === host) - Number(savedHost(a) === host) || a.title.localeCompare(b.title));
 }

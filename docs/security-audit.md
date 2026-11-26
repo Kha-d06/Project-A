@@ -7,6 +7,44 @@ rests on. Where something isn't implemented, it says so. Status words:
 **Accepted** (a known limit, stated in the product), **Not confirmed** (the review's
 claim didn't hold up).
 
+## Status at a glance (updated after the follow-up round)
+
+**Completed and tested:**
+- QA-01, QA-02: elevated command injection.
+- QA-03: signed update check, with an encrypted-key offline tool that has `keygen`, `pubkey`, `sign` and `verify`.
+- QA-04: socket folder.
+- QA-05: client-side pipe check (Windows run still to do).
+- QA-06 to QA-10.
+- QA-20: X-Forwarded-For.
+- QA-21: public-suffix autofill.
+- QA-22: SHA-pinned Actions, SBOMs, private-key guard.
+- QA-23: signing configuration and verification.
+- Android minSdk 29.
+
+**Blocked on something outside the repository** (owner handling):
+
+| Item | Needs | Ready to use |
+|---|---|---|
+| Update-signing key (QA-03) | offline key ceremony | [release-signing-key.md](release-signing-key.md); then pin the 64-hex public key |
+| Authenticode, Developer ID, notarisation (QA-23) | certificates, Apple and Azure accounts | [code-signing.md](code-signing.md), `release.yml` |
+| Windows pipe check, verified (QA-05) | a Windows VM | [windows-pipe-test.md](windows-pipe-test.md), `tools/windows-pipe-test/squat.ps1` |
+| Endpoint Security (QA-16) | Apple entitlement; not blocking | [macos-endpoint-security.md](macos-endpoint-security.md) |
+
+**Waiting for approval or review** (nothing irreversible done):
+
+| Item | Gate |
+|---|---|
+| Argon2id and recovery-kit migration (QA-13) | independent review of [vault-migration-spec.md](vault-migration-spec.md) §10, then owner approval for release A, then for enabling migration |
+| Sharing format v2 (QA-14) | same reviewer: it changes how shared entries are encrypted |
+| Same-user IPC hardening (QA-11) | design choice between peer-credential checks and a privileged service |
+| Web vault delivery (QA-12) | product decision: an extension or native-only vault, or a signed web bundle |
+
+**Open, no external dependency** (next):
+- QA-19: email links by hash prefix.
+- QA-24: sandbox retention.
+- Daemon-side pipe DACL (QA-05).
+- Reproducible builds (QA-22).
+
 Related specifications: [update signing](update-signing.md), [vault cryptography](vault-crypto.md),
 [security notes](security.md) (per-feature design, including URL-checking privacy).
 
@@ -175,13 +213,15 @@ Severity follows impact × exploitability for this product's users. "Confidence"
 
 ### Open
 
-**QA-05 · Windows named pipe can be squatted: Medium (medium) · Open**
+**QA-05 · Windows named pipe can be squatted: Medium (medium) · Fixed in code (client side); awaiting Windows verification**
 - **Where:** `core/paths.ts` and `crates/qalaa-ipc/src/paths.rs` (`\\.\pipe\qalaa-daemon-<USERNAME>`), `client.rs` (no server check on Windows).
 - **Attack:** a process of another user creates the pipe before the daemon starts. The daemon then refuses ("already running") and the native UI hands its token to the squatter. The token only works against the real daemon, but a squatter can also feed the UI false status.
 - **Fix:**
   - Client: `GetNamedPipeServerProcessId` → `OpenProcessToken` → compare the token user's SID with its own.
   - Daemon: create the pipe with an explicit DACL (owner only) and `FILE_FLAG_FIRST_PIPE_INSTANCE`.
-- **Complexity:** medium; needs `windows-sys` and testing on Windows, which this container can't do.
+- **Done (client):** `check_pipe_server` in `qalaa-ipc` compares the pipe server's user SID with its own before sending anything (compile- and clippy-checked for `x86_64-pc-windows-msvc`).
+- **To verify:** run the procedure in [windows-pipe-test.md](windows-pipe-test.md).
+- **Still open (daemon):** Node can't set a pipe DACL, so a squatter can still stop the daemon from starting (a denial of service, not a token leak).
 
 **QA-11 · Any program running as the person can drive the daemon: High (high) · Open (architectural)**
 - **Where:** `core/server.ts`. The token file is readable by every process of that user.
@@ -247,24 +287,33 @@ Severity follows impact × exploitability for this product's users. "Confidence"
 - **Where:** `apps/thunderbird/src/lib/analysis.js`, `apps/desktop/src/engine/mail.ts` → `POST /email/links`.
 - Scheme, host and path are sent; the query is stripped. It moves to the same prefix scheme as the extension.
 
-**QA-20 · Rate limiting trusts the leftmost X-Forwarded-For: Low (medium) · Open**
+**QA-20 · Rate limiting trusted the leftmost X-Forwarded-For: Low (medium) · Fixed**
 - **Where:** `app/core/rate_limit.py`, `client_address`.
 - This is safe only because Caddy discards client-sent headers (`infrastructure/caddy/Caddyfile`). A CDN or load balancer put in front without care would let clients pick their own address.
-- **Fix:** count from the right, skipping a configured number of trusted hops.
+- **Fix:** read from the right, skipping `SENTINEL_FORWARDED_HOPS` (default 1).
+- **Tests:** `tests/test_rate_limit_sliding.py`.
 
-**QA-21 · Autofill matches by host suffix without the public-suffix list: Low (medium) · Open**
+**QA-21 · Autofill matched by host suffix without the public-suffix list: Low (medium) · Fixed**
 - **Where:** `lib/autofill.ts`, `loginsFor`.
 - A login saved for a public or shared suffix (`github.io`, `herokuapp.com`) would be offered on every site under it.
-- **Fix:** refuse matching when the saved host is itself a public suffix (tldts, already a dependency).
+- **Fix:** a login saved for a public or private suffix matches only that exact host (`isPublicSuffix`, tldts).
+- **Tests:** `test/autofill.test.ts`.
 
-**QA-22 · GitHub Actions pinned by tag, release job can write contents: Low (high) · Open**
+**QA-22 · GitHub Actions pinned by tag; no SBOM: Low (high) · Fixed, except reproducible builds**
 - 40 `uses: …@vN` references; `release.yml` has `contents: write`.
-- **Fix:** pin to commit SHAs (Dependabot can keep them current), and keep write permission on the release job only.
-- No SBOM and no reproducible-build check yet; see the roadmap.
+- **Done:**
+  - All 42 `uses:` are pinned to the commit of the newest release in their major version, with the version as a comment; `.github/dependabot.yml` keeps them current.
+  - Releases attach CycloneDX SBOMs for the desktop, extension, web, native and API parts (`npm sbom`, `scripts/sbom-from-lock.py`).
+  - CI and releases fail if a private key is committed (`scripts/check-no-private-keys.py`).
+- **Open:** a reproducible-build check, and moving `contents: write` to the final release job only.
 
-**QA-23 · Desktop and Android release signing depend on secrets that aren't configured: Medium (high) · Open (needs certificates)**
+**QA-23 · Desktop and Android release signing depend on secrets that aren't configured: Medium (high) · Configuration done; certificates pending**
 - `release.yml` builds unsigned without them: SmartScreen warnings on Windows, and no notarization on macOS.
-- This is the operator's task; the code is ready to use them.
+- **Done:**
+  - `release.yml` supports Azure Trusted Signing or a certificate file on Windows, and Developer ID with API-key notarisation on macOS.
+  - It verifies the results (`scripts/verify-signatures.sh` / `.ps1`), and `REQUIRE_SIGNED_RELEASES` turns unsigned tagged releases into failures.
+  - Minimal hardened-runtime entitlements are in place.
+- **Operator setup:** [code-signing.md](code-signing.md).
 
 **QA-24 · Sandbox realism and retention: Low (medium) · Open (R6)**
 - **Isolation verified:** gVisor, `--network=none`, no secrets, no host files. The sandbox can't reach metadata or internal services.
@@ -341,6 +390,13 @@ Enterprise and regional items:
 | Exclusive restore | `src/engine/quarantine.ts` | QA-08 | `test/engine.test.ts` |
 | Sharing key fingerprints and pinning | `apps/web/src/lib/vault-sharing.ts`, `lib/vault.ts`, `components/dashboard/password-vault.tsx`, `lib/i18n/extra.ts` (EN/AR) | QA-09 | `lib/vault-sharing.test.ts`, `components/dashboard/vault-sharing-keys.test.tsx` |
 | Android minSdk 29 | `apps/android/app/build.gradle.kts`, download hint (EN/AR) | — | CI Android build (not run here: no Android SDK) |
+| Windows pipe server check | `crates/qalaa-ipc/src/client.rs`, `Cargo.toml` (windows-sys 0.59, already locked) | QA-05 | `cargo clippy --target x86_64-pc-windows-msvc`; Windows procedure in windows-pipe-test.md |
+| Encrypted signing key, `pubkey`/`verify` | `tools/release-signing/sign-release.mjs` | QA-03 | `test/release-verify.test.ts` |
+| Code-signing pipeline | `.github/workflows/release.yml`, `apps/desktop/build/entitlements.mac*.plist`, `scripts/verify-signatures.sh`, `.ps1` | QA-23 | Workflow syntax checked; real run needs certificates |
+| Private-key guard | `scripts/check-no-private-keys.py`, `.gitignore`, CI and release jobs | QA-03, QA-23 | Run on all 887 tracked files; pattern self-test |
+| SHA-pinned Actions, Dependabot, SBOMs | `.github/workflows/*.yml`, `.github/dependabot.yml`, `scripts/sbom-from-lock.py` | QA-22 | SBOMs generated locally (100 to 714 components each) |
+| Public-suffix autofill | `apps/extension/src/lib/autofill.ts` | QA-21 | `test/autofill.test.ts` |
+| X-Forwarded-For from the right | `services/api/app/core/rate_limit.py`, `config.py` | QA-20 | `tests/test_rate_limit_sliding.py` |
 
 Remaining limitations are listed under each finding. Nothing here makes Qalaa
 "secure" in the absolute. It removes the specific ways found in which one

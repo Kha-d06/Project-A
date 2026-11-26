@@ -156,11 +156,74 @@ pub fn check_private_socket_for(endpoint: &Path, uid: u32) -> io::Result<()> {
     Ok(())
 }
 
-/// Windows: named pipes have no folder. See docs/security-audit.md (IPC-2) for the
-/// pipe-squatting limit and its planned fix (checking the pipe server's user).
+/// Windows: named pipes have no folder; the check happens once the pipe is open
+/// (`check_pipe_server`), before the token is sent.
 #[cfg(windows)]
 pub fn check_private_socket(_endpoint: &Path) -> io::Result<()> {
     Ok(())
+}
+
+/// The user (SID bytes) a process runs as.
+#[cfg(windows)]
+fn process_user_sid(process: windows_sys::Win32::Foundation::HANDLE) -> io::Result<Vec<u8>> {
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows_sys::Win32::Security::{GetLengthSid, GetTokenInformation, TokenUser, TOKEN_QUERY, TOKEN_USER};
+    use windows_sys::Win32::System::Threading::OpenProcessToken;
+    let mut token: HANDLE = std::ptr::null_mut();
+    // SAFETY: `process` is a valid handle; `token` receives a handle we close below.
+    if unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut token) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let mut needed = 0u32;
+    // SAFETY: a size query with no buffer; fails with ERROR_INSUFFICIENT_BUFFER and sets `needed`.
+    unsafe { GetTokenInformation(token, TokenUser, std::ptr::null_mut(), 0, &mut needed) };
+    // u64 storage keeps the buffer aligned for TOKEN_USER.
+    let mut buffer = vec![0u64; (needed as usize).div_ceil(8).max(1)];
+    // SAFETY: the buffer holds at least `needed` bytes.
+    let ok = unsafe { GetTokenInformation(token, TokenUser, buffer.as_mut_ptr().cast(), needed, &mut needed) };
+    // SAFETY: closing the token handle opened above.
+    unsafe { CloseHandle(token) };
+    if ok == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: on success the buffer starts with a TOKEN_USER whose SID points inside the buffer.
+    let sid = unsafe { (*(buffer.as_ptr() as *const TOKEN_USER)).User.Sid };
+    // SAFETY: `sid` is a valid SID for the lifetime of `buffer`.
+    let len = unsafe { GetLengthSid(sid) } as usize;
+    // SAFETY: `len` bytes starting at `sid` belong to the SID.
+    Ok(unsafe { std::slice::from_raw_parts(sid as *const u8, len) }.to_vec())
+}
+
+/// The process serving this pipe must run as the same Windows user as this
+/// client. Another user can create `\\.\pipe\qalaa-daemon-<name>` before the
+/// service starts (pipe names are global); without this check the client would
+/// hand that process its token. A server we can't inspect counts as a stranger.
+#[cfg(windows)]
+pub fn check_pipe_server(pipe: &std::fs::File) -> io::Result<()> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Pipes::GetNamedPipeServerProcessId;
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+    let refuse = |why: &str| io::Error::new(io::ErrorKind::PermissionDenied, why.to_owned());
+    let mut pid = 0u32;
+    // SAFETY: the handle is the open pipe; `pid` receives the server's process id.
+    if unsafe { GetNamedPipeServerProcessId(pipe.as_raw_handle() as _, &mut pid) } == 0 {
+        return Err(refuse("couldn't tell which program serves the Qalaa pipe"));
+    }
+    // SAFETY: plain query; the handle is closed below.
+    let server = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if server.is_null() {
+        return Err(refuse("the program serving the Qalaa pipe belongs to another user"));
+    }
+    let theirs = process_user_sid(server);
+    // SAFETY: closing the process handle opened above.
+    unsafe { CloseHandle(server) };
+    // SAFETY: GetCurrentProcess returns a pseudo-handle that needs no closing.
+    let mine = process_user_sid(unsafe { GetCurrentProcess() })?;
+    match theirs {
+        Ok(sid) if sid == mine => Ok(()),
+        _ => Err(refuse("the program serving the Qalaa pipe belongs to another user")),
+    }
 }
 
 #[cfg(unix)]
@@ -170,7 +233,9 @@ fn open(endpoint: &Path) -> io::Result<Stream> {
 
 #[cfg(windows)]
 fn open(endpoint: &Path) -> io::Result<Stream> {
-    std::fs::OpenOptions::new().read(true).write(true).open(endpoint)
+    let pipe = std::fs::OpenOptions::new().read(true).write(true).open(endpoint)?;
+    check_pipe_server(&pipe)?;
+    Ok(pipe)
 }
 
 impl<S: Read + Write> Client<S> {

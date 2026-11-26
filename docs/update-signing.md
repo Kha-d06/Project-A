@@ -22,20 +22,24 @@ against a broken download, not against the server.
 
 ## Release procedure (desktop)
 
-On the release manager's **offline** machine (no CI, no server):
+The full ceremony (offline machine, encrypted key drives, passphrase, pinning,
+signing and checking each release, rotation and compromise) is in
+[release-signing-key.md](release-signing-key.md). In short, on the offline machine:
 
 ```sh
-# Once: create the key and pin the printed public key in RELEASE_KEYS.
-node tools/release-signing/sign-release.mjs keygen ~/qalaa-release.key
-
-# Every release, after copying the built installers into a folder:
-node tools/release-signing/sign-release.mjs sign ~/qalaa-release.key ./release 1.4.0
-./scripts/publish-downloads.sh ./release    # copies release-manifest.json(.sig) too
+node sign-release.mjs keygen /media/KEY-A/qalaa-release-1.key           # once; prints the public key to pin
+node sign-release.mjs sign /media/KEY-A/qalaa-release-1.key ./release 1.4.0
 ```
 
-- **Key storage:** keep the private key encrypted at rest (an encrypted USB key, or a hardware token that can export an ed25519 signature) and back it up offline in two places.
-- **Rotation:** add the new public key to `RELEASE_KEYS` in one release signed by the old key, sign with the new key from the next release on, and remove the old key a release later.
-- **Revocation of a leaked key:** remove it from `RELEASE_KEYS` and ship that build through the download page. Installs that still trust the old key accept anything it signs until they update, which is why the TUF stage below adds online revocation.
+Then, on the publishing machine, with the public key only:
+
+```sh
+node tools/release-signing/sign-release.mjs verify <public key hex> ./release
+./scripts/publish-downloads.sh ./release
+```
+
+The private key is passphrase-encrypted (the tool refuses an unencrypted one) and
+never leaves the offline machine and its encrypted drives.
 
 Platform code signing (Authenticode on Windows, Developer ID and notarization on
 macOS) is separate and still needed: it is what Windows SmartScreen and

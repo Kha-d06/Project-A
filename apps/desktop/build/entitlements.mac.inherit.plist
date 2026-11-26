@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened-runtime entitlements for Qalaa Desktop (docs/code-signing.md).
+  Only what Electron needs: V8 compiles JavaScript at run time (JIT).
+  No library-validation exemption, no unsigned executable memory, no sandbox
+  escape hatches. Add an entitlement only with a reason in the docs.
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+</dict>
+</plist>

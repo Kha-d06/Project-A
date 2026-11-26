@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { newItem } from "../../web/src/lib/vault";
-import { canFillOn, fillLoginForm, loginsFor, refusal } from "../src/lib/autofill";
+import { canFillOn, fillLoginForm, isPublicSuffix, loginsFor, refusal } from "../src/lib/autofill";
 
 const bank = newItem("login", { title: "Bank", url: "https://www.mybank.example.com/login", username: "sara", password: "b4nk-Pass!" });
 const mail = newItem("login", { title: "Mail", url: "mail.example.org", username: "sara@x", password: "m4il" });
@@ -62,3 +62,19 @@ describe("filling the form in the page", () => {
     expect((document.getElementById("pw") as HTMLInputElement).value).toBe("");
   });
 });
+
+describe("logins saved for a shared suffix", () => {
+  const login = (url: string) => newItem("login", { title: url, url, username: "u", password: "p" });
+
+  it("are offered only on that exact host, never on every site under it", () => {
+    for (const saved of ["github.io", "herokuapp.com", "co.uk"]) {
+      expect(isPublicSuffix(saved)).toBe(true);
+      expect(loginsFor([login(saved)], `https://attacker.${saved}/login`)).toEqual([]);
+    }
+    expect(isPublicSuffix("example.com")).toBe(false);
+    expect(isPublicSuffix("sara.github.io")).toBe(false);
+    expect(loginsFor([login("sara.github.io")], "https://docs.sara.github.io/").length).toBe(1);
+    expect(loginsFor([login("sara.github.io")], "https://omar.github.io/")).toEqual([]);
+  });
+});
+

@@ -62,6 +62,10 @@ Keeping TOTP secrets in the vault puts both factors behind the master password. 
 
 ## 5. Planned: Argon2id and a recovery kit (not shipped)
 
+The full specification for review (key hierarchy, formats, algorithms, rollout,
+rollback, tests and sign-off) is [vault-migration-spec.md](vault-migration-spec.md).
+The summary below is kept for orientation.
+
 Decided with the project owner. Before any code touches real vaults, this plan has to be reviewed. Its rules:
 
 1. **Library.** Argon2id from libsodium's `crypto_pwhash` (libsodium.js, an exact version at least two weeks old), loaded as WebAssembly in both the web app and the extension. No custom Argon2.

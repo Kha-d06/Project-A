@@ -24,3 +24,12 @@ uploads/
 # Extension build output
 apps/extension/dist/
 backups/
+
+# Signing material never belongs in the repository (scripts/check-no-private-keys.py).
+*.pem
+*.key
+*.p12
+*.pfx
+*.p8
+*.jks
+*.keystore

@@ -84,10 +84,15 @@ def get_counter_store() -> CounterStore:
 
 
 def client_address(request: Request) -> str:
-    if get_settings().trust_forwarded_for:
+    settings = get_settings()
+    if settings.trust_forwarded_for:
         forwarded = request.headers.get("x-forwarded-for")
         if forwarded:
-            return forwarded.split(",")[0].strip()
+            # Right to left: the last `forwarded_hops` entries were added by our own
+            # proxies; the left-most entries are whatever the client sent.
+            entries = [part.strip() for part in forwarded.split(",") if part.strip()]
+            if entries:
+                return entries[-min(settings.forwarded_hops, len(entries))]
     return request.client.host if request.client else "unknown"
 
 

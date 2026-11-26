@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     # Only enable when the API is reachable exclusively through a proxy that sets
     # X-Forwarded-For; otherwise clients could spoof their address to dodge rate limits.
     trust_forwarded_for: bool = False
+    # How many proxies we run in front of the API (Caddy alone: 1). The client's
+    # address is that many entries from the *right* of X-Forwarded-For, because
+    # each proxy appends the address it saw and anything further left came from
+    # the client and can be made up.
+    forwarded_hops: int = Field(default=1, ge=1, le=5)
 
     session_cookie_name: str = "sentinel_session"
     session_lifetime_hours: int = 24 * 7

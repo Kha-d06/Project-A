@@ -10,7 +10,7 @@ remediation roadmap, is [security-audit.md](security-audit.md). Specifications:
 ## Trust boundaries
 
 1. **Browser to Caddy.** Everything a user submits is untrusted: URLs, message text, files and file names.
-2. **Caddy to web to API.** Only Caddy is published. It replaces `X-Forwarded-For` with the real client address. The web gateway forwards only that value, and the API trusts it (`SENTINEL_TRUST_FORWARDED_FOR=true`) because it is not reachable any other way. If you deploy differently, keep this property or turn the flag off; otherwise clients can choose the address their rate limits are counted against.
+2. **Caddy to web to API.** Only Caddy is published. It replaces `X-Forwarded-For` with the real client address. The web gateway forwards only that value, and the API trusts it (`SENTINEL_TRUST_FORWARDED_FOR=true`) because it is not reachable any other way. If you deploy differently, keep this property or turn the flag off; otherwise clients can choose the address their rate limits are counted against. The API reads the address from the right of `X-Forwarded-For`, skipping `SENTINEL_FORWARDED_HOPS` proxies (default 1, for Caddy alone; set 2 behind a CDN that appends its own entry), so a value the client puts in front is never used.
    - *Not yet verified:* Caddy's replacement of the header was not exercised in a running container during development. The Next.js gateway behaviour was tested.
 3. **Worker to the internet.** The worker contacts attacker-chosen hosts while tracing redirects. This is the main SSRF surface (see below).
 4. **Threat feeds.** Feed content is parsed as data and validated (URLs re-parsed, hashes checked for format). It is never executed or rendered as HTML.

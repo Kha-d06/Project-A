@@ -4,13 +4,23 @@ name: Release
 #   git tag v0.2.0 && git push origin v0.2.0
 # or run it by hand from the Actions tab (it then only uploads build artifacts).
 #
-# Code signing is optional and switched on by repository secrets:
-#   Windows / macOS: CSC_LINK (base64 .p12/.pfx) and CSC_KEY_PASSWORD
-#   macOS notarisation: APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID
+# Code signing is switched on by repository secrets and variables. What each one
+# is, and how to create it, is in docs/code-signing.md. No private key is ever
+# stored in the repository (scripts/check-no-private-keys.py).
+#   Windows, Azure Trusted Signing (recommended):
+#     secrets AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET
+#     variables AZURE_SIGNING_ENDPOINT, AZURE_SIGNING_ACCOUNT, AZURE_SIGNING_PROFILE, WIN_PUBLISHER_NAME
+#   Windows, certificate file (an exportable code-signing certificate):
+#     secrets WIN_CSC_LINK (base64 .pfx), WIN_CSC_KEY_PASSWORD; variable WIN_PUBLISHER_NAME
+#   macOS: secrets CSC_LINK (base64 Developer ID Application .p12), CSC_KEY_PASSWORD,
+#     and for notarisation APPLE_API_KEY_P8 (contents of AuthKey_*.p8), APPLE_API_KEY_ID, APPLE_API_ISSUER
 #   Android: ANDROID_KEYSTORE (base64), ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+#   Variable REQUIRE_SIGNED_RELEASES=true makes a tagged release fail if any installer is unsigned.
 # Without them the builds are unsigned: Windows shows a SmartScreen warning,
-# macOS needs right-click → Open and cannot update itself, Android needs
-# "install unknown apps".
+# macOS needs right-click → Open, Android needs "install unknown apps".
+#
+# The update signature (release-manifest.json.sig) is NOT made here: it is
+# created offline after this workflow, see docs/release-signing-key.md.
 
 on:
   push:
@@ -21,7 +31,43 @@ permissions:
   contents: write
 
 jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: python3 scripts/check-no-private-keys.py
+      - name: Update-signing key pinned?
+        run: |
+          if grep -Eq 'RELEASE_KEYS: string\[\] = \[\s*\]' apps/desktop/src/engine/release-verify.ts; then
+            echo "::warning::No update-signing public key is pinned (docs/release-signing-key.md): installed apps will only offer this release as a manual download."
+          fi
+
+  # A software bill of materials for every part of the release (CycloneDX 1.5).
+  sbom:
+    needs: [guard]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: Build SBOMs from the lockfiles
+        run: |
+          mkdir -p sbom
+          for app in desktop extension web; do
+            (cd "apps/$app" && npm sbom --sbom-format cyclonedx --package-lock-only) > "sbom/qalaa-$app.cdx.json"
+          done
+          python3 scripts/sbom-from-lock.py cargo apps/desktop-native/Cargo.lock qalaa-desktop-native > sbom/qalaa-desktop-native.cdx.json
+          python3 scripts/sbom-from-lock.py uv services/api/uv.lock qalaa-api > sbom/qalaa-api.cdx.json
+          for f in sbom/*.json; do python3 -c "import json,sys; d=json.load(open(sys.argv[1])); assert d['bomFormat']=='CycloneDX' and d['components'], sys.argv[1]; print(sys.argv[1], len(d['components']))" "$f"; done
+      - uses: actions/actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom
+          path: sbom/*.cdx.json
+          if-no-files-found: error
+
   desktop:
+    needs: [guard]
     strategy:
       fail-fast: false
       matrix:
@@ -37,8 +83,8 @@ jobs:
       run:
         working-directory: apps/desktop
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
       - name: rpm tooling
@@ -52,16 +98,67 @@ jobs:
       - name: Package
         shell: bash
         env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # macOS signing and notarisation
+          CSC_LINK: ${{ runner.os == 'macOS' && secrets.CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ runner.os == 'macOS' && secrets.CSC_KEY_PASSWORD || '' }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          # Windows: Azure Trusted Signing, or a certificate file
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          WIN_PUBLISHER_NAME: ${{ vars.WIN_PUBLISHER_NAME }}
         run: |
-          # No certificate: build unsigned instead of failing.
-          if [ -z "$CSC_LINK" ]; then export CSC_IDENTITY_AUTO_DISCOVERY=false; fi
-          npx electron-builder ${{ matrix.target }} --publish never
-      - uses: actions/upload-artifact@v4
+          extra=()
+          case "$RUNNER_OS" in
+            macOS)
+              if [ -n "$APPLE_API_KEY_P8" ]; then
+                # The notarisation key exists only for this job, in the runner's temp folder.
+                umask 077
+                printf '%s' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+                export APPLE_API_KEY="$RUNNER_TEMP/AuthKey.p8"
+              fi
+              [ -z "$CSC_LINK" ] && export CSC_IDENTITY_AUTO_DISCOVERY=false
+              ;;
+            Windows)
+              if [ -n "$AZURE_SIGNING_ACCOUNT" ]; then
+                extra+=("-c.win.azureSignOptions.endpoint=$AZURE_SIGNING_ENDPOINT"
+                        "-c.win.azureSignOptions.codeSigningAccountName=$AZURE_SIGNING_ACCOUNT"
+                        "-c.win.azureSignOptions.certificateProfileName=$AZURE_SIGNING_PROFILE"
+                        "-c.win.azureSignOptions.publisherName=$WIN_PUBLISHER_NAME")
+              elif [ -n "$WIN_CSC_LINK" ]; then
+                # The publisher name also makes the installed app check that updates carry the same signature.
+                extra+=("-c.win.signtoolOptions.publisherName=$WIN_PUBLISHER_NAME")
+              else
+                export CSC_IDENTITY_AUTO_DISCOVERY=false
+              fi
+              ;;
+            *) export CSC_IDENTITY_AUTO_DISCOVERY=false ;;
+          esac
+          npx electron-builder ${{ matrix.target }} --publish never "${extra[@]}"
+          rm -f "$RUNNER_TEMP/AuthKey.p8"
+      - name: Check signatures (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          SIGNED: ${{ secrets.CSC_LINK != '' }}
+          REQUIRED: ${{ vars.REQUIRE_SIGNED_RELEASES == 'true' && startsWith(github.ref, 'refs/tags/v') }}
+        run: ../../scripts/verify-signatures.sh macos release
+      - name: Check signatures (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          SIGNED: ${{ vars.AZURE_SIGNING_ACCOUNT != '' || secrets.WIN_CSC_LINK != '' }}
+          REQUIRED: ${{ vars.REQUIRE_SIGNED_RELEASES == 'true' && startsWith(github.ref, 'refs/tags/v') }}
+          WIN_PUBLISHER_NAME: ${{ vars.WIN_PUBLISHER_NAME }}
+        run: ../../scripts/verify-signatures.ps1 -Dir release
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: desktop-${{ runner.os }}
           path: |
@@ -81,12 +178,12 @@ jobs:
       run:
         working-directory: apps/android
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: 17
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
         with:
           gradle-version: "8.10.2"
       - run: gradle :scanner-core:test
@@ -107,7 +204,7 @@ jobs:
             gradle assembleDebug -PsiteHost="$SITE_HOST"
             cp app/build/outputs/apk/debug/app-debug.apk "Qalaa-$version-debug.apk"
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: android
           path: apps/android/Qalaa-*.apk
@@ -115,10 +212,10 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [desktop, android]
+    needs: [desktop, android, sbom]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: files
           merge-multiple: true

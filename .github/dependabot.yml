@@ -1,0 +1,9 @@
+# Keeps the commit-pinned GitHub Actions current (audit QA-22). Each update is a
+# reviewed pull request that changes one SHA and its version comment.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

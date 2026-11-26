@@ -136,7 +136,9 @@ describe("SafePay service", () => {
     expect((await service.status()).sessions).toHaveLength(1);
 
     started[0]!.child.emit("exit", 0);
-    await new Promise((r) => setTimeout(r, 50));
+    // The profile is removed asynchronously, then "ended" is emitted: wait for that
+    // (a fixed 50 ms was too short on a busy machine), with a cap so a real hang fails.
+    for (let waited = 0; !events.some(([e]) => e === "safepay.ended") && waited < 5000; waited += 20) await new Promise((r) => setTimeout(r, 20));
     await expect(stat(profile)).rejects.toThrow();
     expect((await service.status()).sessions).toEqual([]);
     expect(events.map(([e]) => e)).toEqual(["safepay.started", "safepay.ended"]);

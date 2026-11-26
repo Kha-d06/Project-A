@@ -53,3 +53,29 @@ def test_sliding_count() -> None:
     assert sliding_count(10, 0, 0.0) == 10
     assert sliding_count(10, 3, 0.5) == 8
     assert sliding_count(10, 3, 1.0) == 3
+
+
+def test_forwarded_address_is_read_from_the_right(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A client can't choose its own rate-limit identity by sending X-Forwarded-For."""
+    from starlette.requests import Request
+
+    from app.core.config import get_settings
+    from app.core.rate_limit import client_address
+
+    def request(forwarded: str | None) -> Request:
+        headers = [(b"x-forwarded-for", forwarded.encode())] if forwarded else []
+        return Request({"type": "http", "headers": headers, "client": ("10.0.0.2", 1234)})
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "trust_forwarded_for", True)
+    monkeypatch.setattr(settings, "forwarded_hops", 1)
+    # Caddy alone appends the real address after anything the client claimed.
+    assert client_address(request("6.6.6.6, 203.0.113.9")) == "203.0.113.9"
+    assert client_address(request("203.0.113.9")) == "203.0.113.9"
+    # A CDN in front of Caddy: two hops.
+    monkeypatch.setattr(settings, "forwarded_hops", 2)
+    assert client_address(request("6.6.6.6, 203.0.113.9, 198.51.100.1")) == "203.0.113.9"
+    assert client_address(request("203.0.113.9")) == "203.0.113.9"
+    # Not trusted: the socket's peer.
+    monkeypatch.setattr(settings, "trust_forwarded_for", False)
+    assert client_address(request("6.6.6.6")) == "10.0.0.2"

@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 MAX_LINKS = 50
@@ -49,3 +51,6 @@ class RulePack(BaseModel):
     rules: list[RuleOut]
     brands: dict[str, BrandOut]
     shorteners: list[str]
+    # The address rules (look-alike letters, Arabic brand names...), the same file
+    # the server and the browser extension use: app/rules/url_rules.json.
+    url_rules: dict[str, Any] = {}

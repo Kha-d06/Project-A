@@ -4,13 +4,19 @@
  * order per connection; events go to every authenticated client.
  */
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { chmod, lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { type Server, type Socket, createConnection, createServer } from "node:net";
 
 import type { Handler } from "./handlers";
-import type { IpcPaths } from "./paths";
+import { type IpcPaths, validPipeName } from "./paths";
 import { type EventMessage, IpcError, MAX_LINE_BYTES, PROTOCOL_VERSION, type Response, parseRequest } from "./protocol";
+
+/** A connection that hasn't said hello with the token by then is closed. */
+export const HELLO_DEADLINE_MS = 5_000;
+/** Connections at once, and of those, ones that haven't authenticated yet. */
+export const MAX_CONNECTIONS = 64;
+export const MAX_UNAUTHENTICATED = 8;
 
 export interface IpcServer {
   broadcast(event: string, payload: unknown): void;
@@ -77,9 +83,21 @@ export function endpointInUse(endpoint: string): Promise<boolean> {
   });
 }
 
-export async function startIpcServer(paths: IpcPaths, handlers: Record<string, Handler>, info: { version: string }): Promise<IpcServer> {
+export async function startIpcServer(
+  paths: IpcPaths,
+  handlers: Record<string, Handler>,
+  info: { version: string },
+  limits: { helloDeadlineMs?: number; maxUnauthenticated?: number } = {},
+): Promise<IpcServer> {
+  const helloDeadlineMs = limits.helloDeadlineMs ?? HELLO_DEADLINE_MS;
+  const maxUnauthenticated = limits.maxUnauthenticated ?? MAX_UNAUTHENTICATED;
   const token = await loadToken(paths.tokenFile);
   if (await endpointInUse(paths.endpoint)) throw new Error("Another Qalaa background service is already running.");
+  // Windows: this run's pipe has a fresh random name; a previous run's is in the endpoint file.
+  if (paths.endpointFile) {
+    const previous = (await readFile(paths.endpointFile, "utf8").catch(() => "")).trim();
+    if (validPipeName(previous) && (await endpointInUse(previous))) throw new Error("Another Qalaa background service is already running.");
+  }
   if (paths.socketDir) {
     await mkdir(paths.socketDir, { recursive: true, mode: 0o700 });
     await chmod(paths.socketDir, 0o700).catch(() => undefined);
@@ -93,12 +111,33 @@ export async function startIpcServer(paths: IpcPaths, handlers: Record<string, H
     if (!socket.destroyed) socket.write(`${JSON.stringify(message)}\n`);
   };
 
+  let unauthenticated = 0;
   const server: Server = createServer((socket) => {
+    // Too many connections still waiting to say hello: refuse more (exhaustion).
+    if (unauthenticated >= maxUnauthenticated) {
+      socket.destroy();
+      return;
+    }
+    unauthenticated += 1;
+    let counted = true;
+    const authenticated = () => {
+      if (counted) unauthenticated -= 1;
+      counted = false;
+      clearTimeout(deadline);
+    };
+    const deadline = setTimeout(() => {
+      if (!authed.has(socket)) socket.destroy();
+    }, helloDeadlineMs);
+    deadline.unref?.();
     let buffer = "";
     let queue = Promise.resolve();
     socket.setEncoding("utf8");
     socket.on("error", () => socket.destroy());
-    socket.on("close", () => authed.delete(socket));
+    socket.on("close", () => {
+      authed.delete(socket);
+      authenticated();
+    });
+    socket.once("qalaa:authenticated", authenticated);
     socket.on("data", (chunk: string) => {
       buffer += chunk;
       if (Buffer.byteLength(buffer) > MAX_LINE_BYTES && !buffer.includes("\n")) {
@@ -128,6 +167,8 @@ export async function startIpcServer(paths: IpcPaths, handlers: Record<string, H
           return;
         }
         authed.add(socket);
+        // Counted as authenticated from here (the deadline no longer applies).
+        socket.emit("qalaa:authenticated");
         send(socket, { id, result: { protocol: PROTOCOL_VERSION, version: info.version } });
         return;
       }
@@ -141,11 +182,18 @@ export async function startIpcServer(paths: IpcPaths, handlers: Record<string, H
     }
   }
 
+  server.maxConnections = MAX_CONNECTIONS;
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(paths.endpoint, () => resolve());
   });
   if (process.platform !== "win32") await chmod(paths.endpoint, 0o600).catch(() => undefined);
+  // Published only after the pipe exists, readable only by this user (the data folder's ACL).
+  if (paths.endpointFile) {
+    const temporary = `${paths.endpointFile}.${process.pid}.tmp`;
+    await writeFile(temporary, paths.endpoint, { mode: 0o600 });
+    await rename(temporary, paths.endpointFile);
+  }
 
   return {
     broadcast(event, payload) {
@@ -155,7 +203,14 @@ export async function startIpcServer(paths: IpcPaths, handlers: Record<string, H
     close: () =>
       new Promise<void>((resolve) => {
         for (const socket of authed) socket.destroy();
-        server.close(() => resolve());
+        server.close(() => {
+          // Remove the endpoint file only if it still names this run's pipe.
+          if (!paths.endpointFile) return resolve();
+          void readFile(paths.endpointFile, "utf8")
+            .then((current) => (current.trim() === paths.endpoint ? rm(paths.endpointFile!, { force: true }) : undefined))
+            .catch(() => undefined)
+            .finally(() => resolve());
+        });
       }),
   };
 }

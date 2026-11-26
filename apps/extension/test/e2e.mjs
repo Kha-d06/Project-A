@@ -153,11 +153,17 @@ step("warning recorded in the account with the domain only");
 await site.click("text=Disconnect");
 await site.waitForSelector("text=No browser linked to this account");
 await worker.evaluate(() => chrome.storage.session.remove("accessToken"));
+// Pages are checked inside the browser, so opening one doesn't contact the server.
 await page.goto("http://news.example.org/fresh").catch(() => undefined);
-await page.waitForTimeout(1500);
-const after = await worker.evaluate(() => chrome.storage.local.get("credentials"));
+await page.waitForTimeout(1000);
+// The next account check (every 15 minutes, and whenever the options page opens)
+// learns of the revocation and drops the credentials.
+await options.reload();
+await options.waitForTimeout(1500);
+const after = await worker.evaluate(() => chrome.storage.local.get(["credentials", "account"]));
 assert.equal(after.credentials, undefined, "credentials dropped after revocation");
-step("revocation takes effect");
+assert.equal(after.account, undefined, "linked account forgotten after revocation");
+step("revocation takes effect at the next account check");
 
 await context.close();
 console.log("All extension end-to-end checks passed.");

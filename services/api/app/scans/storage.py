@@ -2,10 +2,19 @@
 
 Samples live outside any web-served directory under random names, are written
 without execute permission, and are deleted as soon as their scan finishes.
+The hourly retention sweep also removes any sample file no running scan refers
+to (a crash between storing and queueing, say), so none outlives
+SAMPLE_MAX_AGE plus one sweep interval. Deleting a file removes it from the
+file system; it doesn't overwrite the disk blocks, and isn't a guarantee
+against forensic recovery from the underlying storage (see docs/security.md).
 """
 
 import logging
+import os
+import re
 import secrets
+import time
+from datetime import timedelta
 from pathlib import Path
 from typing import BinaryIO
 
@@ -15,6 +24,10 @@ from app.core.errors import ApiError
 logger = logging.getLogger(__name__)
 
 _COPY_CHUNK_BYTES = 1024 * 1024
+# Names store_sample gives (secrets.token_hex(16)); nothing else in the folder is touched.
+_SAMPLE_NAME = re.compile(r"^[0-9a-f]{32}$")
+# Longest a sample may exist: the stuck-scan limit (app/scans/service.py).
+SAMPLE_MAX_AGE = timedelta(minutes=15)
 
 
 def _sample_path(storage_name: str) -> Path:
@@ -60,3 +73,29 @@ def delete_sample(storage_name: str) -> None:
         _sample_path(storage_name).unlink(missing_ok=True)
     except (OSError, ValueError):
         logger.exception("Could not delete sample %s", storage_name)
+
+
+def sweep_orphan_samples(referenced: set[str], older_than: timedelta = SAMPLE_MAX_AGE) -> int:
+    """Deletes sample files that no running scan refers to and that are older than
+    `older_than`. Only regular files with a sample's name are considered: never a
+    directory, a link, or a file someone else put in the folder."""
+    upload_dir = get_settings().upload_dir
+    if not upload_dir.is_dir():
+        return 0
+    cutoff = time.time() - older_than.total_seconds()
+    removed = 0
+    with os.scandir(upload_dir) as entries:
+        for entry in entries:
+            if not _SAMPLE_NAME.fullmatch(entry.name) or entry.name in referenced:
+                continue
+            try:
+                if (
+                    not entry.is_file(follow_symlinks=False)
+                    or entry.stat(follow_symlinks=False).st_mtime > cutoff
+                ):
+                    continue
+                os.unlink(entry.path)
+                removed += 1
+            except OSError:
+                logger.exception("Could not delete orphaned sample %s", entry.name)
+    return removed

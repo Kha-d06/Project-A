@@ -1,4 +1,3 @@
-import base64
 import secrets
 import uuid
 from datetime import timedelta
@@ -6,7 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
@@ -28,8 +27,9 @@ from app.core.errors import ApiError
 from app.core.rate_limit import RateLimit, client_address
 from app.core.security import new_token, token_digest
 from app.groups_policy import strictest_screen_time
-from app.intel.feeds import COMMUNITY, THREATFOX, URLHAUS
+from app.intel.feeds import COMMUNITY, THREATFOX
 from app.intel.lookup import fresh_sources
+from app.intel.prefixes import build_threat_prefixes, lookup_hashes
 from app.models import (
     ExtensionEvent,
     ExtensionInstallation,
@@ -38,7 +38,6 @@ from app.models import (
     GroupMember,
     ScreenTimeDay,
     ThreatIndicator,
-    ThreatSource,
     User,
     Vault,
 )
@@ -64,7 +63,6 @@ from app.schemas.extension import (
     RefreshRequest,
     ScreenTimeReport,
     ScreenTimeRule,
-    ThreatHash,
     ThreatHashes,
     ThreatHashQuery,
     ThreatPrefixes,
@@ -90,13 +88,10 @@ BLOCKLIST_MAX_HOSTS = 4500
 # (a file-sharing service, a hacked blog) must not block the whole host.
 _BLOCKLIST_SOURCES = (THREATFOX, COMMUNITY)
 
-# Hash-prefix lookups: the full list of listed URLs and domains, as short prefixes.
-_PREFIX_SOURCES = (URLHAUS, THREATFOX, COMMUNITY)
+# Hash-prefix lookups (app/intel/prefixes.py).
 PREFIX_LIMIT = RateLimit("ext-prefixes", max_requests=30, window_seconds=3600)
 HASH_LIMIT = RateLimit("ext-hashes", max_requests=1200, window_seconds=3600)
 RULES_LIMIT = RateLimit("ext-rules", max_requests=30, window_seconds=3600)
-# 4 bytes each: 250,000 prefixes is about 1.3 MB of base64.
-PREFIX_MAX = 250_000
 
 LINK_CODE_LIFETIME = timedelta(minutes=10)
 # No 0/O or 1/I, so a code read off a screen is typed correctly.
@@ -408,72 +403,13 @@ def threat_prefixes(installation: CurrentInstallation, db: Db) -> ThreatPrefixes
     return build_threat_prefixes(db)
 
 
-def build_threat_prefixes(db: Session) -> ThreatPrefixes:
-    """Like the server's own quick check, every stored address and domain counts
-    (a listing is evidence even when its feed is behind); whether a miss means
-    anything is told by the fresh feeds named in "sources"."""
-    feeds = fresh_sources(db, _PREFIX_SOURCES)
-    prefixes: set[bytes] = set()
-    rows = db.scalars(
-        select(ThreatIndicator.value_digest)
-        .where(ThreatIndicator.kind.in_(("url", "host")))
-        .order_by(ThreatIndicator.last_seen_at.desc())
-        .limit(PREFIX_MAX * 2)
-    )
-    for digest in rows:
-        prefixes.add(bytes.fromhex(digest[:8]))
-        if len(prefixes) >= PREFIX_MAX:
-            break
-    ordered = sorted(prefixes)
-    newest = max((s.last_success_at for s in feeds if s.last_success_at), default=None)
-    return ThreatPrefixes(
-        version=f"{len(ordered)}-{newest.isoformat() if newest else 'none'}",
-        generated_at=utcnow(),
-        prefixes=base64.b64encode(b"".join(ordered)).decode(),
-        count=len(ordered),
-        sources=sorted(source.name for source in feeds),
-    )
-
-
 @router.post("/threat-hashes", response_model=ThreatHashes)
 def threat_hashes(body: ThreatHashQuery, installation: CurrentInstallation, db: Db) -> ThreatHashes:
     """Full hashes for a few prefixes. Many addresses share each prefix, so the
     server can't tell which one was visited; the extension compares the full
     hashes itself. Nothing about the request is stored or logged."""
     rate_limit.enforce(HASH_LIMIT, f"install:{installation.id}")
-    # A range per prefix ("abcd1234" up to "abcd1234g"), which the digest index serves.
-    conditions = [
-        (ThreatIndicator.value_digest >= prefix) & (ThreatIndicator.value_digest < prefix + "g")
-        for prefix in body.prefixes
-    ]
-    rows = db.execute(
-        select(
-            ThreatIndicator.value_digest,
-            ThreatIndicator.kind,
-            ThreatSource.key,
-            ThreatSource.name,
-            ThreatIndicator.threat,
-        )
-        .join(ThreatSource)
-        .where(ThreatIndicator.kind.in_(("url", "host")), or_(*conditions))
-        .limit(500)
-    ).all()
-    seen: set[tuple[str, str, str]] = set()
-    matches: list[ThreatHash] = []
-    for digest, kind, source_key, source_name, threat in rows:
-        key = (digest, kind, source_key)
-        if key not in seen:
-            seen.add(key)
-            matches.append(
-                ThreatHash(
-                    digest=digest,
-                    kind=kind,
-                    source=source_key,
-                    source_name=source_name,
-                    threat=threat,
-                )
-            )
-    return ThreatHashes(matches=matches)
+    return lookup_hashes(db, body.prefixes)
 
 
 @router.post("/assistant", response_model=AssistantReply)

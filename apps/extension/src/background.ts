@@ -46,6 +46,12 @@ const ASSISTANT_SCRIPT_ID = "sentinel-assistant";
 const SEARCH_SCRIPT_ID = "sentinel-search";
 
 const BLOCKLIST_ALARM = "sentinel-blocklist";
+// Pages are checked locally, so no page visit reaches the server any more. This
+// check (the account's settings, no address in it) is how a browser disconnected
+// from the dashboard notices within 15 minutes. It runs on a timer, not on
+// browsing, so it says nothing about when pages are opened.
+const ACCOUNT_ALARM = "sentinel-account";
+const ACCOUNT_CHECK_MINUTES = 15;
 const MAX_COOKIE_SITES = 20;
 const MENU_LINK = "sentinel-scan-link";
 const MENU_PAGE = "sentinel-scan-page";
@@ -85,6 +91,15 @@ async function refreshAccount(settings: Settings): Promise<api.AccountLink | nul
     await applyFamilyList(account);
     return account;
   } catch {
+    // A 401 makes the API layer forget the credentials (the installation was
+    // revoked). Then also drop what came with the link: the cached account, the
+    // unlocked vault and the family rules.
+    if (!(await api.getCredentials())) {
+      await chrome.storage.local.remove(ACCOUNT_KEY);
+      lockVault();
+      await applyFamilyList(null);
+      return null;
+    }
     return cachedAccount();
   }
 }
@@ -825,6 +840,7 @@ chrome.permissions.onRemoved.addListener(() => {
 
 chrome.alarms?.onAlarm.addListener((alarm) => {
   if (alarm.name === SCREEN_TIME_ALARM) void serialized(() => updateScreenTime(true));
+  if (alarm.name === ACCOUNT_ALARM) void serialized(async () => refreshAccount(await loadSettings()));
   if (alarm.name === BLOCKLIST_ALARM) {
     void serialized(async () => {
       const settings = await loadSettings();
@@ -850,6 +866,7 @@ async function start(reason?: string) {
   await refreshBlocklist(settings).catch(() => undefined);
   await refreshThreatList(settings.serverUrl).catch(() => undefined);
   await chrome.alarms?.create(BLOCKLIST_ALARM, { periodInMinutes: REFRESH_MINUTES });
+  await chrome.alarms?.create(ACCOUNT_ALARM, { periodInMinutes: ACCOUNT_CHECK_MINUTES });
   await chrome.alarms?.create(SCREEN_TIME_ALARM, { periodInMinutes: 1 });
   await updateScreenTime(false).catch(() => undefined);
   if (reason === "install") await chrome.tabs.create({ url: chrome.runtime.getURL("welcome.html") });

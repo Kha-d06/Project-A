@@ -118,3 +118,38 @@ def test_public_domain_list_for_safe_dns(client: TestClient, db: Session) -> Non
     # Domains only (an IP can't be blocked by DNS), and no account needed.
     assert body["hosts"] == ["evil-c2.example.net"]
     assert body["sources"]
+
+
+# --- Hash-prefix lookups for mail clients --------------------------------------------
+
+
+def test_rule_pack_carries_the_shared_address_rules(client: TestClient) -> None:
+    pack = client.get(f"{API}/email/rules").json()
+    assert pack["url_rules"]["arabic"]["brands"]
+    assert pack["url_rules"]["confusables"]
+
+
+def test_mail_clients_find_a_listed_link_by_hash_prefix_without_an_account(
+    client: TestClient, db: Session
+) -> None:
+    import base64
+    import hashlib
+
+    from app.analyzers.urls import parse_url
+    from app.intel.feeds import URLHAUS
+
+    listed = "http://phish.example.net/login?id=7"
+    seed_feed(db, URLHAUS, [FeedIndicator("url", parse_url(listed).normalized, "phishing")])
+    listing = client.get(f"{API}/email/threat-prefixes")
+    assert listing.status_code == 200
+    raw = base64.b64decode(listing.json()["prefixes"])
+    digest = hashlib.sha256(parse_url(listed).normalized.encode()).hexdigest()
+    assert bytes.fromhex(digest[:8]) in {raw[i : i + 4] for i in range(0, len(raw), 4)}
+
+    hit = client.post(f"{API}/email/threat-hashes", json={"prefixes": [digest[:8], "00000000"]})
+    assert hit.status_code == 200
+    assert [m["digest"] for m in hit.json()["matches"]] == [digest]
+    # Bounded, hex only.
+    assert client.post(f"{API}/email/threat-hashes", json={"prefixes": ["zz"]}).status_code == 422
+    too_many = {"prefixes": [f"{i:08x}" for i in range(33)]}
+    assert client.post(f"{API}/email/threat-hashes", json=too_many).status_code == 422

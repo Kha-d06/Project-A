@@ -5,8 +5,10 @@
  * Everything here runs locally: the wording rules come from the server's public
  * rule pack (downloaded, not sent), and the sender, header and link checks are
  * plain code. The only thing that leaves the device is the list returned by
- * linksToCheck(): bare links (scheme, host and path), for a reputation lookup.
+ * nothing: links are checked against the threat lists by hash prefix
+ * (threat-prefix.js), so no link, address or text from a message is sent.
  */
+import { arabicBrandIn, impersonatedBrand } from "./lookalike.js";
 
 const SECOND_LEVEL = new Set(["co", "com", "net", "org", "gov", "edu", "ac", "or", "ne", "go", "mil", "sch", "nic"]);
 const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
@@ -53,7 +55,24 @@ export function bareUrl(raw) {
   }
 }
 
-/** Every link in the email, stripped to bare form, for the reputation check. */
+/**
+ * Every web link in the email, in full. They are hashed on the device
+ * (threat-prefix.js) and never sent, so the query string can stay: it is part
+ * of the exact address some threat lists record.
+ */
+export function linksIn(email) {
+  const found = [...(email.qr_links || []), ...(email.links || []).map((link) => link.href), ...[...String(email.text || "").matchAll(/https?:\/\/[^\s<>"'،؛)\]]+/gi)].map((m) => m[0])];
+  const out = [];
+  for (const raw of found) {
+    // Sentence punctuation after a link in plain text isn't part of it.
+    const href = String(raw).trim().replace(/[.,;:!?'"»”]+$/u, "").slice(0, 2048);
+    if (/^https?:\/\//i.test(href) && !out.includes(href)) out.push(href);
+    if (out.length >= MAX_LINKS) break;
+  }
+  return out;
+}
+
+/** Every link in the email, stripped to bare form (scheme, host and path). Used by older add-on versions' server lookup. */
 export function linksToCheck(email) {
   const found = [...(email.links || []).map((link) => link.href), ...String(email.text || "").matchAll(/https?:\/\/[^\s<>"'،؛)\]]+/gi)].map((m) =>
     typeof m === "string" ? m : m[0],
@@ -75,6 +94,18 @@ const TEXT = {
     brand: (brand, site) => [`The sender claims to be ${brand}`, `The name says ${brand}, but the message came from ${site}, which is not one of its domains.`],
     replyTo: (from, reply) => ["Replies would go to a different domain", `The message is from ${from}, but replying sends your answer to ${reply}. Scammers do this to receive replies to a borrowed name.`],
     linkMismatch: (shown, opens) => ["A link shows one address but opens another", `The link reads “${shown}” but opens ${opens}.`],
+    lookalikeSender: (brand, site) => [`The sender's domain imitates ${brand}`, `The message came from ${site}, which is spelled like ${brand}'s domain but isn't one of them. Look-alike domains are how invoice and account scams pass at a glance.`],
+    lookalikeLink: (brand, site) => [`A link goes to a look-alike of ${brand}`, `${site} is spelled like ${brand}'s domain but isn't one of them. Don't sign in or pay there.`],
+    personalAccount: (name, domain) => ["A business title on a personal email account", `The sender calls themselves “${name}” but writes from a personal ${domain} account. Executives and finance teams normally use their organisation's domain.`],
+    request: {
+      payment: ["The email asks for a payment or a change of bank details", "Requests to pay, wire money or use new bank details are where business email compromise ends. Confirm them by phone, on a number you already have."],
+      credentials: ["The email asks for a password or verification code", "Legitimate services don't ask for passwords or one-time codes by email."],
+      gift_cards: ["The email asks you to buy gift cards", "Gift-card requests from a manager or colleague are a common scam."],
+    },
+    qr: (sites) => ["The email contains a QR code", `It opens ${sites}. A QR code hides where it leads and is usually scanned on a phone, outside this computer's protection. Check the address before scanning it.`],
+    qrPhishing: ["A QR code with a sign-in or payment request", "Scam emails use QR codes to get people to sign in or pay on their phone, where link checks don't reach. Open the service yourself instead of scanning."],
+    bec: (what) => ["This looks like business email compromise", `It combines a sender that may not be who they claim with a request to ${what}. Verify it through another channel before acting.`],
+    becWhat: { payment: "send money or change bank details", credentials: "share a password or code", gift_cards: "buy gift cards" },
     summary: {
       known_malicious: "This email links to a site on a threat list. Do not open its links or attachments.",
       suspicious: "This email shows warning signs of a scam or phishing attempt.",
@@ -88,6 +119,18 @@ const TEXT = {
     brand: (brand, site) => [`يدّعي المرسل أنه ${brand}`, `يقول الاسم ${brand}، لكن الرسالة جاءت من ${site}، وهو ليس من نطاقاتها.`],
     replyTo: (from, reply) => ["الردود ستذهب إلى نطاق مختلف", `الرسالة من ${from}، لكن الرد عليها يرسل إجابتك إلى ${reply}. يفعل المحتالون ذلك لتلقي الردود باسم مستعار.`],
     linkMismatch: (shown, opens) => ["رابط يعرض عنوانًا ويفتح عنوانًا آخر", `يظهر الرابط “${shown}” لكنه يفتح ${opens}.`],
+    lookalikeSender: (brand, site) => [`نطاق المرسل يقلّد ${brand}`, `جاءت الرسالة من ${site}، وهو مكتوب بشكل يشبه نطاق ${brand} لكنه ليس من نطاقاتها. هكذا تمرّ عمليات احتيال الفواتير والحسابات من النظرة الأولى.`],
+    lookalikeLink: (brand, site) => [`رابط يؤدي إلى موقع يقلّد ${brand}`, `${site} مكتوب بشكل يشبه نطاق ${brand} لكنه ليس من نطاقاتها. لا تسجّل الدخول ولا تدفع فيه.`],
+    personalAccount: (name, domain) => ["لقب وظيفي على حساب بريد شخصي", `يقدّم المرسل نفسه باسم “${name}” لكنه يراسل من حساب شخصي على ${domain}. يستخدم المديرون وفرق المالية عادةً نطاق مؤسستهم.`],
+    request: {
+      payment: ["تطلب الرسالة دفعة أو تغيير بيانات الحساب البنكي", "طلبات الدفع أو التحويل أو استخدام حساب بنكي جديد هي ما ينتهي إليه احتيال البريد التجاري. تأكّد منها هاتفيًا على رقم تعرفه مسبقًا."],
+      credentials: ["تطلب الرسالة كلمة مرور أو رمز تحقق", "لا تطلب الخدمات الحقيقية كلمات المرور أو الرموز المؤقتة عبر البريد."],
+      gift_cards: ["تطلب الرسالة شراء بطاقات هدايا", "طلب بطاقات الهدايا من مدير أو زميل احتيال شائع."],
+    },
+    qr: (sites) => ["تحتوي الرسالة على رمز QR", `يفتح ${sites}. يخفي رمز QR وجهته، ويُمسح عادةً بالهاتف بعيدًا عن حماية هذا الجهاز. تحقّق من العنوان قبل مسحه.`],
+    qrPhishing: ["رمز QR مع طلب تسجيل دخول أو دفع", "تستخدم رسائل الاحتيال رموز QR لدفع الناس إلى تسجيل الدخول أو الدفع على هواتفهم، حيث لا تصل فحوص الروابط. افتح الخدمة بنفسك بدل مسح الرمز."],
+    bec: (what) => ["تبدو هذه الرسالة احتيالًا على البريد التجاري", `تجمع بين مرسل قد لا يكون من يدّعي، وطلب ${what}. تحقّق منها عبر وسيلة أخرى قبل أي إجراء.`],
+    becWhat: { payment: "تحويل أموال أو تغيير بيانات بنكية", credentials: "مشاركة كلمة مرور أو رمز", gift_cards: "شراء بطاقات هدايا" },
     summary: {
       known_malicious: "تحتوي هذه الرسالة على رابط لموقع مدرج في قوائم التهديدات. لا تفتح روابطها أو مرفقاتها.",
       suspicious: "تظهر على هذه الرسالة علامات تحذير من احتيال أو تصيد.",
@@ -178,6 +221,28 @@ function wordingFindings(text, pack, lang) {
   return findings;
 }
 
+// Personal mailbox providers: fine for people, unusual for a company's finance team or CEO.
+const PERSONAL_MAIL = new Set(["gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", "msn.com", "yahoo.com", "icloud.com", "me.com", "aol.com", "proton.me", "protonmail.com", "gmx.com", "mail.com", "yandex.com", "zoho.com"]);
+// Role and title words in display names (English and Arabic, after folding).
+const ROLE = /\b(ceo|cfo|coo|chairman|president|director|managing|manager|finance|accounts?|payroll|treasury|procurement|hr)\b|المدير|مدير|الرئيس|رئيس|المالي|الماليه|الحسابات|المحاسب|الرواتب|المشتريات|الموارد البشريه|الخزينه/i;
+// Requests that end a BEC: money, credentials, gift cards. English and Arabic.
+const REQUESTS = {
+  payment: /\b(wire|bank)\s+transfer|\bIBAN\b|\b(new|updated?|change[ds]?)\s+(of\s+|to\s+)?(our\s+|my\s+|the\s+|your\s+)?(bank|banking|account|payment)\s+(details|account|information)|\bremittance\b|\b(swift|routing)\s+(code|number)|حوال[هة]\s+(بنكي[هة]|مالي[هة])|تحويل\s+(بنكي|مبلغ|مالي|الأموال|الاموال|المبلغ)|(?:آ|أ|ا)يبان|رقم\s+(الحساب|الآيبان)|حساب\s+بنكي\s+جديد|(تغيير|تحديث)\s+(بيانات|معلومات)\s+(الحساب|البنك)/iu,
+  credentials: /\b(password|passcode|verification\s+code|one[-\s]time\s+(code|password)|OTP|login\s+details)\b|كلم[ةه]\s+(المرور|السر)|رمز\s+(التحقق|التفعيل|الدخول)|بيانات\s+الدخول/iu,
+  gift_cards: /\bgift\s*cards?\b|\b(itunes|google\s+play|steam|amazon)\s+cards?\b|بطاقات?\s+(هدايا|هدية|شحن)/iu,
+};
+
+/** Which kinds of sensitive request the text makes (none, one or several). */
+export function sensitiveRequests(text) {
+  return Object.entries(REQUESTS)
+    .filter(([, pattern]) => pattern.test(text))
+    .map(([kind]) => kind);
+}
+
+function brandName(pack, key) {
+  return pack?.brands?.[key]?.name ?? key;
+}
+
 function senderFindings(email, pack, s) {
   const findings = [];
   const from = parseAddress(email.from_header);
@@ -190,12 +255,27 @@ function senderFindings(email, pack, s) {
   const lower = from.name.toLowerCase();
   const words = new Set(lower.split(/[^a-z0-9]+/).filter((w) => w.length >= 3));
   const squashed = lower.replace(/[^a-z0-9]/g, "");
+  let claimed = false;
   for (const [key, brand] of Object.entries(pack?.brands ?? {})) {
     if ((words.has(key) || squashed === key) && !brand.domains.some((d) => siteOf(d) === site)) {
       findings.push(finding("high", "brand_impersonation", s.brand(brand.name, site)));
+      claimed = true;
       break;
     }
   }
+  // The same in Arabic ("مصرف الراجحي" from a domain that isn't Al Rajhi's).
+  const arabic = claimed ? null : arabicBrandIn(from.name, pack?.url_rules);
+  if (arabic && pack?.brands?.[arabic] && !pack.brands[arabic].domains.some((d) => siteOf(d) === site)) {
+    findings.push(finding("high", "brand_impersonation", s.brand(brandName(pack, arabic), site)));
+  }
+
+  // A domain spelled like a brand's ("paypa1.com", "الراجحی.com", "alrajhi-bank.co").
+  const imitated = impersonatedBrand(site, pack);
+  if (imitated) findings.push(finding(imitated.kind === "contains" ? "medium" : "high", "lookalike_sender", s.lookalikeSender(brandName(pack, imitated.brand), site)));
+
+  // A finance or executive title on a personal mailbox.
+  const foldedName = from.name.normalize("NFKC").replace(/[ة]/g, "ه");
+  if (PERSONAL_MAIL.has(site) && ROLE.test(foldedName)) findings.push(finding("medium", "personal_account", s.personalAccount(from.name, site)));
 
   const reply = parseAddress(email.reply_to || "");
   if (reply.domain && siteOf(reply.domain) !== site) findings.push(finding("medium", "reply_to_mismatch", s.replyTo(site, siteOf(reply.domain))));
@@ -208,6 +288,57 @@ function authFindings(results, s) {
     return [finding("medium", "email_authentication", s.spf)];
   }
   return [];
+}
+
+function lookalikeLinkFindings(links, pack, s) {
+  const seen = new Set();
+  for (const link of links || []) {
+    let site;
+    try {
+      site = siteOf(new URL(link.href).hostname);
+    } catch {
+      continue;
+    }
+    if (seen.has(site)) continue;
+    seen.add(site);
+    const imitated = impersonatedBrand(site, pack);
+    // "paypal-login.example": the brand plus other words is a weaker sign than a misspelling.
+    if (imitated) return [finding(imitated.kind === "contains" ? "medium" : "high", "lookalike_link", s.lookalikeLink(brandName(pack, imitated.brand), site))];
+  }
+  return [];
+}
+
+/** QR codes decoded from the message's images (by the desktop scanner); never opened. */
+function qrFindings(qrLinks, text, sender, s) {
+  const sites = [];
+  for (const href of qrLinks || []) {
+    try {
+      const site = siteOf(new URL(href).hostname);
+      if (!sites.includes(site)) sites.push(site);
+    } catch {
+      // not a web address
+    }
+  }
+  if (!sites.length) return [];
+  const requests = sensitiveRequests(text);
+  const doubtful = sender.some((f) => f.severity === "high" || f.severity === "medium");
+  const accountWords = /\b(sign\s*in|log\s*in|verify|account|password|payment|pay)\b|تسجيل\s+الدخول|تحقق|حساب|كلمة\s+المرور|دفع/iu.test(text);
+  const out = [finding("low", "qr_code", s.qr(sites.join(", ")))];
+  if (doubtful || requests.includes("credentials") || requests.includes("payment") || (accountWords && sender.length)) out.push(finding("medium", "qr_phishing", s.qrPhishing));
+  return out;
+}
+
+/**
+ * Business email compromise is a combination: a sender that may not be who they
+ * claim, plus a request for money, credentials or gift cards. Either alone is
+ * common in genuine mail, so a request on its own is only noted (low).
+ */
+function becFindings(text, sender, s) {
+  const requests = sensitiveRequests(text);
+  if (!requests.length) return [];
+  const doubtful = sender.some((f) => ["sender_mismatch", "brand_impersonation", "lookalike_sender", "personal_account", "reply_to_mismatch"].includes(f.category));
+  if (doubtful) return [finding("high", "bec", s.bec(s.becWhat[requests[0]]))];
+  return [finding("low", "sensitive_request", s.request[requests[0]])];
 }
 
 function linkFindings(links, s) {
@@ -229,10 +360,14 @@ function linkFindings(links, s) {
 export function analyzeLocally(email, pack, lang = "en") {
   const s = TEXT[lang === "ar" ? "ar" : "en"];
   const text = [email.subject, email.text].filter(Boolean).join("\n");
+  const sender = senderFindings(email, pack, s);
   return [
     ...authFindings(authResults(email.authentication_results), s),
-    ...senderFindings(email, pack, s),
+    ...sender,
     ...linkFindings(email.links, s),
+    ...lookalikeLinkFindings([...(email.links || []), ...(email.qr_links || []).map((href) => ({ href, text: "" }))], pack, s),
+    ...becFindings(text, sender, s),
+    ...qrFindings(email.qr_links, text, sender, s),
     ...wordingFindings(text, pack, lang),
   ];
 }
@@ -251,5 +386,13 @@ export function verdict(findings, lang = "en") {
       ? "suspicious"
       : "no_known_threat";
   const sorted = [...findings].sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 5) - (SEVERITY_ORDER[b.severity] ?? 5));
-  return { risk, summary: TEXT[lang === "ar" ? "ar" : "en"].summary[risk], findings: sorted };
+  // What the warning rests on: a doubtful sender, a doubtful message, or a threat-list match.
+  const serious = (f) => f.severity === "critical" || f.severity === "high" || f.severity === "medium";
+  const SENDER = new Set(["sender_mismatch", "brand_impersonation", "lookalike_sender", "personal_account", "reply_to_mismatch", "email_authentication"]);
+  const assessment = {
+    confirmed: findings.some((f) => f.severity === "critical" && (f.category === "threat_intelligence" || f.category === "link_reputation")),
+    sender: findings.some((f) => serious(f) && SENDER.has(f.category)),
+    message: findings.some((f) => serious(f) && !SENDER.has(f.category) && f.category !== "threat_intelligence"),
+  };
+  return { risk, summary: TEXT[lang === "ar" ? "ar" : "en"].summary[risk], findings: sorted, assessment };
 }

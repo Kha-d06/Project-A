@@ -6,12 +6,15 @@ export interface EmailFields {
   authentication_results: string;
   text: string;
   links: { href: string; text: string }[];
+  /** Web addresses decoded from QR codes in the message's images (desktop scanner). */
+  qr_links?: string[];
 }
 export interface RulePack {
   version: string;
   rules: { category: string; severity: string; title: string; explanation: string; title_ar: string; explanation_ar: string; patterns: string[] }[];
   brands: Record<string, { name: string; domains: string[] }>;
   shorteners: string[];
+  url_rules?: Record<string, unknown>;
 }
 export type CompiledPack = RulePack & { rules: (RulePack["rules"][number] & { compiled: RegExp[] })[] };
 export interface Finding {
@@ -32,8 +35,19 @@ export function parseAddress(header: string): { name: string; address: string; d
 export function authResults(header: string): Record<string, string>;
 export function bareUrl(raw: string): string | null;
 export function linksToCheck(email: Pick<EmailFields, "links" | "text">): string[];
+export function linksIn(email: Pick<EmailFields, "links" | "text">): string[];
+export function sensitiveRequests(text: string): ("payment" | "credentials" | "gift_cards")[];
 export function safePatternSource(source: unknown): boolean;
 export function compilePack(pack: RulePack | null | undefined): CompiledPack | null;
 export function analyzeLocally(email: EmailFields, pack: CompiledPack | null, lang?: "en" | "ar"): Finding[];
 export function linkReputationFindings(results: LinkResult[]): Finding[];
-export function verdict(findings: Finding[], lang?: "en" | "ar"): { risk: "known_malicious" | "suspicious" | "no_known_threat"; summary: string; findings: Finding[] };
+export function verdict(
+  findings: Finding[],
+  lang?: "en" | "ar",
+): {
+  risk: "known_malicious" | "suspicious" | "no_known_threat";
+  summary: string;
+  findings: Finding[];
+  /** What a warning rests on: a doubtful sender, a doubtful message, or a threat-list match. */
+  assessment: { confirmed: boolean; sender: boolean; message: boolean };
+};

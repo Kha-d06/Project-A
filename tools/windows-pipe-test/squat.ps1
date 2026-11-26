@@ -6,15 +6,18 @@
   whether they contain a hello. It never prints the bytes themselves, so a real
   token isn't copied into the log.
 
-    powershell -ExecutionPolicy Bypass -File squat.ps1 -User victim
+    powershell -ExecutionPolicy Bypass -File squat.ps1 -User victim            # the old fixed name
+    powershell -ExecutionPolicy Bypass -File squat.ps1 -Name qalaa-daemon-...  # an exact pipe name
 #>
 param(
-  [Parameter(Mandatory = $true)][string]$User,
+  [string]$User = "",
+  [string]$Name = "",
   [int]$Seconds = 120,
   [string]$Log = (Join-Path $env:TEMP "qalaa-squat.log")
 )
 
-$name = "qalaa-daemon-" + ($User -replace '[^A-Za-z0-9_-]', '_')
+if (-not $Name -and -not $User) { Write-Output "Give -User or -Name."; exit 2 }
+$name = if ($Name) { $Name } else { "qalaa-daemon-" + ($User -replace '[^A-Za-z0-9_-]', '_') }
 $security = New-Object System.IO.Pipes.PipeSecurity
 $security.AddAccessRule((New-Object System.IO.Pipes.PipeAccessRule("Everyone", "ReadWrite", "Allow")))
 try {

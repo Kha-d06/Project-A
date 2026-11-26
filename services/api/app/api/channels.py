@@ -32,7 +32,7 @@ from app.core.errors import ApiError
 from app.core.rate_limit import RateLimit
 from app.notify.channels import ChannelUnavailableError, send_telegram, send_whatsapp
 from app.scans import service
-from app.scans.storage import store_sample
+from app.scans.storage import delete_sample, store_sample
 
 router = APIRouter(tags=["Bots and email"])
 
@@ -238,13 +238,18 @@ async def inbound_email(request: Request, db: Db) -> dict[str, int]:
             storage_name, _ = store_sample(io.BytesIO(content))
         except ApiError:
             continue  # too large to scan
-        service.create_scan(
-            db,
-            scan_type="file",
-            target=name,
-            payload={"storage_name": storage_name, "file_name": name, "reply_to": reply_to},
-            user=None,
-            locale=_locale(subject),
-        )
+        try:
+            service.create_scan(
+                db,
+                scan_type="file",
+                target=name,
+                payload={"storage_name": storage_name, "file_name": name, "reply_to": reply_to},
+                user=None,
+                locale=_locale(subject),
+            )
+        except Exception:
+            # No scan will ever delete it: don't leave the attachment on disk.
+            delete_sample(storage_name)
+            raise
         scans += 1
     return {"scans": scans}

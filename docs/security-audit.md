@@ -39,11 +39,19 @@ claim didn't hold up).
 | Same-user IPC hardening (QA-11) | design choice between peer-credential checks and a privileged service |
 | Web vault delivery (QA-12) | product decision: an extension or native-only vault, or a signed web bundle |
 
-**Open, no external dependency** (next):
+**Completed in the follow-up round:**
 - QA-19: email links by hash prefix.
-- QA-24: sandbox retention.
-- Daemon-side pipe DACL (QA-05).
-- Reproducible builds (QA-22).
+- BEC and QR-code detection.
+- QA-24: sample retention.
+- QA-05: service-side pipe protections.
+- QA-25: extension revocation.
+- QA-26: Dependabot majors.
+- Reproducible-build check: see [reproducible-builds.md](reproducible-builds.md).
+
+**Open, no external dependency** (next):
+- An owner-only pipe DACL.
+- QR decoding in the Thunderbird add-on and in PDFs.
+- Reproducibility of the packaged installers.
 
 Related specifications: [update signing](update-signing.md), [vault cryptography](vault-crypto.md),
 [security notes](security.md) (per-feature design, including URL-checking privacy).
@@ -213,7 +221,7 @@ Severity follows impact × exploitability for this product's users. "Confidence"
 
 ### Open
 
-**QA-05 · Windows named pipe can be squatted: Medium (medium) · Fixed in code (client side); awaiting Windows verification**
+**QA-05 · Windows named pipe can be squatted: Medium (medium) · Fixed in code (service and client); awaiting Windows verification**
 - **Where:** `core/paths.ts` and `crates/qalaa-ipc/src/paths.rs` (`\\.\pipe\qalaa-daemon-<USERNAME>`), `client.rs` (no server check on Windows).
 - **Attack:** a process of another user creates the pipe before the daemon starts. The daemon then refuses ("already running") and the native UI hands its token to the squatter. The token only works against the real daemon, but a squatter can also feed the UI false status.
 - **Fix:**
@@ -221,7 +229,13 @@ Severity follows impact × exploitability for this product's users. "Confidence"
   - Daemon: create the pipe with an explicit DACL (owner only) and `FILE_FLAG_FIRST_PIPE_INSTANCE`.
 - **Done (client):** `check_pipe_server` in `qalaa-ipc` compares the pipe server's user SID with its own before sending anything (compile- and clippy-checked for `x86_64-pc-windows-msvc`).
 - **To verify:** run the procedure in [windows-pipe-test.md](windows-pipe-test.md).
-- **Still open (daemon):** Node can't set a pipe DACL, so a squatter can still stop the daemon from starting (a denial of service, not a token leak).
+- **Done (service):**
+  - a fresh 128-bit random pipe name on every start, published in the user-only `ipc-endpoint` file after the pipe exists (no one can create it first);
+  - single-instance detection through that file;
+  - a 5-second `hello` deadline, at most 8 unauthenticated and 64 total connections.
+
+  Tested on Linux (`test/ipc-hardening.test.ts`).
+- **Still open:** an owner-only DACL, which needs a native listener. The same-user limit is QA-11.
 
 **QA-11 · Any program running as the person can drive the daemon: High (high) · Open (architectural)**
 - **Where:** `core/server.ts`. The token file is readable by every process of that user.
@@ -283,9 +297,11 @@ Severity follows impact × exploitability for this product's users. "Confidence"
 - Windows and macOS report it as unavailable rather than claiming it.
 - **Gaps:** forwarded traffic (containers, VMs) isn't covered, and split-tunnel ranges are IPv4.
 
-**QA-19 · Email link checks still send bare links: Medium for privacy (high) · Open (planned with the BEC/QR work, R5)**
+**QA-19 · Email link checks sent bare links: Medium for privacy (high) · Fixed**
 - **Where:** `apps/thunderbird/src/lib/analysis.js`, `apps/desktop/src/engine/mail.ts` → `POST /email/links`.
-- Scheme, host and path are sent; the query is stripped. It moves to the same prefix scheme as the extension.
+- **Was:** scheme, host and path were sent, with the query stripped.
+- **Fix:** links are now matched by hash prefix on the device (`apps/thunderbird/src/lib/threat-prefix.js`, used by the add-on and the desktop scanner; `GET /email/threat-prefixes`, `POST /email/threat-hashes`). Only 4-byte prefixes plus random decoys are sent, and only on a prefix hit.
+- **Tests:** `apps/thunderbird/test/threat-prefix.test.js`, `apps/desktop/test/mail.test.ts`, `services/api/tests/test_email_links.py`.
 
 **QA-20 · Rate limiting trusted the leftmost X-Forwarded-For: Low (medium) · Fixed**
 - **Where:** `app/core/rate_limit.py`, `client_address`.
@@ -315,11 +331,32 @@ Severity follows impact × exploitability for this product's users. "Confidence"
   - Minimal hardened-runtime entitlements are in place.
 - **Operator setup:** [code-signing.md](code-signing.md).
 
-**QA-24 · Sandbox realism and retention: Low (medium) · Open (R6)**
+**QA-24 · Sandbox realism and retention: Low (medium) · Retention fixed; realism open (R6)**
 - **Isolation verified:** gVisor, `--network=none`, no secrets, no host files. The sandbox can't reach metadata or internal services.
 - **Realism gaps:** no TLS interception, no random-name NXDOMAIN behaviour, no time acceleration, x86-64 Linux only (no ARM/MIPS, no Windows).
 - None of these should weaken isolation.
-- Sample retention is unbounded in the uploads volume. Set a retention job, and document it on the privacy page.
+- **Retention (verified):** a sample was already deleted when its scan finished.
+- **Two gaps, now fixed:**
+  - an inbound-email attachment whose scan couldn't be created stayed on disk forever (`app/api/channels.py`);
+  - nothing removed sample files no scan referred to.
+
+  The hourly task now sweeps those (`sweep_orphan_samples`), so no sample outlives 15 minutes plus one sweep.
+- **Tests:** `tests/test_sample_retention.py`.
+- **Limit, documented in security.md:** deletion doesn't overwrite disk blocks.
+
+### Found while verifying CI for 375a46c
+
+**QA-25 · A browser disconnected from the dashboard kept its credentials: Medium (high) · Fixed**
+- **Found:** CI's full-stack extension test (run 133) failed at "revocation takes effect".
+- **Cause:** with pages checked locally (QA-10), no request reached the server any more, so the extension never received the 401 that made it forget its credentials. The server already refused the revoked token, so nothing could be done with it, but the extension kept its cached account, family rules and unlocked vault until something else contacted the server.
+- **Fix:** an account check every 15 minutes, on a timer and not on browsing, carrying no address. On revocation it drops the credentials and cached account, locks the vault and removes the family rules.
+- **Tests:** `apps/extension/test/e2e.mjs` step 9, which runs against the real stack in CI.
+
+**QA-26 · Dependabot proposed major-version Action upgrades: Low (high) · Fixed**
+- **Found:** after SHA pinning, Dependabot opened pull requests jumping checkout, setup-node, setup-python, upload-artifact and setup-gradle to new major versions. Three of its updates also failed on a parser error (`actions/actions/checkout`).
+- **Why it matters:** major versions change runtimes and inputs, so they shouldn't merge on autopilot.
+- **Fix:** `.github/dependabot.yml` now ignores major versions and groups minor and patch updates.
+- **Open:** the Node 20 deprecation warning on the v4 actions; upgrade to the current majors by hand. The pins themselves were checked: each SHA is the commit `git ls-remote` reports for that release tag in the action's own repository, and CI ran them.
 
 ### Checked and sound (no change needed)
 

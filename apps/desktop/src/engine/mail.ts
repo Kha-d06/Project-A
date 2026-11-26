@@ -6,9 +6,11 @@
  * messages since the last check, and checks each one on this computer with the
  * same code as the Thunderbird add-on (apps/thunderbird/src/lib/analysis.js):
  * sender, reply address, the provider's authentication results, link text and
- * scam wording from the public rule pack. The only thing sent to the Qalaa
- * server about a message is its bare links (scheme, host and path), for a
- * threat-list lookup. Bodies, headers and attachments never leave the device.
+ * scam wording from the public rule pack. Links are matched against the threat
+ * lists by hash prefix on the device (thunderbird/src/lib/threat-prefix.js):
+ * only on a prefix hit are a few 4-byte prefixes, mixed with random ones, sent
+ * to fetch full hashes for a local compare. No link, address, body, header or
+ * attachment leaves the device.
  * The password stays on this computer, encrypted by the operating system's
  * keychain where one is available.
  */
@@ -19,14 +21,14 @@ import {
   type CompiledPack,
   type EmailFields,
   type Finding,
-  type LinkResult,
   type RulePack,
   analyzeLocally,
   compilePack,
-  linkReputationFindings,
-  linksToCheck,
+  linksIn,
   verdict as combine,
 } from "../../../thunderbird/src/lib/analysis.js";
+import { qrLinks } from "./qr";
+import { LIST_REFRESH_MS, type StoredThreatList, type ThreatHashMatch, createLinkChecker } from "../../../thunderbird/src/lib/threat-prefix.js";
 
 export interface MailAccount {
   host: string;
@@ -43,6 +45,8 @@ export interface MailState {
   /** The public rule pack, refreshed once a day. */
   pack?: RulePack | null;
   packFetchedAt?: string | null;
+  /** The threat lists' 4-byte hash prefixes, refreshed every 6 hours. */
+  threatList?: StoredThreatList | null;
 }
 
 export type EmailCheckRequest = EmailFields;
@@ -56,7 +60,7 @@ export interface MailResult {
   risk: string;
   summary: string;
   findings: MailFinding[];
-  /** False when the link lookup could not reach the server. */
+  /** False when the links couldn't be checked against an up-to-date threat list. */
   linksChecked?: boolean;
 }
 
@@ -64,8 +68,11 @@ export const EMPTY_STATE: MailState = { uidValidity: null, lastUid: 0, lastCheck
 /** Messages read the first time, and at most per check after that. */
 export const FIRST_SCAN = 25;
 export const MAX_PER_CHECK = 50;
-/** Only the first part of a very large message is read; attachments are not needed. */
-const MAX_SOURCE_BYTES = 1_000_000;
+/**
+ * Only the first 2 MB of a message is read: enough for the text and typical
+ * images (QR codes are decoded from them), bounded for 50 messages per check.
+ */
+const MAX_SOURCE_BYTES = 2_000_000;
 const MAX_TEXT = 20_000;
 const KEEP_RESULTS = 100;
 
@@ -126,7 +133,10 @@ function headerText(parsed: ParsedMail, name: string): string {
 export function toCheckRequest(parsed: ParsedMail): EmailCheckRequest {
   const html = typeof parsed.html === "string" ? parsed.html : "";
   const text = (parsed.text?.trim() || stripHtml(html)).slice(0, MAX_TEXT);
+  // Images (attached or inline) are searched for QR codes on this computer.
+  const images = (parsed.attachments ?? []).filter((a) => /^image\/(png|jpe?g)$/i.test(a.contentType) && a.content?.length);
   return {
+    qr_links: qrLinks(images.map((a) => ({ content: a.content, contentType: a.contentType }))),
     from_header: (parsed.from?.text ?? "").slice(0, 500),
     reply_to: parsed.replyTo?.text ? parsed.replyTo.text.slice(0, 500) : null,
     subject: (parsed.subject ?? "").slice(0, 1000),
@@ -146,28 +156,41 @@ export async function fetchRulePack(server: string, fetcher: typeof fetch = fetc
   return (await response.json()) as RulePack;
 }
 
-/** Threat-list lookup for bare links only; null when the server could not be reached. */
-export async function checkLinks(server: string, urls: string[], fetcher: typeof fetch = fetch): Promise<LinkResult[] | null> {
-  if (!urls.length) return [];
+/** Downloads the whole prefix list (sends nothing about any message); null if it can't. */
+export async function fetchThreatList(server: string, fetcher: typeof fetch = fetch, now = Date.now()): Promise<StoredThreatList | null> {
   try {
-    const response = await fetcher(`${base(server)}/links`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ urls }),
-      signal: AbortSignal.timeout(20_000),
-    });
+    const response = await fetcher(`${base(server)}/threat-prefixes`, { signal: AbortSignal.timeout(30_000) });
     if (!response.ok) return null;
-    return ((await response.json()) as { results: LinkResult[] }).results;
+    const body = (await response.json()) as { prefixes: string; sources: string[] };
+    return typeof body.prefixes === "string" ? { prefixes: body.prefixes, sources: body.sources ?? [], fetchedAt: now } : null;
   } catch {
     return null;
   }
 }
 
-/** Checks one message on the device, plus a link lookup. */
-export async function checkMessage(email: EmailFields, pack: CompiledPack | null, server: string, lang: "en" | "ar", fetcher?: typeof fetch) {
-  const links = await checkLinks(server, linksToCheck(email), fetcher);
-  const result = combine([...analyzeLocally(email, pack, lang), ...linkReputationFindings(links ?? [])], lang);
-  return { ...result, linksChecked: links !== null };
+/** A link checker for one server and prefix list. */
+export function linkChecker(server: string, list: StoredThreatList | null, fetcher: typeof fetch = fetch, now: () => number = Date.now) {
+  return createLinkChecker({
+    now,
+    getList: async () => list,
+    fetchHashes: async (prefixes) => {
+      const response = await fetcher(`${base(server)}/threat-hashes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prefixes }),
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (!response.ok) throw new Error("lookup failed");
+      return ((await response.json()) as { matches: ThreatHashMatch[] }).matches;
+    },
+  });
+}
+
+/** Checks one message on the device, with links matched by hash prefix. */
+export async function checkMessage(email: EmailFields, pack: CompiledPack | null, links: ReturnType<typeof linkChecker>, lang: "en" | "ar") {
+  const checked = await links(linksIn(email), lang);
+  const result = combine([...analyzeLocally(email, pack, lang), ...checked.findings], lang);
+  return { ...result, linksChecked: checked.checked };
 }
 
 /** Which UIDs to read: new ones since the last check, or the latest few the first time. */
@@ -244,12 +267,17 @@ export async function scanInbox(
       }
     }
     const compiled = compilePack(pack);
+    let threatList = state.threatList ?? null;
+    if (!threatList || clock.getTime() - threatList.fetchedAt > LIST_REFRESH_MS) {
+      threatList = (await fetchThreatList(server, deps.fetcher, clock.getTime())) ?? threatList;
+    }
+    const links = linkChecker(server, threatList, deps.fetcher, () => clock.getTime());
     const { messages, uidValidity, fresh } = await read(account, password, state);
     const added: MailResult[] = [];
     let lastUid = fresh ? 0 : state.lastUid;
     for (const message of messages.sort((a, b) => a.uid - b.uid)) {
       const parsed = await simpleParser(message.source, { skipImageLinks: true, skipTextToHtml: true });
-      const verdict = await checkMessage(toCheckRequest(parsed), compiled, server, lang, deps.fetcher);
+      const verdict = await checkMessage(toCheckRequest(parsed), compiled, links, lang);
       added.push({
         uid: message.uid,
         from: parsed.from?.text ?? "",
@@ -263,7 +291,7 @@ export async function scanInbox(
       lastUid = Math.max(lastUid, message.uid);
     }
     return {
-      state: { uidValidity, lastUid, lastCheck: now, lastError: null, results: mergeResults(fresh ? [] : state.results, added), pack, packFetchedAt },
+      state: { uidValidity, lastUid, lastCheck: now, lastError: null, results: mergeResults(fresh ? [] : state.results, added), pack, packFetchedAt, threatList },
       added,
     };
   } catch (error) {

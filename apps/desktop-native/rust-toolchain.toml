@@ -1,0 +1,6 @@
+# The exact compiler for every build (CI, releases and the reproducibility check),
+# so the same source gives the same binaries. Raise it deliberately, in its own commit.
+[toolchain]
+channel = "1.97.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

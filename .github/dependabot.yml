@@ -1,5 +1,7 @@
 # Keeps the commit-pinned GitHub Actions current (audit QA-22). Each update is a
-# reviewed pull request that changes one SHA and its version comment.
+# reviewed pull request that changes SHAs and their version comments.
+# Major versions change runtimes and inputs (for example checkout 4 → 5 moved to
+# Node 24), so they are upgraded by hand after reading the release notes, not here.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -7,3 +9,9 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      actions-minor-and-patch:
+        update-types: ["minor", "patch"]

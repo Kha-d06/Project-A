@@ -16,14 +16,24 @@ from urllib.parse import urlsplit, urlunsplit
 from fastapi import APIRouter, Request, Response
 
 from app.analyzers.message_patterns import RULES
-from app.analyzers.url_heuristics import BRAND_DOMAINS, URL_SHORTENERS, analyze_url_text, brand_name
+from app.analyzers.url_heuristics import (
+    BRAND_DOMAINS,
+    URL_SHORTENERS,
+    analyze_url_text,
+    brand_name,
+)
+from app.analyzers.url_heuristics import (
+    RULES as URL_RULES,
+)
 from app.analyzers.url_scan import indicator_findings
 from app.analyzers.urls import InvalidUrlError, parse_url
 from app.api.deps import Db
 from app.core import rate_limit
+from app.core.cache import get_cache
 from app.core.rate_limit import RateLimit, client_address
 from app.intel.feeds import THREATFOX, URLHAUS
 from app.intel.lookup import fresh_sources
+from app.intel.prefixes import build_threat_prefixes, lookup_hashes
 from app.schemas.email import (
     BrandOut,
     LinkCheckOut,
@@ -33,11 +43,17 @@ from app.schemas.email import (
     RuleOut,
     RulePack,
 )
+from app.schemas.extension import ThreatHashes, ThreatHashQuery, ThreatPrefixes
 
 router = APIRouter(prefix="/email", tags=["Scanning"])
 
-# A mailbox scan checks the links of each new message.
+# Kept for add-on versions before hash-prefix lookups; current clients don't call it.
 LINKS_LIMIT = RateLimit("email-links", max_requests=600, window_seconds=3600)
+# Hash-prefix lookups for mail clients (no account: the add-on and the desktop
+# scanner check mail before or without linking). Per address, never stored.
+PREFIX_LIMIT = RateLimit("email-prefixes", max_requests=30, window_seconds=3600)
+HASH_LIMIT = RateLimit("email-hashes", max_requests=1200, window_seconds=3600)
+PREFIX_CACHE_SECONDS = 600
 _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 
 
@@ -62,9 +78,16 @@ def rule_pack() -> RulePack:
     body = {
         "rules": [r.model_dump() for r in rules],
         "brands": {k: v.model_dump() for k, v in brands.items()},
+        "url_rules": URL_RULES,
     }
     version = hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()[:16]
-    return RulePack(version=version, rules=rules, brands=brands, shorteners=sorted(URL_SHORTENERS))
+    return RulePack(
+        version=version,
+        rules=rules,
+        brands=brands,
+        shorteners=sorted(URL_SHORTENERS),
+        url_rules=URL_RULES,
+    )
 
 
 @router.get("/rules", response_model=RulePack)
@@ -108,3 +131,29 @@ def check_links(body: LinkCheckRequest, request: Request, db: Db) -> LinkCheckOu
         )
     available = bool(fresh_sources(db, (URLHAUS, THREATFOX)))
     return LinkCheckOut(results=results, feed_available=available)
+
+
+@router.get("/threat-prefixes", response_model=ThreatPrefixes)
+def email_threat_prefixes(request: Request, response: Response, db: Db) -> ThreatPrefixes:
+    """Every listed address and domain as a 4-byte SHA-256 prefix. Downloading the
+    whole list sends nothing about any message."""
+    rate_limit.enforce(PREFIX_LIMIT, f"ip:{client_address(request)}")
+    response.headers["Cache-Control"] = f"public, max-age={PREFIX_CACHE_SECONDS}"
+    cache = get_cache()
+    generation = cache.generation()
+    key = f"email-prefixes:{generation}"
+    if generation >= 0 and (cached := cache.get(key)):
+        return ThreatPrefixes.model_validate_json(cached)
+    listing = build_threat_prefixes(db)
+    if generation >= 0:
+        cache.set(key, listing.model_dump_json(), PREFIX_CACHE_SECONDS)
+    return listing
+
+
+@router.post("/threat-hashes", response_model=ThreatHashes)
+def email_threat_hashes(body: ThreatHashQuery, request: Request, db: Db) -> ThreatHashes:
+    """Full hashes for up to 32 prefixes; the client compares them itself. The
+    prefixes are shared by many addresses, and include random ones, so they
+    don't say which link was in the message. Nothing is stored."""
+    rate_limit.enforce(HASH_LIMIT, f"ip:{client_address(request)}")
+    return lookup_hashes(db, body.prefixes)

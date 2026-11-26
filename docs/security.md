@@ -44,6 +44,15 @@ remediation roadmap, is [security-audit.md](security-audit.md). Specifications:
 - **Deletion.** Samples are deleted when the scan finishes, fails or is deleted. A retention sweep also fails any scan stuck for 15 minutes and removes its sample.
 - **Worker containment.** The worker runs as an unprivileged user on a read-only filesystem, with all capabilities dropped, `no-new-privileges`, and memory and CPU caps. Tasks have hard time limits.
 - **No third parties.** Files are never sent to a third party. A VirusTotal lookup happens only when the user ticks the box for that scan, and sends the SHA-256 fingerprint only.
+- **Sample retention:**
+  - An uploaded sample is deleted as soon as its scan finishes, whatever the outcome (`app/scans/runner.py`). A failed upload removes its partial file.
+  - The hourly retention task also deletes any sample file no running scan refers to (for example after a crash between storing and queueing), and fails scans that are stuck, together with their files. So no sample exists for longer than 15 minutes plus one hourly sweep.
+  - The sweep touches only regular files with a sample's random name, never links, directories or other files.
+  - No route serves a sample back, and API responses don't include where it was stored.
+  - Samples are used for nothing else: no research copy, no model training, no community sharing, and the file itself is never sent anywhere. Only its SHA-256 fingerprint is looked up at VirusTotal, and only when the person ticks that option for that upload.
+  - Uploads aren't in the backups (`scripts/backup.sh` dumps the database only).
+  - Deleting a file removes it from the file system but doesn't overwrite the disk blocks. On copy-on-write or cloud block storage, earlier blocks may persist in snapshots until the provider reuses them. Encrypt the uploads volume at rest if that matters for your deployment.
+
 
 ## Parser jail (`app/sandbox`)
 
@@ -94,9 +103,12 @@ Background checks by the apps must not reveal what the person has:
 
 - **Email** (desktop mailbox scanner, Thunderbird add-on): every check runs on
   the device with `apps/thunderbird/src/lib/analysis.js` and the public rule
-  pack from `GET /email/rules`. The only request about a message is
-  `POST /email/links` with bare links (scheme, host and path; the server strips
-  query strings, fragments and user names again). Nothing is stored.
+  pack from `GET /email/rules` (which carries the shared address rules).
+  - **Links** are matched against the threat lists by hash prefix (`threat-prefix.js`, the same scheme as the extension's): the client downloads `GET /email/threat-prefixes` every 6 hours, hashes each link (full address, address without query, host and parent domains), and only on a prefix hit calls `POST /email/threat-hashes` with those 4-byte prefixes plus 3 random ones from the list, comparing the full hashes locally. No link, address or text from a message is sent. Errors are reported as fixed phrases that never contain a link.
+  - **Short links** aren't followed: resolving one would contact the shortener from the person's computer and tell it the link was opened. The look-alike and threat checks apply to the short link itself.
+  - **Business email compromise** is judged from a combination: a doubtful sender (look-alike domain, including Unicode and Arabic spellings; a brand named in the display name, also in Arabic; a finance or executive title on a personal mailbox; a reply address on another domain) together with a request for money, bank-detail changes, credentials or gift cards, in English or Arabic. A request on its own is only noted (low), so ordinary invoices aren't flagged. The verdict says whether a warning rests on the sender, the message, or a confirmed threat-list match.
+  - **QR codes** in email images are decoded on the desktop (`apps/desktop/src/engine/qr.ts`; PNG and JPEG only, with size, dimension and memory limits checked before decoding, in pure-JavaScript decoders) and the destination goes through the same look-alike and threat-list checks. A QR code is never opened. The Thunderbird add-on doesn't decode QR codes yet, and PDF attachments aren't searched for them.
+  - `POST /email/links` stays for add-on versions released before this change; current clients don't call it.
 - **File reputation** (desktop, opt-in): k-anonymity. The client sends the first
   6 hex characters of the SHA-256 to `GET /intelligence/hash-prefix/{prefix}`,
   receives every listed hash with that prefix, and compares the full hash
@@ -115,11 +127,11 @@ Background checks by the apps must not reveal what the person has:
   request is stored. A full `POST /extension/check-url` (which sends the
   address) runs only from the right-click menu, when the person asks. Warning
   events, sent only for a linked account that turned syncing on, carry the
-  site's origin, never the path or query. Limit: the browser percent-encodes
+  site's origin, never the path or query. Because no page visit reaches the server any more, the extension checks the account's settings every 15 minutes, on a timer rather than on browsing (no address is sent), so a browser disconnected from the dashboard drops its credentials, cached account and unlocked vault within 15 minutes. Limit: the browser percent-encodes
   some characters in paths (non-ASCII, quotes, braces) that the feeds may list
   unencoded, so such an exact-link listing can be missed; the domain checks
   aren't affected.
-- These routes, and the extension's hash and server-check routes, are dropped from uvicorn's access log
+- These routes (all of `/email/`), and the extension's hash and server-check routes, are dropped from uvicorn's access log
   (`app/core/private_paths.py`), so an address is never written next to what it
   looked up. Their rate limits keep only a per-address counter that expires.
 

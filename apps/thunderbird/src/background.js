@@ -1,9 +1,12 @@
 /**
  * Checks each email when it is opened, on this computer. The rule pack is
- * downloaded from the Qalaa server once a day; the only thing sent about a
- * message is its bare links (no query strings), for a reputation lookup.
+ * downloaded once a day and the threat list's hash prefixes every 6 hours.
+ * Nothing from a message is sent: links are matched by hash prefix
+ * (lib/threat-prefix.js), and only on a prefix hit are a few 4-byte prefixes,
+ * mixed with random ones, sent to fetch the full hashes for a local compare.
  */
-import { analyzeLocally, compilePack, linkReputationFindings, linksToCheck, verdict } from "./lib/analysis.js";
+import { analyzeLocally, compilePack, linksIn, verdict } from "./lib/analysis.js";
+import { LIST_REFRESH_MS, createLinkChecker } from "./lib/threat-prefix.js";
 import { language, t } from "./lib/i18n.js";
 import { badgeFor, toCheckRequest } from "./lib/mail.js";
 
@@ -34,20 +37,42 @@ async function rulePack(serverUrl) {
   return compiled;
 }
 
-async function linkResults(serverUrl, urls) {
-  if (!urls.length) return { findings: [], checked: true };
+/** The downloaded prefix list, refreshed when older than 6 hours (kept if a refresh fails). */
+async function threatList(serverUrl) {
+  const { threatList: stored } = await messenger.storage.local.get("threatList");
+  if (stored && stored.serverUrl === serverUrl && Date.now() - stored.fetchedAt < LIST_REFRESH_MS) return stored;
   try {
-    const response = await fetch(`${serverUrl}/api/v1/email/links`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ urls }),
-    });
+    const response = await fetch(`${serverUrl}/api/v1/email/threat-prefixes`);
     if (!response.ok) throw new Error(String(response.status));
     const body = await response.json();
-    return { findings: linkReputationFindings(body.results), checked: true };
+    const fresh = { serverUrl, prefixes: body.prefixes, sources: body.sources, fetchedAt: Date.now() };
+    await messenger.storage.local.set({ threatList: fresh });
+    return fresh;
   } catch {
-    return { findings: [], checked: false };
+    return stored?.serverUrl === serverUrl ? stored : null;
   }
+}
+
+let checker = null;
+function linkChecker(serverUrl) {
+  if (checker?.serverUrl !== serverUrl) {
+    checker = {
+      serverUrl,
+      check: createLinkChecker({
+        getList: () => threatList(serverUrl),
+        fetchHashes: async (prefixes) => {
+          const response = await fetch(`${serverUrl}/api/v1/email/threat-hashes`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prefixes }),
+          });
+          if (!response.ok) throw new Error("lookup failed");
+          return (await response.json()).matches;
+        },
+      }),
+    };
+  }
+  return checker.check;
 }
 
 async function setBadge(tabId, risk) {
@@ -68,11 +93,10 @@ export async function checkMessage(message) {
     const s = t();
     const email = toCheckRequest(await messenger.messages.getFull(message.id), message);
     const pack = await rulePack(serverUrl);
-    const links = await linkResults(serverUrl, linksToCheck(email));
+    const links = await linkChecker(serverUrl)(linksIn(email), lang);
     const result = verdict([...analyzeLocally(email, pack, lang), ...links.findings], lang);
-    const limitations = [];
+    const limitations = [...links.limitations];
     if (!pack) limitations.push(s.rulesUnavailable);
-    if (!links.checked) limitations.push(s.linksUnchecked);
     const entry = { state: "done", result: { ...result, limitations } };
     results.set(message.id, entry);
     if (results.size > 500) results.delete(results.keys().next().value);

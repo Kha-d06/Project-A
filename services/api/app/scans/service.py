@@ -9,12 +9,13 @@ from app.core.config import get_settings
 from app.models import AccountToken, AuditEvent, ScanJob, User, UserSession
 from app.models.base import utcnow
 from app.scans.runner import run_scan
-from app.scans.storage import delete_sample
+from app.scans.storage import SAMPLE_MAX_AGE, delete_sample, sweep_orphan_samples
 
 # Scans submitted without an account are reachable only by their unguessable ID
 # and are removed after this period.
 ANONYMOUS_SCAN_RETENTION = timedelta(days=30)
-_STUCK_SCAN_AGE = timedelta(minutes=15)
+# A scan that hasn't finished by then has failed; its sample may not live longer either.
+_STUCK_SCAN_AGE = SAMPLE_MAX_AGE
 # Audit events hold IP addresses; they are kept long enough to investigate abuse.
 AUDIT_RETENTION = timedelta(days=180)
 _TARGET_MAX_LENGTH = 300
@@ -117,6 +118,19 @@ def purge_expired_data(db: Session) -> None:
         job.status = "failed"
         job.error = "The scan did not finish. Please submit it again."
         job.completed_at = now
+
+    # Sample files no running scan refers to (left by a crash between storing and
+    # queueing). Running scans are younger than the stuck-scan limit, by the step above.
+    db.flush()
+    active = db.scalars(
+        select(ScanJob.payload).where(ScanJob.status.in_(("queued", "processing")))
+    ).all()
+    referenced = {
+        p["storage_name"]
+        for p in active
+        if isinstance(p, dict) and isinstance(p.get("storage_name"), str)
+    }
+    sweep_orphan_samples(referenced)
 
     from app.community.service import expire_verifications
 

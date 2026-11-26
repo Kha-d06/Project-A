@@ -1,0 +1,304 @@
+{
+ "_comment": "Shared by the server (tests/test_url_vectors.py) and the extension (test/url-rules.test.ts): both must give these results.",
+ "vectors": [
+  {
+   "url": "https://example.org/",
+   "normalized": "https://example.org/",
+   "registrableDomain": "example.org",
+   "findings": []
+  },
+  {
+   "url": "https://www.paypal.com/signin",
+   "normalized": "https://www.paypal.com/signin",
+   "registrableDomain": "paypal.com",
+   "findings": []
+  },
+  {
+   "url": "https://paypa1.com/login",
+   "normalized": "https://paypa1.com/login",
+   "registrableDomain": "paypa1.com",
+   "findings": [
+    {
+     "severity": "high",
+     "category": "typosquatting",
+     "title": "Domain is a look-alike of “paypal”"
+    }
+   ]
+  },
+  {
+   "url": "https://paypall.com/",
+   "normalized": "https://paypall.com/",
+   "registrableDomain": "paypall.com",
+   "findings": [
+    {
+     "severity": "high",
+     "category": "typosquatting",
+     "title": "Domain is a look-alike of “paypal”"
+    }
+   ]
+  },
+  {
+   "url": "https://pay-pal.com/",
+   "normalized": "https://pay-pal.com/",
+   "registrableDomain": "pay-pal.com",
+   "findings": [
+    {
+     "severity": "high",
+     "category": "typosquatting",
+     "title": "Domain is a look-alike of “paypal”"
+    }
+   ]
+  },
+  {
+   "url": "https://secure-paypal.account-verify.com/",
+   "normalized": "https://secure-paypal.account-verify.com/",
+   "registrableDomain": "account-verify.com",
+   "findings": [
+    {
+     "severity": "medium",
+     "category": "brand_impersonation",
+     "title": "“paypal” appears in the address, but the site is not PayPal's"
+    }
+   ]
+  },
+  {
+   "url": "https://xn--pypal-4ve.com/",
+   "normalized": "https://xn--pypal-4ve.com/",
+   "registrableDomain": "xn--pypal-4ve.com",
+   "findings": [
+    {
+     "severity": "high",
+     "category": "homograph",
+     "title": "Domain uses look-alike characters to imitate “paypal”"
+    }
+   ]
+  },
+  {
+   "url": "https://аpple.com/",
+   "normalized": "https://xn--pple-43d.com/",
+   "registrableDomain": "xn--pple-43d.com",
+   "findings": [
+    {
+     "severity": "high",
+     "category": "homograph",
+     "title": "Domain uses look-alike characters to imitate “apple”"
+    }
+   ]
+  },
+  {
+   "url": "http://192.168.1.20/admin",
+   "normalized": "http://192.168.1.20/admin",
+   "registrableDomain": "192.168.1.20",
+   "findings": [
+    {
+     "severity": "medium",
+     "category": "url_pattern",
+     "title": "Link points to a numeric IP address instead of a domain name"
+    }
+   ]
+  },
+  {
+   "url": "http://user@evil.example/login",
+   "normalized": "http://evil.example/login",
+   "registrableDomain": "evil.example",
+   "findings": [
+    {
+     "severity": "medium",
+     "category": "url_pattern",
+     "title": "Link hides its real destination behind an “@” sign"
+    },
+    {
+     "severity": "low",
+     "category": "url_pattern",
+     "title": "Sign-in or account page without an encrypted connection"
+    }
+   ]
+  },
+  {
+   "url": "https://bit.ly/abc123",
+   "normalized": "https://bit.ly/abc123",
+   "registrableDomain": "bit.ly",
+   "findings": [
+    {
+     "severity": "info",
+     "category": "shortener",
+     "title": "Link uses a URL shortener"
+    }
+   ]
+  },
+  {
+   "url": "https://example.org:8443/",
+   "normalized": "https://example.org:8443/",
+   "registrableDomain": "example.org",
+   "findings": [
+    {
+     "severity": "low",
+     "category": "url_pattern",
+     "title": "Link uses an unusual port (8443)"
+    }
+   ]
+  },
+  {
+   "url": "https://a.b.c.d.e.example.org/",
+   "normalized": "https://a.b.c.d.e.example.org/",
+   "registrableDomain": "example.org",
+   "findings": [
+    {
+     "severity": "low",
+     "category": "url_pattern",
+     "title": "Unusually long or deeply nested address"
+    }
+   ]
+  },
+  {
+   "url": "https://downloads.example.org/setup.exe",
+   "normalized": "https://downloads.example.org/setup.exe",
+   "registrableDomain": "example.org",
+   "findings": [
+    {
+     "severity": "low",
+     "category": "download",
+     "title": "Link downloads a program or script"
+    }
+   ]
+  },
+  {
+   "url": "http://example.org/account/login",
+   "normalized": "http://example.org/account/login",
+   "registrableDomain": "example.org",
+   "findings": [
+    {
+     "severity": "low",
+     "category": "url_pattern",
+     "title": "Sign-in or account page without an encrypted connection"
+    }
+   ]
+  },
+  {
+   "url": "https://الراجحی.com/",
+   "normalized": "https://xn--mgbaper7i66b.com/",
+   "registrableDomain": "xn--mgbaper7i66b.com",
+   "findings": [
+    {
+     "severity": "high",
+     "category": "homograph",
+     "title": "Domain written in Arabic imitates Al Rajhi Bank"
+    }
+   ]
+  },
+  {
+   "url": "https://الراجحي.السعودية/",
+   "normalized": "https://xn--mgbaper7iyb.xn--mgberp4a5d4ar/",
+   "registrableDomain": "xn--mgbaper7iyb.xn--mgberp4a5d4ar",
+   "findings": [
+    {
+     "severity": "medium",
+     "category": "homograph",
+     "title": "Domain written in Arabic imitates Al Rajhi Bank"
+    }
+   ]
+  },
+  {
+   "url": "https://ابشر.com/login",
+   "normalized": "https://xn--mgbc1al.com/login",
+   "registrableDomain": "xn--mgbc1al.com",
+   "findings": [
+    {
+     "severity": "medium",
+     "category": "homograph",
+     "title": "Domain written in Arabic imitates Absher"
+    }
+   ]
+  },
+  {
+   "url": "https://ابشــر.com/",
+   "normalized": "https://xn--mgbc1al4da.com/",
+   "registrableDomain": "xn--mgbc1al4da.com",
+   "findings": [
+    {
+     "severity": "high",
+     "category": "homograph",
+     "title": "Domain written in Arabic imitates Absher"
+    }
+   ]
+  },
+  {
+   "url": "https://مكتبة.com/",
+   "normalized": "https://xn--ngbcb3hj.com/",
+   "registrableDomain": "xn--ngbcb3hj.com",
+   "findings": []
+  },
+  {
+   "url": "https://مکتبة.com/",
+   "normalized": "https://xn--ngbcb1iqw.com/",
+   "registrableDomain": "xn--ngbcb1iqw.com",
+   "findings": [
+    {
+     "severity": "medium",
+     "category": "homograph",
+     "title": "Domain uses letters that only look Arabic"
+    }
+   ]
+  },
+  {
+   "url": "https://alrajhibank.com.sa/",
+   "normalized": "https://alrajhibank.com.sa/",
+   "registrableDomain": "alrajhibank.com.sa",
+   "findings": []
+  },
+  {
+   "url": "https://alrajhi-login.com/",
+   "normalized": "https://alrajhi-login.com/",
+   "registrableDomain": "alrajhi-login.com",
+   "findings": [
+    {
+     "severity": "medium",
+     "category": "brand_impersonation",
+     "title": "“alrajhi” appears in the address, but the site is not Al Rajhi Bank's"
+    }
+   ]
+  },
+  {
+   "url": "https://absher.sa/",
+   "normalized": "https://absher.sa/",
+   "registrableDomain": "absher.sa",
+   "findings": []
+  },
+  {
+   "url": "https://abshr.com/",
+   "normalized": "https://abshr.com/",
+   "registrableDomain": "abshr.com",
+   "findings": [
+    {
+     "severity": "high",
+     "category": "typosquatting",
+     "title": "Domain is a look-alike of “absher”"
+    }
+   ]
+  },
+  {
+   "url": "https://mail.google.com/mail/u/0/",
+   "normalized": "https://mail.google.com/mail/u/0/",
+   "registrableDomain": "google.com",
+   "findings": []
+  },
+  {
+   "url": "https://g00gle.com/",
+   "normalized": "https://g00gle.com/",
+   "registrableDomain": "g00gle.com",
+   "findings": [
+    {
+     "severity": "high",
+     "category": "typosquatting",
+     "title": "Domain is a look-alike of “google”"
+    }
+   ]
+  },
+  {
+   "url": "https://example.co.uk/path?q=1",
+   "normalized": "https://example.co.uk/path?q=1",
+   "registrableDomain": "example.co.uk",
+   "findings": []
+  }
+ ]
+}

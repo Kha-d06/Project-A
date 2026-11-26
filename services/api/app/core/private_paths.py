@@ -7,7 +7,16 @@ with what was looked up, so those lines are dropped.
 
 import logging
 
-PRIVATE_PREFIXES = ("/api/v1/intelligence/hash-prefix/", "/api/v1/email/", "/api/v1/relay/")
+PRIVATE_PREFIXES = (
+    "/api/v1/intelligence/hash-prefix/",
+    "/api/v1/email/",
+    "/api/v1/relay/",
+    # The extension's hash lookups and the explicit "check on the server": the
+    # bodies are never logged, and the line saying when an address asked is dropped too.
+    "/api/v1/extension/threat-hashes",
+    "/api/v1/extension/check-url",
+    "/api/v1/extension/check-download",
+)
 
 
 class PrivatePathFilter(logging.Filter):

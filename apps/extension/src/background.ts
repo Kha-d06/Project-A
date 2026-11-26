@@ -17,7 +17,8 @@ import { WrongMasterPassword, type VaultDoc, unlockVault } from "../../web/src/l
 import { fillLoginForm, loginsFor, refusal } from "./lib/autofill";
 import { parseOtpauth, secondsRemaining, totpCode } from "../../web/src/lib/totp";
 import type { Request, Response, Status, VaultStatus } from "./lib/messages";
-import { allowForSession, assessDownload, assessUrl, isAllowedForSession } from "./lib/protection";
+import { refreshThreatList } from "./lib/local-check";
+import { allowForSession, assessDownload, assessUrl, assessUrlOnServer, isAllowedForSession } from "./lib/protection";
 import { DEFAULT_SETTINGS, SEARCH_ORIGINS, loadSettings, saveSettings, type Settings, normalizeHostEntry } from "./lib/settings";
 import type { CheckResult, ProtectionState, Verdict } from "./lib/types";
 import { detectTrackers, siteOf } from "./lib/trackers";
@@ -466,7 +467,8 @@ chrome.contextMenus.onClicked.addListener((info) => {
   if (!target) return;
   void (async () => {
     const settings = await loadSettings();
-    const result = await assessUrl(target, { ...settings, paused: false });
+    // Asked for by the person, so this one goes to the server with the full address.
+    const result = await assessUrlOnServer(target, settings);
     if (!result) {
       await notify(`link:${Date.now()}`, t().notifications.notChecked, t().notifications.notCheckedBody);
       return;
@@ -723,7 +725,7 @@ async function handle(request: Request, sender: chrome.runtime.MessageSender): P
         await chrome.storage.local.remove(ACCOUNT_KEY);
         await clearCache();
       }
-      if (request.changes.privacyMode || request.changes.allowlist || request.changes.blocklist) await clearCache();
+      if (request.changes.allowlist || request.changes.blocklist) await clearCache();
       await refreshGlobalBadge(next);
       await syncContentScripts(next);
       await applyRules(next);
@@ -827,6 +829,7 @@ chrome.alarms?.onAlarm.addListener((alarm) => {
     void serialized(async () => {
       const settings = await loadSettings();
       await refreshBlocklist(settings, true);
+      await refreshThreatList(settings.serverUrl);
       await refreshAccount(settings);
     });
   }
@@ -845,6 +848,7 @@ async function start(reason?: string) {
   await ensureEnrolled(settings);
   await applyRules(settings).catch(() => undefined);
   await refreshBlocklist(settings).catch(() => undefined);
+  await refreshThreatList(settings.serverUrl).catch(() => undefined);
   await chrome.alarms?.create(BLOCKLIST_ALARM, { periodInMinutes: REFRESH_MINUTES });
   await chrome.alarms?.create(SCREEN_TIME_ALARM, { periodInMinutes: 1 });
   await updateScreenTime(false).catch(() => undefined);

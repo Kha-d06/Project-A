@@ -230,7 +230,7 @@ pub const EN: &[(&str, &str)] = &[
     ("prot.decoys", "Hidden decoy files"),
     ("prot.decoys_hint", "Files nothing should touch; changing one raises the alarm. {n} in place."),
     ("prot.terminal", "Check terminal commands"),
-    ("prot.terminal_hint", "Warns before a pasted command downloads and runs something."),
+    ("prot.terminal_hint", "A safety net: warns before a typed or pasted command downloads and runs something. Programs running as you can switch it off."),
     ("prot.on", "on"),
     ("prot.off", "off"),
     ("prot.folders", "Protected folders"),
@@ -452,6 +452,7 @@ pub const EN: &[(&str, &str)] = &[
     ("clip.kind.high_entropy", "Something that looks like a password"),
     ("clip.kind.copied_from_qalaa", "A code copied from Qalaa"),
     ("toggle.safeDns", "Safe DNS: block malicious sites for every app"),
+    ("toggle.safeDns.hint", "Lookups go encrypted to Quad9 (or the resolver you choose), not to Qalaa, so that resolver sees which names this computer looks up. Only the list of dangerous domains comes from your Qalaa server. Names on your local network, and lookups when Quad9 can't be reached, go to the network's own DNS."),
     ("toggle.dnsAdBlocking", "Also block ads and trackers (EasyList, EasyPrivacy)"),
     ("action.review_keyboard", "A new keyboard was connected"),
     (
@@ -750,7 +751,7 @@ pub const AR: &[(&str, &str)] = &[
     ("prot.decoys", "ملفات خداعية مخفية"),
     ("prot.decoys_hint", "ملفات لا ينبغي أن يلمسها شيء؛ تغيير أحدها يطلق الإنذار. الموجود: {n}."),
     ("prot.terminal", "افحص أوامر الطرفية"),
-    ("prot.terminal_hint", "ينبّهك قبل أن يحمّل أمر ملصوق شيئًا ويشغّله."),
+    ("prot.terminal_hint", "شبكة أمان: ينبّهك قبل أن يحمّل أمر مكتوب أو ملصوق شيئًا ويشغّله. تستطيع البرامج التي تعمل بحسابك إيقافه."),
     ("prot.on", "مفعّل"),
     ("prot.off", "متوقف"),
     ("prot.folders", "المجلدات المحمية"),
@@ -972,6 +973,7 @@ pub const AR: &[(&str, &str)] = &[
     ("clip.kind.high_entropy", "شيء يشبه كلمة مرور"),
     ("clip.kind.copied_from_qalaa", "رمز نُسخ من قلعة"),
     ("toggle.safeDns", "DNS الآمن: احجب المواقع الخبيثة لكل التطبيقات"),
+    ("toggle.safeDns.hint", "تُرسل الاستعلامات مشفّرة إلى Quad9 (أو المحلّل الذي تختاره)، لا إلى قلعة، فيرى ذلك المحلّل الأسماء التي يبحث عنها هذا الجهاز. ولا يأتي من خادم قلعة إلا قائمة النطاقات الخطرة. أما أسماء شبكتك المحلية، والاستعلامات حين يتعذّر الوصول إلى Quad9، فتذهب إلى DNS الشبكة نفسها."),
     ("toggle.dnsAdBlocking", "احجب أيضًا الإعلانات وأدوات التتبع (EasyList وEasyPrivacy)"),
     ("action.review_keyboard", "وُصلت لوحة مفاتيح جديدة"),
     (

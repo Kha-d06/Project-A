@@ -13,6 +13,11 @@
  *  - files about to run (./x, bash x.sh, python3 x.py, ./app.AppImage), scanned first;
  *  - downloads (curl -o, wget), scanned once the command has finished;
  *  - packages with names one letter away from popular ones (typosquatting).
+ *
+ * A safety net, not a security boundary: the hooks run as the user inside the
+ * shell, so anything already running as that user can unset them, and commands
+ * run by other programs (not typed into an interactive shell) aren't seen. The
+ * interface says so.
  */
 
 export type RiskLevel = "block" | "warn";

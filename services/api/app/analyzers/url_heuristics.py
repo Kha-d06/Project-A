@@ -1,104 +1,47 @@
 """Checks that only look at the text of a URL. No network access."""
 
+import json
 import unicodedata
+from pathlib import Path
+from typing import Any
 
 from app.analyzers.types import FindingData
 from app.analyzers.urls import ParsedUrl
 
 SOURCE = "Qalaa URL pattern analysis"
 
+# The rules live in one file shared with the browser extension, which runs the
+# same checks locally so the addresses people visit never leave their browser.
+RULES_FILE = Path(__file__).resolve().parent.parent / "rules" / "url_rules.json"
+RULES: dict[str, Any] = json.loads(RULES_FILE.read_text(encoding="utf-8"))
+
 # Frequently impersonated brands and the domains they actually use. Kept short on
 # purpose: a larger list raises the odds of flagging an unrelated legitimate site.
 BRAND_DOMAINS: dict[str, frozenset[str]] = {
-    "paypal": frozenset({"paypal.com", "paypal.me"}),
-    "google": frozenset({"google.com", "google.co.uk", "googleapis.com", "google.ae"}),
-    "microsoft": frozenset({"microsoft.com", "microsoftonline.com", "live.com"}),
-    "apple": frozenset({"apple.com", "icloud.com"}),
-    "amazon": frozenset({"amazon.com", "amazon.co.uk", "amazon.ae", "amazon.sa", "amazon.eg"}),
-    "facebook": frozenset({"facebook.com", "fb.com"}),
-    "instagram": frozenset({"instagram.com"}),
-    "whatsapp": frozenset({"whatsapp.com", "whatsapp.net"}),
-    "netflix": frozenset({"netflix.com"}),
-    "linkedin": frozenset({"linkedin.com"}),
-    "binance": frozenset({"binance.com"}),
-    "coinbase": frozenset({"coinbase.com"}),
-    "dhl": frozenset({"dhl.com", "dhl.de"}),
-    "fedex": frozenset({"fedex.com"}),
-    "aramex": frozenset({"aramex.com"}),
-    "outlook": frozenset({"outlook.com", "live.com", "office.com"}),
-    "dropbox": frozenset({"dropbox.com"}),
-    "steam": frozenset({"steampowered.com", "steamcommunity.com"}),
-    # Gulf banks, telecoms, government services and delivery firms: the names most
-    # often copied in local phishing. Only official domains we are sure of are listed.
-    "emiratesnbd": frozenset({"emiratesnbd.com"}),
-    "bankfab": frozenset({"bankfab.com"}),
-    "mashreq": frozenset({"mashreq.com", "mashreqbank.com"}),
-    "rakbank": frozenset({"rakbank.ae"}),
-    "alrajhi": frozenset({"alrajhibank.com.sa"}),
-    "alahli": frozenset({"alahli.com"}),
-    "riyadbank": frozenset({"riyadbank.com"}),
-    "alinma": frozenset({"alinma.com"}),
-    "bankmuscat": frozenset({"bankmuscat.com"}),
-    "etisalat": frozenset({"etisalat.ae", "eand.com"}),
-    "mobily": frozenset({"mobily.com.sa"}),
-    "ooredoo": frozenset({"ooredoo.qa", "ooredoo.com", "ooredoo.om"}),
-    "omantel": frozenset({"omantel.om"}),
-    "batelco": frozenset({"batelco.com"}),
-    "absher": frozenset({"absher.sa"}),
-    "uaepass": frozenset({"uaepass.ae"}),
-    "nafath": frozenset({"nafath.sa", "iam.gov.sa"}),
-    "dubaipolice": frozenset({"dubaipolice.gov.ae"}),
-    "salik": frozenset({"salik.ae"}),
-    "emiratespost": frozenset({"emiratespost.ae"}),
-    "splonline": frozenset({"splonline.com.sa"}),
-    "smsaexpress": frozenset({"smsaexpress.com"}),
-    "nusuk": frozenset({"nusuk.sa"}),
-    "careem": frozenset({"careem.com"}),
-    "talabat": frozenset({"talabat.com"}),
+    key: frozenset(brand["domains"]) for key, brand in RULES["brands"].items()
 }
-
-# How brands are named in findings, where the lookup key is not the usual name.
-BRAND_NAMES: dict[str, str] = {
-    "paypal": "PayPal", "linkedin": "LinkedIn", "whatsapp": "WhatsApp", "dhl": "DHL",
-    "fedex": "FedEx",
-    "emiratesnbd": "Emirates NBD", "bankfab": "First Abu Dhabi Bank", "rakbank": "RAKBANK",
-    "alrajhi": "Al Rajhi Bank", "alahli": "Saudi National Bank (AlAhli)", "riyadbank": "Riyad Bank",
-    "alinma": "Alinma Bank", "bankmuscat": "Bank Muscat", "etisalat": "e& (Etisalat)",
-    "uaepass": "UAE Pass", "dubaipolice": "Dubai Police", "emiratespost": "Emirates Post",
-    "splonline": "Saudi Post (SPL)", "smsaexpress": "SMSA Express", "nusuk": "Nusuk",
-}  # fmt: skip
+# How brands are named in findings.
+BRAND_NAMES: dict[str, str] = {key: brand["name"] for key, brand in RULES["brands"].items()}
 
 
 def brand_name(brand: str) -> str:
-    return BRAND_NAMES.get(brand, brand.title())
+    return BRAND_NAMES.get(brand, brand.capitalize())
 
 
-# Short brand names turn up inside ordinary words ("dhl" is rare, "apple" is not),
-# so near-miss matching is limited to names long enough to be distinctive.
-_MIN_TYPOSQUAT_LENGTH = 6
-
-URL_SHORTENERS = frozenset(
-    {
-        "bit.ly", "tinyurl.com", "t.co", "goo.gl", "ow.ly", "is.gd", "buff.ly", "rebrand.ly",
-        "cutt.ly", "shorturl.at", "rb.gy", "t.ly", "tiny.cc", "lnkd.in", "s.id", "v.gd",
-    }
-)  # fmt: skip
-
-_CREDENTIAL_PATH_WORDS = ("login", "signin", "sign-in", "verify", "account", "secure", "update",
-                          "password", "wallet", "confirm", "unlock", "billing")  # fmt: skip
-_RISKY_DOWNLOAD_EXTENSIONS = (".exe", ".scr", ".bat", ".cmd", ".msi", ".vbs", ".js", ".jar",
-                              ".apk", ".ps1", ".hta", ".lnk", ".iso", ".img")  # fmt: skip
-_MAX_ORDINARY_SUBDOMAIN_DEPTH = 3
-_LONG_HOST_LENGTH = 60
+_MIN_TYPOSQUAT_LENGTH: int = RULES["minTyposquatLength"]
+URL_SHORTENERS = frozenset(RULES["shorteners"])
+_CREDENTIAL_PATH_WORDS = tuple(RULES["credentialPathWords"])
+_RISKY_DOWNLOAD_EXTENSIONS = tuple(RULES["riskyDownloadExtensions"])
+_MAX_ORDINARY_SUBDOMAIN_DEPTH: int = RULES["maxOrdinarySubdomainDepth"]
+_LONG_HOST_LENGTH: int = RULES["longHostLength"]
 
 # Characters from other scripts that render like Latin letters.
-_CONFUSABLES = str.maketrans(
-    {
-        "а": "a", "е": "e", "о": "o", "р": "p", "с": "c", "у": "y", "х": "x", "і": "i",
-        "ј": "j", "ѕ": "s", "ԁ": "d", "ɡ": "g", "ո": "n", "α": "a", "ο": "o", "ν": "v",
-        "ρ": "p", "τ": "t", "ı": "i", "0": "o", "1": "l",
-    }
-)  # fmt: skip
+_CONFUSABLES = str.maketrans(RULES["confusables"])
+
+_ARABIC = RULES["arabic"]
+_ARABIC_FOLD = str.maketrans({**_ARABIC["fold"], **dict.fromkeys(_ARABIC["strip"], None)})
+_ARABIC_LOOKALIKES = frozenset(_ARABIC["lookalikeLetters"])
+_ARABIC_BRANDS: dict[str, str] = _ARABIC["brands"]
 
 
 def _edit_distance(left: str, right: str) -> int:
@@ -175,6 +118,57 @@ def _homograph_findings(url: ParsedUrl) -> list[FindingData]:
     return []
 
 
+def _is_arabic(text: str) -> bool:
+    return any("\u0600" <= char <= "\u06ff" or "\u0750" <= char <= "\u077f" for char in text)
+
+
+def arabic_fold(text: str) -> str:
+    """One spelling for Arabic letter variants, without diacritics or joiners."""
+    return text.translate(_ARABIC_FOLD)
+
+
+def _arabic_findings(url: ParsedUrl) -> list[FindingData]:
+    """Arabic-script domains: Persian/Urdu look-alike letters, and imitations of
+    regional brands written in Arabic (Western vendors rarely check these)."""
+    label = _unicode_label(url.domain_label)
+    if not _is_arabic(label):
+        return []
+    evidence = {"displayed_as": label, "actual_domain": url.registrable_domain}
+    folded = arabic_fold(label)
+    lookalikes = sorted({char for char in label if char in _ARABIC_LOOKALIKES})
+    for name, brand in _ARABIC_BRANDS.items():
+        near = len(name) >= 5 and _edit_distance(folded, name) == 1
+        if folded == name or near:
+            disguised = bool(lookalikes) or near or folded != label
+            return [
+                FindingData(
+                    "high" if disguised else "medium",
+                    "homograph",
+                    f"Domain written in Arabic imitates {brand_name(brand)}",
+                    f"“{label}” reads as {brand_name(brand)}, but “{url.registrable_domain}” is "
+                    f"not one of its known domains"
+                    + (", and it is spelled with look-alike letters" if disguised else "")
+                    + ". Check the address before signing in or paying.",
+                    SOURCE,
+                    {**evidence, "imitates": brand},
+                )
+            ]
+    if lookalikes:
+        return [
+            FindingData(
+                "medium",
+                "homograph",
+                "Domain uses letters that only look Arabic",
+                "The name contains Persian or Urdu letters that look the same as Arabic ones "
+                f"({' '.join(lookalikes)}). Swapping them in is a way to copy a real Arabic "
+                "address that can't be told apart by eye.",
+                SOURCE,
+                {**evidence, "letters": lookalikes},
+            )
+        ]
+    return []
+
+
 def _brand_findings(url: ParsedUrl) -> list[FindingData]:
     if url.is_ip_address:
         return []
@@ -223,7 +217,7 @@ def _brand_findings(url: ParsedUrl) -> list[FindingData]:
 
 def analyze_url_text(url: ParsedUrl) -> list[FindingData]:
     findings: list[FindingData] = []
-    findings += _homograph_findings(url)
+    findings += _homograph_findings(url) or _arabic_findings(url)
     findings += _brand_findings(url)
 
     if url.is_ip_address:

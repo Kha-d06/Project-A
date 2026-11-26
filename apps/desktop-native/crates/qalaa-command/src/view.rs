@@ -152,7 +152,12 @@ pub fn home_view(model: &HomeModel, now: i64, lang: Lang) -> HomeView {
                 key: toggle.key.clone(),
                 label: t(lang, &format!("toggle.{}", toggle.key)).to_owned(),
                 hint: if toggle.available {
-                    String::new()
+                    // Some switches say what they share, and with whom.
+                    let key = format!("toggle.{}.hint", toggle.key);
+                    match t(lang, &key) {
+                        "?" => String::new(),
+                        hint => hint.to_owned(),
+                    }
                 } else {
                     t(lang, "toggle.unavailable").to_owned()
                 },
@@ -2025,8 +2030,23 @@ mod tests {
         let en = home_view(&model, now, Lang::En);
         let row = en.toggles.iter().find(|t| t.key == "dnsAdBlocking").expect("toggle row");
         assert_eq!(row.label, "Also block ads and trackers (EasyList, EasyPrivacy)");
+        assert_eq!(row.hint, "");
         let ar = home_view(&model, now, Lang::Ar);
         assert!(ar.toggles.iter().any(|t| t.label.starts_with("احجب أيضًا الإعلانات")));
+    }
+
+    #[test]
+    fn safe_dns_says_where_lookups_go() {
+        let mut model = fixture();
+        model
+            .toggles
+            .push(serde_json::from_value(serde_json::json!({"key": "safeDns", "on": true, "available": true})).expect("toggle"));
+        let now = parse_iso(NOW).expect("now");
+        for lang in [Lang::En, Lang::Ar] {
+            let view = home_view(&model, now, lang);
+            let row = view.toggles.iter().find(|t| t.key == "safeDns").expect("toggle row");
+            assert!(row.hint.contains("Quad9"), "{}", row.hint);
+        }
     }
 
     #[test]

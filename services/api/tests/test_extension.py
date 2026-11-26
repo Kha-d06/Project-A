@@ -265,3 +265,50 @@ def test_linked_extension_reads_only_its_own_encrypted_vault(client: TestClient)
     vault = client.get(f"{EXT}/vault", headers=bearer(linked)).json()
     assert vault["data"] == stored["data"] and vault["wrapped_key"] == stored["wrapped_key"]
     assert vault["user_id"] == client.get("/api/v1/auth/session").json()["user"]["id"]
+
+
+# --- Local checks: rules and hash prefixes ----------------------------------------
+
+
+def test_url_rules_are_served_for_local_checks(client: TestClient) -> None:
+    credentials = enroll(client)
+    rules = client.get(f"{EXT}/url-rules", headers=bearer(credentials)).json()
+    assert "paypal" in rules["brands"] and rules["arabic"]["brands"]
+
+
+def test_threat_prefixes_then_full_hashes_find_a_listed_url(client: TestClient, feed: None) -> None:
+    import base64
+    import hashlib
+
+    credentials = enroll(client)
+    listing = client.get(f"{EXT}/threat-prefixes", headers=bearer(credentials)).json()
+    raw = base64.b64decode(listing["prefixes"])
+    assert listing["count"] == len(raw) // 4 >= 1
+    digest = hashlib.sha256(parse_url(LISTED).normalized.encode()).hexdigest()
+    assert bytes.fromhex(digest[:8]) in {raw[i : i + 4] for i in range(0, len(raw), 4)}
+
+    response = client.post(
+        f"{EXT}/threat-hashes", json={"prefixes": [digest[:8]]}, headers=bearer(credentials)
+    )
+    assert response.status_code == 200, response.text
+    match = response.json()["matches"][0]
+    assert match["digest"] == digest and match["kind"] == "url" and match["source"] == URLHAUS
+    assert match["threat"] == "malware_download" and match["source_name"]
+    miss = client.post(
+        f"{EXT}/threat-hashes", json={"prefixes": ["00000000"]}, headers=bearer(credentials)
+    )
+    assert miss.json()["matches"] == []
+
+
+def test_threat_hash_queries_are_bounded(client: TestClient) -> None:
+    credentials = enroll(client)
+    too_many = {"prefixes": [f"{i:08x}" for i in range(33)]}
+    assert (
+        client.post(f"{EXT}/threat-hashes", json=too_many, headers=bearer(credentials)).status_code
+        == 422
+    )
+    not_hex = {"prefixes": ["abcdefgh"]}
+    assert (
+        client.post(f"{EXT}/threat-hashes", json=not_hex, headers=bearer(credentials)).status_code
+        == 422
+    )

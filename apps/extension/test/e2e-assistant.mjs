@@ -20,7 +20,8 @@ const shots = process.argv[2];
 const step = (text) => console.log(`✓ ${text}`);
 
 const { server, seen } = await startMockServer(8787, {
-  verdicts: { "paypa1-login.example.com": "suspicious" },
+  // Checked inside the browser now: a hash-prefix hit, confirmed with the full hash.
+  listed: ["paypa1-login.example.com"],
   blocklist: ["preload-evil.example"],
   family: { domains: ["casino.example"], groups: ["Home"] },
 });
@@ -91,7 +92,7 @@ await bubble.waitFor({ timeout: 12000 }).catch(async () => {
   await bubble.waitFor({ timeout: 12000 }).catch(async () => {
     await shop.reload();
     await bubble.waitFor({ timeout: 12000 }).catch((error) => {
-      console.error("No assistant bubble. Hosts the mock server was asked about:", seen.checks);
+      console.error("No assistant bubble. Prefixes the mock server was asked about:", seen.hashQueries);
       throw error;
     });
   });

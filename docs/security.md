@@ -97,7 +97,25 @@ Background checks by the apps must not reveal what the person has:
   6 hex characters of the SHA-256 to `GET /intelligence/hash-prefix/{prefix}`,
   receives every listed hash with that prefix, and compares the full hash
   locally. The route takes no account or device token.
-- Both routes are dropped from uvicorn's access log
+- **Pages in the browser extension**: checked inside the browser
+  (`apps/extension/src/lib/local-check.ts`). The address rules are the server's
+  own file (`app/rules/url_rules.json`, bundled and refreshed from
+  `GET /extension/url-rules`) and give the same results, held to shared test
+  vectors (`tests/fixtures/url-vectors.json`, run by both test suites). Known
+  threats: `GET /extension/threat-prefixes` gives the first 4 bytes of the
+  SHA-256 of every listed address and domain (every 6 hours). The extension
+  hashes the page's normalised address, its host and each parent domain down to
+  the registrable one; only on a prefix hit does it call
+  `POST /extension/threat-hashes` with those prefixes plus 3 random prefixes
+  from the list, and it compares the full hashes itself. Nothing about the
+  request is stored. A full `POST /extension/check-url` (which sends the
+  address) runs only from the right-click menu, when the person asks. Warning
+  events, sent only for a linked account that turned syncing on, carry the
+  site's origin, never the path or query. Limit: the browser percent-encodes
+  some characters in paths (non-ASCII, quotes, braces) that the feeds may list
+  unencoded, so such an exact-link listing can be missed; the domain checks
+  aren't affected.
+- These routes, and the extension's hash and server-check routes, are dropped from uvicorn's access log
   (`app/core/private_paths.py`), so an address is never written next to what it
   looked up. Their rate limits keep only a per-address counter that expires.
 
@@ -124,7 +142,7 @@ lookup tool, where a person deliberately pastes one fingerprint.
   - Limits: the noise is injected at commit, so on a page that loads almost instantly, its first inline script can run before the noise is in place and read real values. The e2e test reports how often that happens. Patched functions report themselves as native code to `Function.prototype.toString`, but a determined script may still notice them.
   - Each site can be excluded from the toolbar popup.
 
-- **Email aliases.** A random (10 characters from a look-alike-free alphabet) or chosen address on the operator's relay domain, or on the person's own DNS-verified domain, forwards to the account's verified email. Forwarding is done by the operator's own Postfix (`infrastructure/alias-relay`), which asks `/relay/aliases/resolve` (bearer relay token, compared in constant time, request logs filtered) for one recipient at a time. Qalaa sees addresses and counts, never messages. Paused aliases are refused, and deleted ones become tombstones: refused forever, never issued again, label wiped. Aliases can be created, paused and deleted on the website (Dashboard → Privacy), created from the extension's popup (never from a page's content script) and from the desktop app through the linked device. Limits: 200 per person and 30 created per hour.
+- **Email aliases.** A random (10 characters from a look-alike-free alphabet) or chosen address on the operator's relay domain, or on the person's own DNS-verified domain, forwards to the account's verified email. Forwarding is done by the operator's own Postfix (`infrastructure/alias-relay`), which asks `/relay/aliases/resolve` (bearer relay token, compared in constant time, request logs filtered) for one recipient at a time. The API sees addresses and counts, never messages. The relay's Postfix does handle each message in transit: it is queued only until the next server accepts it, and, like any mail server, Postfix logs envelope senders and recipients. So the honest claim is "content isn't stored or read", not "Qalaa never sees your mail"; the relay README sets short log retention and queue lifetime. Paused aliases are refused, and deleted ones become tombstones: refused forever, never issued again, label wiped. Aliases can be created, paused and deleted on the website (Dashboard → Privacy), created from the extension's popup (never from a page's content script) and from the desktop app through the linked device. Limits: 200 per person and 30 created per hour.
 
 - **Data-broker checklist.** A versioned catalog (`apps/desktop/src/core/data/brokers.json`) of people-search and marketing-data companies: opt-out page (https, on the company's own domain, enforced by a test), how they verify, how long removal takes, and a GDPR, CCPA or general request letter. The opt-out links have not been checked online for this version, and the page says so. The website shows the same catalog (`apps/web/src/lib/data/brokers.json`; a test fails if the two copies differ) on Dashboard → Privacy, with progress kept only in that browser's storage and never sent to the server. On the desktop, progress is kept only on this computer. A request or removal 90 days old shows a Home reminder to look again, because listings come back. Request letters are filled in with a name and email typed in at that moment and copied to the clipboard; neither is stored. No paid removal service or API is used.
 

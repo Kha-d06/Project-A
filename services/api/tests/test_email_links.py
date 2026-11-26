@@ -95,6 +95,9 @@ def test_private_lookups_stay_out_of_the_access_log() -> None:
 
     assert not keep.filter(record("/api/v1/intelligence/hash-prefix/abcdef"))
     assert not keep.filter(record("/api/v1/email/links"))
+    assert not keep.filter(record("/api/v1/extension/threat-hashes"))
+    assert not keep.filter(record("/api/v1/extension/check-url"))
+    assert keep.filter(record("/api/v1/extension/threat-prefixes"))
     assert keep.filter(record("/api/v1/scans/url"))
 
 

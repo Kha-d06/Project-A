@@ -58,7 +58,8 @@ export default async function PrivacyPage() {
       <section>
         <h2>The browser extension</h2>
         <ul>
-          <li>For each page you open, Qalaa Protect sends its address (or, in privacy mode, only the domain) to the Qalaa server. The server answers from its local threat database and stores nothing about the request.</li>
+          <li>Pages you open are checked inside your browser. Qalaa Protect downloads short fingerprints (the first 4 bytes of a SHA-256 hash) of every known dangerous address and domain, and compares each page with them locally. Only when one might match does it ask the Qalaa server for the full fingerprints that start the same way, together with a few random ones from the list, and compare them itself; the server sees a few 4-byte prefixes shared by many addresses, not the page, and stores nothing about the request.</li>
+          <li>A page’s full address is sent only when you choose “Check on the Qalaa server” from the right-click menu. The server answers from its threat database and stores nothing about that request either.</li>
           <li>It never sends page content, form contents, passwords or messages. Private-network and local addresses are not sent at all.</li>
           <li>It downloads Qalaa’s whole list of known dangerous domains every few hours, so blocking them before they load reveals nothing about your browsing.</li>
           <li>If you turn on the on-screen assistant, it reads the names of cookies (never their values) and the domains of trackers a page loads, and shows them to you. When you ask it a question, the question, the site’s domain, its verdict, the warning titles and those cookie and tracker names are sent to the Qalaa server, and on to the AI provider if the operator has configured one.</li>

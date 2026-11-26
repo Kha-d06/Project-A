@@ -1,8 +1,11 @@
 /** A stand-in Qalaa API for the extension's end-to-end tests. */
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 
-export function startMockServer(port, { verdicts = {}, blocklist = [], assistant = null, family = null } = {}) {
-  const seen = { checks: [], assistantContexts: [], screenTime: null, screenTimeReports: [] };
+// listed: hosts reported as scams (community reports), served as hash prefixes like the real API.
+export function startMockServer(port, { verdicts = {}, listed = [], blocklist = [], assistant = null, family = null } = {}) {
+  const seen = { checks: [], hashQueries: [], assistantContexts: [], screenTime: null, screenTimeReports: [] };
+  const digests = listed.map((host) => createHash("sha256").update(host).digest("hex"));
   const server = createServer(async (request, response) => {
     let body = "";
     for await (const chunk of request) body += chunk;
@@ -32,6 +35,17 @@ export function startMockServer(port, { verdicts = {}, blocklist = [], assistant
       return response.end();
     }
     if (path === "/api/v1/extension/blocklist") return reply(200, { version: `${blocklist.length}-x`, generated_at: new Date().toISOString(), hosts: blocklist, sources: ["Mock feed"] });
+    if (path === "/api/v1/extension/threat-prefixes") {
+      const prefixes = Buffer.concat([...new Set(digests.map((d) => d.slice(0, 8)))].sort().map((hex) => Buffer.from(hex, "hex")));
+      return reply(200, { version: `${digests.length}-x`, generated_at: new Date().toISOString(), prefixes: prefixes.toString("base64"), count: prefixes.length / 4, sources: ["Mock feed"] });
+    }
+    if (path === "/api/v1/extension/threat-hashes") {
+      seen.hashQueries.push(json.prefixes);
+      const matches = digests
+        .filter((d) => json.prefixes.includes(d.slice(0, 8)))
+        .map((digest) => ({ digest, kind: "host", source: "community", source_name: "Mock community reports", threat: null }));
+      return reply(200, { matches });
+    }
     if (path === "/api/v1/extension/check-url") {
       const host = new URL(json.url).hostname;
       seen.checks.push(host);

@@ -25,7 +25,7 @@ The Qalaa browser extension (Chrome and Microsoft Edge, Manifest V3).
 ## How it talks to the server
 
 1. **Enrollment.** On install the extension enrolls anonymously (`POST /api/v1/extension/enroll`) and receives a refresh token, stored in `chrome.storage.local`, plus a 15-minute access token, kept in `chrome.storage.session`. No account is needed.
-2. **Checks.** Each check sends the page address, or only the domain in privacy mode, to `POST /extension/check-url`. The server answers from its local threat database and look-alike rules and stores nothing about the request.
+2. **Checks, inside the browser** (`src/lib/local-check.ts`). Look-alike and address rules run locally from the server's own rules file (`services/api/app/rules/url_rules.json`, bundled at build time and refreshed from `GET /extension/url-rules`). Known threats come from `GET /extension/threat-prefixes`, 4-byte SHA-256 prefixes of every listed address and domain, refreshed every 6 hours. On a prefix hit, the extension sends those prefixes plus 3 random ones from the list to `POST /extension/threat-hashes` and compares the full hashes itself. The page address goes to `POST /extension/check-url` only from the right-click menu ("Check on the Qalaa server"). `test/url-rules.test.ts` and the server's `tests/test_url_vectors.py` run the same vectors (`services/api/tests/fixtures/url-vectors.json`).
 3. **Linking.** This is optional. A one-time code from the dashboard (Browser protection page) links the extension to an account. Warnings are then recorded only if the user turns that on, and only as domain, verdict and action.
 4. **Revocation.** Disconnecting a browser in the dashboard revokes its tokens immediately.
 

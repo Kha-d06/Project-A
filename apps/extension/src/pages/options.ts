@@ -199,10 +199,6 @@ async function main() {
     location.reload();
   });
 
-  for (const radio of document.querySelectorAll<HTMLInputElement>("input[name=privacyMode]")) {
-    radio.checked = radio.value === settings.privacyMode;
-    radio.addEventListener("change", () => save({ privacyMode: radio.value as Settings["privacyMode"] }));
-  }
 
   const allow = byId<HTMLTextAreaElement>("allowlist");
   const block = byId<HTMLTextAreaElement>("blocklist");

@@ -9,6 +9,7 @@
     "noImplicitOverride": true,
     "noEmit": true,
     "isolatedModules": true,
+    "resolveJsonModule": true,
     "skipLibCheck": true,
     "types": ["chrome", "vitest/globals"]
   },

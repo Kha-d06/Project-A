@@ -199,10 +199,6 @@ export function checkUrl(serverUrl: string, url: string, mode: "full" | "host"):
   return postCheck(serverUrl, "/extension/check-url", { url, mode });
 }
 
-export function checkDownload(serverUrl: string, url: string, filename: string): Promise<CheckResult> {
-  return postCheck(serverUrl, "/extension/check-download", { url, filename });
-}
-
 /** The day's browsing minutes, for a linked account's family. Best effort. */
 export async function reportScreenTime(serverUrl: string, day: string, minutes: number): Promise<boolean> {
   try {
@@ -218,7 +214,9 @@ export async function reportEvent(
   event: { kind: string; url: string; verdict: string },
 ): Promise<void> {
   try {
-    await authorized(serverUrl, "/extension/report-event", { method: "POST", body: JSON.stringify(event) });
+    // The site only: the server keeps no more than the host, so nothing more is sent.
+    const site = `${new URL(event.url).origin}/`;
+    await authorized(serverUrl, "/extension/report-event", { method: "POST", body: JSON.stringify({ ...event, url: site }) });
   } catch {
     // Event sync is best effort and never affects protection.
   }
@@ -315,3 +313,42 @@ export async function fetchVault(serverUrl: string): Promise<StoredVaultResponse
   return (await response.json()) as StoredVaultResponse;
 }
 
+
+// --- Local checks: the threat list as hash prefixes, and the address rules -------------
+
+export interface ThreatPrefixesResponse {
+  version: string;
+  generated_at: string;
+  /** Sorted 4-byte SHA-256 prefixes, concatenated, base64. */
+  prefixes: string;
+  count: number;
+  sources: string[];
+}
+
+export interface ThreatHashMatch {
+  digest: string;
+  kind: "url" | "host";
+  source: string;
+  source_name: string;
+  threat: string | null;
+}
+
+export async function fetchThreatPrefixes(serverUrl: string): Promise<ThreatPrefixesResponse> {
+  const response = await authorized(serverUrl, "/extension/threat-prefixes");
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as ThreatPrefixesResponse;
+}
+
+/** Full hashes for a few prefixes; the server can't tell which address they came from. */
+export async function fetchThreatHashes(serverUrl: string, prefixes: string[]): Promise<ThreatHashMatch[]> {
+  const response = await authorized(serverUrl, "/extension/threat-hashes", { method: "POST", body: JSON.stringify({ prefixes }) });
+  if (response.status === 429) throw new CheckUnavailable("Too many checks in a short time. Checks will resume shortly.");
+  if (!response.ok) throw new CheckUnavailable((await readError(response)).message);
+  return ((await response.json()) as { matches: ThreatHashMatch[] }).matches;
+}
+
+export async function fetchUrlRules(serverUrl: string): Promise<unknown> {
+  const response = await authorized(serverUrl, "/extension/url-rules");
+  if (!response.ok) throw await readError(response);
+  return response.json();
+}

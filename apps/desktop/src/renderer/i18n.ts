@@ -196,7 +196,7 @@ const en = {
   actions: { quarantine: "Quarantine", fullScan: "Full scan on server", restore: "Restore", delete: "Delete permanently", quarantined: "In quarantine" },
   terminal: {
     heading: "Terminal protection",
-    intro: "Checks commands in bash and zsh before they run, and the files they download.",
+    intro: "A safety net for commands typed or pasted into bash and zsh: it checks them before they run, and the files they download. It runs as your user inside the shell, so a program or script that wants to can switch it off or go around it; it isn't a barrier against malware already running on the computer.",
     points: [
       "Scripts piped from the internet (curl … | sh) are downloaded and scanned first; ones without warning signs run with a short note.",
       "Scripts and programs you start (./install.sh, bash setup.sh, ./app.AppImage) are scanned first.",
@@ -809,7 +809,7 @@ const ar: Dict = {
   actions: { quarantine: "حجر", fullScan: "فحص كامل على الخادم", restore: "استعادة", delete: "حذف نهائي", quarantined: "في الحجر" },
   terminal: {
     heading: "حماية الطرفية",
-    intro: "يفحص الأوامر في bash وzsh قبل تشغيلها، والملفات التي تنزّلها.",
+    intro: "شبكة أمان للأوامر التي تكتبها أو تلصقها في bash وzsh: يفحصها قبل تشغيلها، والملفات التي تنزّلها. يعمل بصلاحيات حسابك داخل الطرفية، فيستطيع برنامج أو نص برمجي إيقافه أو تجاوزه إن أراد؛ وليس حاجزًا أمام برامج ضارة تعمل على الجهاز أصلًا.",
     points: [
       "النصوص البرمجية الممررة من الإنترنت (curl … | sh) تُنزَّل وتُفحص أولًا؛ وما يخلو من علامات التحذير يعمل مع ملاحظة قصيرة.",
       "النصوص البرمجية والبرامج التي تشغّلها (‎./install.sh وbash setup.sh و‎./app.AppImage) تُفحص أولًا.",

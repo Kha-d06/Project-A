@@ -16,7 +16,7 @@
     <section class="panel stack">
       <h2>What the permissions are for</h2>
       <dl class="stack">
-        <div><dt><strong>Read your browsing history</strong> (webNavigation, tabs)</dt><dd class="muted">To see which address each tab is opening so it can be checked. Addresses are sent to the Qalaa server for checking and are not stored there.</dd></div>
+        <div><dt><strong>Read your browsing history</strong> (webNavigation, tabs)</dt><dd class="muted">To see which address each tab is opening so it can be checked. The check runs inside your browser: addresses aren't sent to the Qalaa server. Only short hash prefixes are, and only when a page might be on the list of known threats.</dd></div>
         <div><dt><strong>Manage your downloads</strong></dt><dd class="muted">To check where a download comes from and pause it if the source is known to be dangerous.</dd></div>
         <div><dt><strong>Display notifications</strong></dt><dd class="muted">To tell you about a paused download or the result of a link you asked it to check.</dd></div>
         <div><dt><strong>Block content</strong> (declarativeNetRequest) <strong>and alarms</strong></dt><dd class="muted">To stop domains on Qalaa's list of known dangerous sites before they load. The whole list is downloaded every few hours, so nothing about your browsing is sent to get it.</dd></div>

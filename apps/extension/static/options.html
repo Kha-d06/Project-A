@@ -80,11 +80,8 @@
 
     <section class="panel stack">
       <h2 data-i18n="options.privacy">Privacy</h2>
-      <fieldset class="stack">
-        <legend data-i18n="options.privacyLegend">What is sent to Qalaa for each page</legend>
-        <label class="radio"><input type="radio" name="privacyMode" value="full" /> <span><strong data-i18n="options.privacyFull">The full address</strong> <span class="muted" data-i18n="options.privacyFullHint">(recommended). Recognises specific malicious links on otherwise normal sites. Addresses are checked and not stored.</span></span></label>
-        <label class="radio"><input type="radio" name="privacyMode" value="host" /> <span><strong data-i18n="options.privacyHost">Only the domain name</strong><span data-i18n="options.privacyHostHint">. More private; malicious links on shared hosting may be missed.</span></span></label>
-      </fieldset>
+      <h3 data-i18n="options.privacyLegend">How pages are checked</h3>
+      <p class="muted" data-i18n="options.privacyLocal">Every page is checked inside this browser.</p>
       <div class="setting">
         <div><label for="keepLocalAlerts" data-i18n="options.keepLocalAlerts">Keep a list of recent alerts in this browser</label><p class="muted" data-i18n="options.keepLocalAlertsHint">Stored only in this browser. Shown in the popup.</p></div>
         <input id="keepLocalAlerts" class="switch" type="checkbox" role="switch" />

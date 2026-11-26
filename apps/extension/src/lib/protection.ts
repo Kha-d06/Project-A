@@ -1,10 +1,11 @@
-import { CheckUnavailable, checkDownload, checkUrl } from "./api";
+import { CheckUnavailable, checkUrl } from "./api";
 import { dedupe, getCached, putCached } from "./cache";
+import { localCheckDownload, localCheckUrl } from "./local-check";
 import type { Settings } from "./settings";
 import type { CheckResult, Verdict } from "./types";
-import { checkableUrl, matchesHostList, urlForMode } from "./urls";
+import { checkableUrl, matchesHostList } from "./urls";
 
-/** Upper bound on server checks; beyond it, results are reported as unavailable. */
+/** Upper bound on checks; beyond it, results are reported as unavailable. */
 export const MAX_CHECKS_PER_MINUTE = 120;
 const UNAVAILABLE_RETRY_SECONDS = 60;
 
@@ -37,7 +38,7 @@ export function localResult(verdict: Verdict, host: string, limitation?: string)
   };
 }
 
-async function cachedCheck(key: string, host: string, run: () => Promise<CheckResult>): Promise<CheckResult> {
+async function cachedCheck(key: string, host: string, run: () => Promise<CheckResult | null>): Promise<CheckResult> {
   const cached = await getCached(key);
   if (cached) return cached;
   return dedupe(key, async () => {
@@ -46,6 +47,7 @@ async function cachedCheck(key: string, host: string, run: () => Promise<CheckRe
     }
     try {
       const result = await run();
+      if (!result) return localResult("skipped", host);
       await putCached(key, result);
       return result;
     } catch (error) {
@@ -55,24 +57,41 @@ async function cachedCheck(key: string, host: string, run: () => Promise<CheckRe
   });
 }
 
-/**
- * Verdict for a page or link, or null when nothing should be shown at all
- * (protection paused, or not a web address).
- */
-export async function assessUrl(raw: string, settings: Settings): Promise<CheckResult | null> {
-  if (settings.paused) return null;
-  const url = checkableUrl(raw);
-  if (!url) return null;
+/** The user's own lists and the family list, which need no check at all. */
+function listResult(url: URL, settings: Settings): CheckResult | null {
   if (matchesHostList(url.hostname, settings.blocklist)) return localResult("blocked_by_you", url.hostname);
   if (matchesHostList(url.hostname, settings.familyBlocklist)) {
     return { ...localResult("blocked_by_family", url.hostname), sources: settings.familyGroups };
   }
   if (matchesHostList(url.hostname, settings.allowlist)) return localResult("allowed_by_you", url.hostname);
+  return null;
+}
 
-  const sent = urlForMode(url, settings.privacyMode);
-  return cachedCheck(`${settings.privacyMode}:${sent}`, url.hostname, () =>
-    checkUrl(settings.serverUrl, sent, settings.privacyMode),
-  );
+/**
+ * Verdict for a page or link, or null when nothing should be shown at all
+ * (protection paused, or not a web address). Checked inside the browser: the
+ * address isn't sent anywhere (see local-check.ts).
+ */
+export async function assessUrl(raw: string, settings: Settings): Promise<CheckResult | null> {
+  if (settings.paused) return null;
+  const url = checkableUrl(raw);
+  if (!url) return null;
+  const listed = listResult(url, settings);
+  if (listed) return listed;
+  // The raw address keeps any "user@" part, which the checks look for.
+  return cachedCheck(`local:${url}`, url.hostname, () => localCheckUrl(raw.split("#")[0]!, settings.serverUrl));
+}
+
+/**
+ * A full check on the Qalaa server, which sends the address. Only when the person
+ * asks for it (the right-click menu), never for pages as they're opened.
+ */
+export async function assessUrlOnServer(raw: string, settings: Settings): Promise<CheckResult | null> {
+  const url = checkableUrl(raw);
+  if (!url) return null;
+  const listed = listResult(url, settings);
+  if (listed) return listed;
+  return cachedCheck(`server:${url}`, url.hostname, () => checkUrl(settings.serverUrl, url.toString(), "full"));
 }
 
 export async function assessDownload(raw: string, filename: string, settings: Settings): Promise<CheckResult | null> {
@@ -81,9 +100,7 @@ export async function assessDownload(raw: string, filename: string, settings: Se
   if (!url) return null;
   if (matchesHostList(url.hostname, settings.allowlist)) return null;
   if (matchesHostList(url.hostname, settings.blocklist)) return localResult("blocked_by_you", url.hostname);
-  return cachedCheck(`download:${url}:${filename}`, url.hostname, () =>
-    checkDownload(settings.serverUrl, url.toString(), filename),
-  );
+  return cachedCheck(`download:${url}:${filename}`, url.hostname, () => localCheckDownload(url.toString(), filename, settings.serverUrl));
 }
 
 // --- "Proceed anyway" allowances: per host, for this browser session only. ---

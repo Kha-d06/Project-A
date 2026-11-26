@@ -41,8 +41,3 @@ export function matchesHostList(host: string, list: string[]): boolean {
   const h = host.toLowerCase();
   return list.some((entry) => h === entry || h.endsWith(`.${entry}`));
 }
-
-/** What is sent to the server for a page, according to the privacy mode. */
-export function urlForMode(url: URL, mode: "full" | "host"): string {
-  return mode === "host" ? `${url.protocol}//${url.host}/` : url.toString();
-}

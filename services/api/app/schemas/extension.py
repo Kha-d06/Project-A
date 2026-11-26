@@ -158,6 +158,44 @@ class Blocklist(BaseModel):
     sources: list[str]
 
 
+class ThreatPrefixes(BaseModel):
+    """The first 4 bytes of the SHA-256 of every listed address and domain. The
+    extension checks visited pages against these on the device; only on a prefix
+    hit does it ask for the full hashes, so the server never sees the address."""
+
+    version: str
+    generated_at: datetime
+    # Sorted, de-duplicated 4-byte prefixes, concatenated and base64-encoded.
+    prefixes: str
+    count: int
+    sources: list[str]
+
+
+class ThreatHashQuery(BaseModel):
+    # Hex prefixes (8 characters) of hashes the extension computed locally.
+    prefixes: list[str] = Field(min_length=1, max_length=32)
+
+    @field_validator("prefixes")
+    @classmethod
+    def _hex(cls, value: list[str]) -> list[str]:
+        cleaned = [p.lower() for p in value]
+        if any(len(p) != 8 or any(c not in "0123456789abcdef" for c in p) for p in cleaned):
+            raise ValueError("Each prefix is 8 hex characters.")
+        return sorted(set(cleaned))
+
+
+class ThreatHash(BaseModel):
+    digest: str
+    kind: Literal["url", "host"]
+    source: str
+    source_name: str
+    threat: str | None
+
+
+class ThreatHashes(BaseModel):
+    matches: list[ThreatHash]
+
+
 class AssistantCookie(BaseModel):
     name: str = Field(max_length=120)
     domain: str = Field(max_length=255)

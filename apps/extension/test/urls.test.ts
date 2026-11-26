@@ -1,5 +1,5 @@
 import { normalizeHostEntry } from "../src/lib/settings";
-import { checkableUrl, isLocalHost, matchesHostList, urlForMode } from "../src/lib/urls";
+import { checkableUrl, isLocalHost, matchesHostList } from "../src/lib/urls";
 import { VERDICTS, shouldInterrupt } from "../src/lib/verdicts";
 
 describe("which addresses are checked", () => {
@@ -15,12 +15,6 @@ describe("which addresses are checked", () => {
     expect(checkableUrl("file:///etc/passwd")).toBeNull();
     expect(checkableUrl("javascript:alert(1)")).toBeNull();
     expect(checkableUrl("https://user:pw@example.com/a?b=1#c")?.toString()).toBe("https://example.com/a?b=1");
-  });
-
-  it("sends only the scheme and domain in privacy mode", () => {
-    const url = new URL("https://shop.example.com/account?token=secret");
-    expect(urlForMode(url, "host")).toBe("https://shop.example.com/");
-    expect(urlForMode(url, "full")).toContain("token=secret");
   });
 
   it("matches list entries and their subdomains only", () => {

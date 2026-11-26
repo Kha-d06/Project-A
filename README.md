@@ -130,7 +130,7 @@ There is no native Android app. Building one needs the Android SDK, which was no
 **Qalaa Protect browser extension** (`apps/extension`, Chrome and Edge, Manifest V3):
 - warns before known dangerous sites and convincing imitations load, with evidence and a way back;
 - pauses risky downloads, adds a right-click "Scan link with Qalaa", and offers optional hover checks;
-- has pause and resume, allow and block lists, and a privacy mode that sends only domains;
+- has pause and resume and allow and block lists, and checks pages inside the browser: it downloads hash prefixes of known threats and only asks the server for full hashes on a prefix match, so addresses aren't sent (a full server check runs only from the right-click menu);
 - works without an account, enrolling anonymously with short-lived tokens, and can be linked to one with a one-time code;
 - reports a check it cannot complete as "Check unavailable", never as clean.
 

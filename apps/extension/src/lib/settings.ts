@@ -2,13 +2,9 @@ import type { LanguageSetting } from "./i18n";
 import type { ThemeSetting } from "./theme";
 import type { BlockReason, ScreenTimeRule } from "./screentime";
 
-export type PrivacyMode = "full" | "host";
-
 export interface Settings {
   serverUrl: string;
   paused: boolean;
-  /** "host" sends only the scheme and domain of each page, never paths or queries. */
-  privacyMode: PrivacyMode;
   warnOnSuspicious: boolean;
   downloadChecks: boolean;
   /** Needs the optional host permission; off until the user turns it on. */
@@ -50,7 +46,6 @@ declare const __SENTINEL_SERVER__: string;
 export const DEFAULT_SETTINGS: Settings = {
   serverUrl: typeof __SENTINEL_SERVER__ === "string" ? __SENTINEL_SERVER__ : "http://localhost:8080",
   paused: false,
-  privacyMode: "full",
   warnOnSuspicious: true,
   downloadChecks: true,
   hoverChecks: false,
@@ -89,7 +84,10 @@ const KEY = "settings";
 
 export async function loadSettings(): Promise<Settings> {
   const stored = await chrome.storage.local.get(KEY);
-  return { ...DEFAULT_SETTINGS, ...((stored[KEY] as Partial<Settings> | undefined) ?? {}) };
+  // "privacyMode" (send the full address or only the domain) is gone: pages are
+  // now checked inside the browser, so neither is sent.
+  const { privacyMode: _old, ...saved } = (stored[KEY] as (Partial<Settings> & { privacyMode?: unknown }) | undefined) ?? {};
+  return { ...DEFAULT_SETTINGS, ...saved };
 }
 
 export async function saveSettings(changes: Partial<Settings>): Promise<Settings> {

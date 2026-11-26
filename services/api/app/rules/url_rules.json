@@ -1,0 +1,440 @@
+{
+ "_comment": "Qalaa URL rules, read by the server (url_heuristics.py) and shipped to the browser extension, which runs the same checks locally. Change both implementations together; tests/fixtures/url-vectors.json pins their behaviour.",
+ "version": "2026-11-26",
+ "brands": {
+  "paypal": {
+   "name": "PayPal",
+   "domains": [
+    "paypal.com",
+    "paypal.me"
+   ]
+  },
+  "google": {
+   "name": "Google",
+   "domains": [
+    "google.ae",
+    "google.co.uk",
+    "google.com",
+    "googleapis.com"
+   ]
+  },
+  "microsoft": {
+   "name": "Microsoft",
+   "domains": [
+    "live.com",
+    "microsoft.com",
+    "microsoftonline.com"
+   ]
+  },
+  "apple": {
+   "name": "Apple",
+   "domains": [
+    "apple.com",
+    "icloud.com"
+   ]
+  },
+  "amazon": {
+   "name": "Amazon",
+   "domains": [
+    "amazon.ae",
+    "amazon.co.uk",
+    "amazon.com",
+    "amazon.eg",
+    "amazon.sa"
+   ]
+  },
+  "facebook": {
+   "name": "Facebook",
+   "domains": [
+    "facebook.com",
+    "fb.com"
+   ]
+  },
+  "instagram": {
+   "name": "Instagram",
+   "domains": [
+    "instagram.com"
+   ]
+  },
+  "whatsapp": {
+   "name": "WhatsApp",
+   "domains": [
+    "whatsapp.com",
+    "whatsapp.net"
+   ]
+  },
+  "netflix": {
+   "name": "Netflix",
+   "domains": [
+    "netflix.com"
+   ]
+  },
+  "linkedin": {
+   "name": "LinkedIn",
+   "domains": [
+    "linkedin.com"
+   ]
+  },
+  "binance": {
+   "name": "Binance",
+   "domains": [
+    "binance.com"
+   ]
+  },
+  "coinbase": {
+   "name": "Coinbase",
+   "domains": [
+    "coinbase.com"
+   ]
+  },
+  "dhl": {
+   "name": "DHL",
+   "domains": [
+    "dhl.com",
+    "dhl.de"
+   ]
+  },
+  "fedex": {
+   "name": "FedEx",
+   "domains": [
+    "fedex.com"
+   ]
+  },
+  "aramex": {
+   "name": "Aramex",
+   "domains": [
+    "aramex.com"
+   ]
+  },
+  "outlook": {
+   "name": "Outlook",
+   "domains": [
+    "live.com",
+    "office.com",
+    "outlook.com"
+   ]
+  },
+  "dropbox": {
+   "name": "Dropbox",
+   "domains": [
+    "dropbox.com"
+   ]
+  },
+  "steam": {
+   "name": "Steam",
+   "domains": [
+    "steamcommunity.com",
+    "steampowered.com"
+   ]
+  },
+  "emiratesnbd": {
+   "name": "Emirates NBD",
+   "domains": [
+    "emiratesnbd.com"
+   ]
+  },
+  "bankfab": {
+   "name": "First Abu Dhabi Bank",
+   "domains": [
+    "bankfab.com"
+   ]
+  },
+  "mashreq": {
+   "name": "Mashreq",
+   "domains": [
+    "mashreq.com",
+    "mashreqbank.com"
+   ]
+  },
+  "rakbank": {
+   "name": "RAKBANK",
+   "domains": [
+    "rakbank.ae"
+   ]
+  },
+  "alrajhi": {
+   "name": "Al Rajhi Bank",
+   "domains": [
+    "alrajhibank.com.sa"
+   ]
+  },
+  "alahli": {
+   "name": "Saudi National Bank (AlAhli)",
+   "domains": [
+    "alahli.com"
+   ]
+  },
+  "riyadbank": {
+   "name": "Riyad Bank",
+   "domains": [
+    "riyadbank.com"
+   ]
+  },
+  "alinma": {
+   "name": "Alinma Bank",
+   "domains": [
+    "alinma.com"
+   ]
+  },
+  "bankmuscat": {
+   "name": "Bank Muscat",
+   "domains": [
+    "bankmuscat.com"
+   ]
+  },
+  "etisalat": {
+   "name": "e& (Etisalat)",
+   "domains": [
+    "eand.com",
+    "etisalat.ae"
+   ]
+  },
+  "mobily": {
+   "name": "Mobily",
+   "domains": [
+    "mobily.com.sa"
+   ]
+  },
+  "ooredoo": {
+   "name": "Ooredoo",
+   "domains": [
+    "ooredoo.com",
+    "ooredoo.om",
+    "ooredoo.qa"
+   ]
+  },
+  "omantel": {
+   "name": "Omantel",
+   "domains": [
+    "omantel.om"
+   ]
+  },
+  "batelco": {
+   "name": "Batelco",
+   "domains": [
+    "batelco.com"
+   ]
+  },
+  "absher": {
+   "name": "Absher",
+   "domains": [
+    "absher.sa"
+   ]
+  },
+  "uaepass": {
+   "name": "UAE Pass",
+   "domains": [
+    "uaepass.ae"
+   ]
+  },
+  "nafath": {
+   "name": "Nafath",
+   "domains": [
+    "iam.gov.sa",
+    "nafath.sa"
+   ]
+  },
+  "dubaipolice": {
+   "name": "Dubai Police",
+   "domains": [
+    "dubaipolice.gov.ae"
+   ]
+  },
+  "salik": {
+   "name": "Salik",
+   "domains": [
+    "salik.ae"
+   ]
+  },
+  "emiratespost": {
+   "name": "Emirates Post",
+   "domains": [
+    "emiratespost.ae"
+   ]
+  },
+  "splonline": {
+   "name": "Saudi Post (SPL)",
+   "domains": [
+    "splonline.com.sa"
+   ]
+  },
+  "smsaexpress": {
+   "name": "SMSA Express",
+   "domains": [
+    "smsaexpress.com"
+   ]
+  },
+  "nusuk": {
+   "name": "Nusuk",
+   "domains": [
+    "nusuk.sa"
+   ]
+  },
+  "careem": {
+   "name": "Careem",
+   "domains": [
+    "careem.com"
+   ]
+  },
+  "talabat": {
+   "name": "Talabat",
+   "domains": [
+    "talabat.com"
+   ]
+  }
+ },
+ "shorteners": [
+  "bit.ly",
+  "buff.ly",
+  "cutt.ly",
+  "goo.gl",
+  "is.gd",
+  "lnkd.in",
+  "ow.ly",
+  "rb.gy",
+  "rebrand.ly",
+  "s.id",
+  "shorturl.at",
+  "t.co",
+  "t.ly",
+  "tiny.cc",
+  "tinyurl.com",
+  "v.gd"
+ ],
+ "credentialPathWords": [
+  "login",
+  "signin",
+  "sign-in",
+  "verify",
+  "account",
+  "secure",
+  "update",
+  "password",
+  "wallet",
+  "confirm",
+  "unlock",
+  "billing"
+ ],
+ "riskyDownloadExtensions": [
+  ".exe",
+  ".scr",
+  ".bat",
+  ".cmd",
+  ".msi",
+  ".vbs",
+  ".js",
+  ".jar",
+  ".apk",
+  ".ps1",
+  ".hta",
+  ".lnk",
+  ".iso",
+  ".img"
+ ],
+ "minTyposquatLength": 6,
+ "maxOrdinarySubdomainDepth": 3,
+ "longHostLength": 60,
+ "confusables": {
+  "а": "a",
+  "е": "e",
+  "о": "o",
+  "р": "p",
+  "с": "c",
+  "у": "y",
+  "х": "x",
+  "і": "i",
+  "ј": "j",
+  "ѕ": "s",
+  "ԁ": "d",
+  "ɡ": "g",
+  "ո": "n",
+  "α": "a",
+  "ο": "o",
+  "ν": "v",
+  "ρ": "p",
+  "τ": "t",
+  "ı": "i",
+  "0": "o",
+  "1": "l"
+ },
+ "arabic": {
+  "_comment": "Arabic-script domains. 'fold' maps letter variants to one form before comparing (as Arabic search does); 'strip' characters are invisible or decorative and removed; 'lookalikeLetters' are Persian/Urdu letters that render like Arabic ones and are a common way to fake an Arabic name. Brand names are only ones distinctive enough not to be ordinary words (كريم, سالك, نفاذ, طلبات and اتصالات are left out on purpose).",
+  "fold": {
+   "أ": "ا",
+   "إ": "ا",
+   "آ": "ا",
+   "ٱ": "ا",
+   "ى": "ي",
+   "ی": "ي",
+   "ے": "ي",
+   "ئ": "ي",
+   "ک": "ك",
+   "ڪ": "ك",
+   "ة": "ه",
+   "ۀ": "ه",
+   "ە": "ه",
+   "ھ": "ه",
+   "ؤ": "و",
+   "٠": "0",
+   "١": "1",
+   "٢": "2",
+   "٣": "3",
+   "٤": "4",
+   "٥": "5",
+   "٦": "6",
+   "٧": "7",
+   "٨": "8",
+   "٩": "9",
+   "۰": "0",
+   "۱": "1",
+   "۲": "2",
+   "۳": "3",
+   "۴": "4",
+   "۵": "5",
+   "۶": "6",
+   "۷": "7",
+   "۸": "8",
+   "۹": "9"
+  },
+  "strip": [
+   "ـ",
+   "ً",
+   "ٌ",
+   "ٍ",
+   "َ",
+   "ُ",
+   "ِ",
+   "ّ",
+   "ْ",
+   "ٰ",
+   "‌",
+   "‍"
+  ],
+  "lookalikeLetters": [
+   "ی",
+   "ک",
+   "ڪ",
+   "ە",
+   "ھ",
+   "ۀ",
+   "ے",
+   "ٮ",
+   "ٯ"
+  ],
+  "brands": {
+   "الراجحي": "alrajhi",
+   "الانماء": "alinma",
+   "ابشر": "absher",
+   "موبايلي": "mobily",
+   "اوريدو": "ooredoo",
+   "عمانتل": "omantel",
+   "بتلكو": "batelco",
+   "ارامكس": "aramex",
+   "سمسا": "smsaexpress",
+   "شرطهدبي": "dubaipolice",
+   "البريدالسعودي": "splonline",
+   "مصرفالراجحي": "alrajhi",
+   "بنكالرياض": "riyadbank"
+  }
+ }
+}
